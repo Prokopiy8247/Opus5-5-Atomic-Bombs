@@ -306,3 +306,17 @@ CYCLE2B = {
 }
 for _k, _v in CYCLE2B.items():
     PROFILES.setdefault(_k, {}).update(_v)
+
+# ---------------------------------------------------------------------------------------------
+# Revision: art-director review cycle 3 (docs/reviews/cycle3_art_review.json). Per-bomb-group override
+# files tools/profiles_c3/group_*.py each define CYCLE3 = {bomb_id: {key: value}}; merged last.
+import glob as _glob
+import importlib.util as _ilu
+import os as _os
+
+for _f in sorted(_glob.glob(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "profiles_c3", "group_*.py"))):
+    _spec = _ilu.spec_from_file_location(_os.path.splitext(_os.path.basename(_f))[0], _f)
+    _mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    for _k, _v in getattr(_mod, "CYCLE3", {}).items():
+        PROFILES.setdefault(_k, {}).update(_v)

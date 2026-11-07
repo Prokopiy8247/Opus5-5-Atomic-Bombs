@@ -181,6 +181,9 @@ if __name__ == "__main__":
     out = {"version": 1, "bombs": B}
     p = os.path.join(ROOT, "data", "bombs.json")
     os.makedirs(os.path.dirname(p), exist_ok=True)
-    with open(p, "w", encoding="utf-8") as f:
+    # atomic replace: a Godot instance reading bombs.json never sees a half-written file
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, p)
     print("wrote", p, len(B))
