@@ -80,3 +80,13 @@ State when paused (resume from here):
 - Layers agent: still finishing its current edit (shockwave/dust_wall/wilson/debris + fx_layers.gd uncommitted); read its report on resume.
 - Layers agent FINISHED (stopped cleanly, files final): shock is pure refraction (no pen-line rim), soft condensation band only for >=300 kt in humid air; dust ring hidden inside the fireball, ~1 psi threshold, fades after passing, no edge-on walls; Wilson shell milky/flattened/evaporating (150 kt cut-off removed); debris = jittered rocks, drag 0.6, quick fall-out, fragment ground puffs for cased HE; layers split into far/near halves so they no longer draw over the cloud. New optional keys: shock_refraction, shock_condensation, dust_wall_h_max, dust_wall_tau, wilson_thick/discs/clear/opacity, debris_frac, debris_drag, frag_puffs/_r/_life; QA switch --fx_off shock,dust,wilson,debris.
   FIRST STEP ON RESUME: bombs 10-20 were not re-run after its last small edits -> run selftest + render_all for 10-20 (zoom) and check for errors before the cycle-3 render. Remaining full-width dust bands come from the volume skirt (explosion_volume.gdshader sdf_skirt), not this layer.
+
+## RESUMED 2026-11-07T20:08:44+01:00 (session e7610a78)
+
+- Selftest 126/126 READY on resume; bombs 1-20 render with no errors after the env/layers agents' edits.
+- Cycle-3 render done (40 runs, zoom + near, historical time of day, no failures); cycle-3 review workflow running.
+- Cycle-3 systemic fixes committed (c60c3a6): head noise lookups were ~3x too high-frequency for the
+  6/12/24-cell billow volume (lobes 0.04-0.12 R -> 'pom-pom' hair); rescaled to ~0.35 R lobes with
+  sub-lobes. Head held inside the fireball while the ball is opaque. Binocular review framing now
+  accounts for ground zero lying below the eye's horizontal and widens to 80 deg for tall clouds.
+- Per-bomb cycle-3 overrides go to tools/profiles_c3/group_[A-E].py (merged last by bomb_profiles.py).

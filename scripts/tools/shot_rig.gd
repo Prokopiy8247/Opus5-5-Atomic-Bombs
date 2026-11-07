@@ -134,12 +134,17 @@ func _setup_view(view: String, ex: Explosion) -> void:
 
 
 func _setup_view_dynamic(view: String, ex: Explosion) -> void:
-	if view != "zoom":
+	if view != "zoom" and view != "near":
 		return
-	# Binocular framing with ONE fixed field of view per phase (fireball / growing cloud / mature
-	# cloud), fitted to the largest extent reached in that phase, so the scale progression stays
-	# readable within a phase (review c2). Angular sizes use the cloud's NEAR edge (d - R).
+	# Binocular (zoom) and outside (near) framing with ONE fixed field of view per phase (fireball /
+	# growing cloud / mature cloud), fitted to the largest extent reached in that phase, so the scale
+	# progression stays readable within a phase (review c2). Angular sizes use the cloud's NEAR edge
+	# (d - R). The binocular view is limited to 58 deg (wider, the embrasure lintel enters the frame);
+	# the outside camera widens up to 100 deg so a tall cloud is never cut off (review c3).
 	var cam: PlayerCamera = main.cam
+	var near := view == "near"
+	var fov_min := Args.get_float("fov", 55.0) if near else 3.0
+	var fov_max := 100.0 if near else 58.0
 	var prof := ex.prof
 	var t_a := maxf(3.0 * prof.t_fb_max, 0.1)
 	var t_b := maxf(0.25 * prof.t_stab, t_a * 8.0)
@@ -152,7 +157,7 @@ func _setup_view_dynamic(view: String, ex: Explosion) -> void:
 			ages.append(t)
 	if ages.is_empty():
 		ages.append(ex.age)
-	var d := ex.obs_ground_dist
+	var d := Vector2(ex.gz.x - cam.global_position.x, ex.gz.z - cam.global_position.z).length()
 	for t in ages:
 		var hs := prof.head_state(t)
 		var fs := prof.fireball_state(t)
@@ -169,7 +174,7 @@ func _setup_view_dynamic(view: String, ex: Explosion) -> void:
 	# ground zero sits 22% above the bottom edge, the top of the cloud ~8% below the top edge
 	var vfov := maxf(a_top / 0.70, a_w / (16.0 / 9.0) * 1.15)
 	var hfov := rad_to_deg(2.0 * atan(tan(vfov * 0.5) * 16.0 / 9.0))
-	cam.fov = clampf(hfov, 3.0, 80.0)
+	cam.fov = clampf(hfov, fov_min, fov_max)
 	cam.target_fov = cam.fov
 	var vf := 2.0 * atan(tan(deg_to_rad(cam.fov) * 0.5) * 9.0 / 16.0)
 	var dir := (ex.gz - cam.global_position)

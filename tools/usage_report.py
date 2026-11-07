@@ -5,9 +5,11 @@ subagent / workflow logs, de-duplicated by (message id, request id), grouped by 
 log kind, and prices them with the API price table passed on the command line (USD per 1M
 tokens). Prints a Markdown report.
 
-Usage:
-  python tools/usage_report.py --project-dir "%USERPROFILE%/.claude/projects/G--YouTube-Atomic-Bombs" \
-      --session <session-1-id> --prices prices.json
+Usage (one or more sessions; the build was paused and resumed in a second session):
+  python tools/usage_report.py ^
+      --session "%USERPROFILE%/.claude/projects/G--YouTube-Atomic-Bombs|<session-1-id>" ^
+      --session "%USERPROFILE%/.claude/projects/G--YouTube-Atomic-Bombs-atomic-bombs-opus-5-5|<session-2-id>" ^
+      --prices tools/prices.json
 prices.json: {"claude-opus-5-5": {"input": 5, "output": 25, "cache_write_5m": 6.25, "cache_write_1h": 10, "cache_read": 0.5}, ...}
 """
 import argparse
@@ -63,17 +65,23 @@ def scan(paths):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--project-dir", required=True)
-    ap.add_argument("--session", required=True)
+    ap.add_argument("--session", action="append", required=True, help="PROJECT_DIR|SESSION_ID (repeatable)")
     ap.add_argument("--prices", default="")
     a = ap.parse_args()
-    main_log = os.path.join(a.project_dir, a.session + ".jsonl")
     paths = []
-    if os.path.exists(main_log):
-        paths.append((main_log, "main"))
-    for p in glob.glob(os.path.join(a.project_dir, a.session, "**", "*.jsonl"), recursive=True):
-        kind = "workflow agents" if os.sep + "workflows" + os.sep in p else "subagents"
-        paths.append((p, kind))
+    for spec in a.session:
+        pdir, sid = spec.split("|", 1)
+        pdir = os.path.expandvars(os.path.expanduser(pdir))
+        main_log = os.path.join(pdir, sid + ".jsonl")
+        tag = sid[:8]
+        if os.path.exists(main_log):
+            paths.append((main_log, f"{tag} main"))
+        else:
+            print(f"WARNING: main log not found: {main_log}")
+        for p in glob.glob(os.path.join(pdir, sid, "**", "*.jsonl"), recursive=True):
+            norm = p.replace(os.sep, "/")
+            kind = "workflow agents" if "/workflows/" in norm else "subagents"
+            paths.append((p, f"{tag} {kind}"))
     per_model, per_kind, tiers, msgs, t0, t1 = scan(paths)
     prices = json.load(open(a.prices, encoding="utf-8")) if a.prices and os.path.exists(a.prices) else {}
 
