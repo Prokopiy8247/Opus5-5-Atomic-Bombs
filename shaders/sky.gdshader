@@ -158,7 +158,8 @@ void sky() {
 		col += scatter(rd_s, M, 0.012) * g_night;
 		col += vec3(0.0010, 0.0014, 0.0026) * (1.0 + 1.5 * exp(-y * 8.0)) * g_night;
 		if (rd.y > 0.0) {
-			col += stars(rd) * star_intensity * smoothstep(0.0, 0.12, rd.y) * 0.02;
+			float sky_l = dot(col, vec3(0.3, 0.5, 0.2)) + g_flash * 0.4 + g_fireball_color.w * 0.002;
+			col += stars(rd) * star_intensity * smoothstep(0.0, 0.12, rd.y) * 0.02 / (1.0 + 50.0 * sky_l);
 		}
 		float md = dot(rd, M);
 		col += vec3(0.9, 0.9, 0.85) * smoothstep(0.99996, 0.99999, md) * 0.6 * g_night;
@@ -187,7 +188,7 @@ void sky() {
 			col += atm_fireball_glow(POSITION, rd, 1.0);
 		}
 		// the whole-sky flash is the same light scattered again: half its colour, half sky blue
-		flash_col = mix(flash_col, atm_fireball_tint(POSITION), 0.5);
+		flash_col = normalize(mix(flash_col, atm_fireball_tint(POSITION), 0.5) * vec3(0.6, 0.8, 1.0) + 1e-4) * 0.95;
 	}
 	col += g_flash * flash_col * 0.4;
 	COLOR = col * exposure_bias;

@@ -45,6 +45,11 @@ uniform float stem_cone = 0.0;                       // >0: widens with height (
 uniform float stem_top_flare = 0.0;                  // trumpet flare of the top of attached stems (rel. radius)
 uniform float fb_grad = 0.0;                         // 1 = conventional flame: hot core, cooler orange rim, smoke below 1800 K
 uniform float head_lobes = 0.0;                      // 0..1: build compact heads from 3 seeded lobes (no ball silhouette)
+uniform float col_detail = 0.0;                      // 0..1: sharper, finer edges of ejecta columns (no out-of-focus look)
+uniform float stem_twist = 0.0;                      // helical twist of the stem texture (rad per stem radius of height)
+uniform float stem_wobble = 0.0;                     // slow lateral meander of attached stems (rel. to the stem radius)
+uniform float skirt_front = 0.0;                     // 1 = base surge: tallest at the rolling front, not at the cloud foot
+uniform vec3 dome_col = vec3(-1.0);                  // soil dome colour (< 0: ground colour); Baker: white spray dome
 uniform vec4 stem_wake = vec4(1.0e9, 0.0, 0.0, 1.0); // dust front y, wake bottom y, wake density rel, dust ramp
 
 // --- ground skirt / base surge
@@ -162,12 +167,21 @@ float stem_radius_at(float y) {
 	r *= 1.0 - stem_shape.y * sin(h01 * PI) * 0.5;
 	r *= 1.0 + stem_cone * h01;
 	r *= 1.0 + stem_top_flare * pow(smoothstep(0.65, 1.0, h01), 2.0);
+	if (stem_wobble > 0.0 && stem_cone <= 0.0) {
+		// stacked boluses along the stem (not a uniform pipe)
+		r *= 1.0 + 0.8 * stem_wobble * (nlf(vec3(seed * 0.13, y / (3.5 * max(stem.z, 1.0)) - age * stem_shape.w * 0.002, seed * 0.29)) - 0.5) * smoothstep(0.05, 0.25, h01);
+	}
 	return r;
 }
 
 float sdf_stem(vec3 p) {
 	if (stem.z <= 0.0) {
 		return 1e9;
+	}
+	if (stem_wobble > 0.0) {
+		// slow lateral meander: a wavy dusty stem instead of a straight pipe
+		vec2 perp = normalize(vec2(-wind.z, wind.x) + vec2(1e-4, 0.0));
+		p.xz += perp * stem.z * 1.2 * stem_wobble * (nlf(vec3(p.y / (8.0 * stem.z), age * 0.01, seed)) - 0.5) * 2.0;
 	}
 	float r = stem_radius_at(p.y);
 	float d = length(p.xz) - r;
@@ -192,6 +206,9 @@ float sdf_skirt(vec3 p) {
 	// highest at the cloud foot, tapering softly to the toe (cycle 3: the old rim peak gave trays and
 	// hedges with vertical ends)
 	float prof = mix(1.0, 0.3, smoothstep(0.15, 1.0, x)) * (1.0 - smoothstep(0.72, 1.25, x));
+	if (skirt_front > 0.0) {
+		prof = mix(prof, mix(0.45, 1.0, smoothstep(0.5, 0.95, x)) * (1.0 - smoothstep(0.95, 1.25, x)), skirt_front);
+	}
 	float hh = h * prof;
 	float d = max(p.y - hh, -p.y - h * 0.15);
 	float inner = R * skirt.w;
@@ -254,7 +271,9 @@ float cheap_density(vec3 p) {
 		d += clamp(-sdf_head(p) / (head_shape.x * 0.8), 0.0, 1.0) * head_shape.z;
 	}
 	if (stem.z > 0.0) {
-		d += clamp(-sdf_stem(p) / (stem.z * 1.0), 0.0, 1.0) * stem.w;
+		// soft top: the analytic top plane must not cast a knife-edge shadow band on a rising head
+		float stop_c = stem_cone > 0.0 ? stem.x + (stem.y - stem.x) * 1.4 : stem.y;
+		d += clamp(-sdf_stem(p) / (stem.z * 1.0), 0.0, 1.0) * stem.w * smoothstep(stop_c, stop_c - 0.35 * (stop_c - stem.x), p.y);
 	}
 	if (fb.w > 0.0) {
 		d += clamp(-sdf_fireball(p) / (fb.w * 0.3), 0.0, 1.0) * fb_look.w * 2.0;
@@ -277,7 +296,7 @@ float head_density(vec3 p, out float cauli, out vec2 rc_out) {
 	float R = head.w;
 	float H = head_shape.x;
 	float base = sdf_head_base(q);
-	float amp = head_detail.x * min(R, H * 1.8);
+	float amp = head_detail.x * min(R, H * mix(1.8, 1.2, smoothstep(0.5, 1.0, head_shape.y)));
 	if (base > amp * 1.2) {
 		return 0.0;
 	}
@@ -315,13 +334,14 @@ float head_density(vec3 p, out float cauli, out vec2 rc_out) {
 	// gentle erosion of the thin outer fringe only (no speckles)
 	dens *= 1.0 - head_detail.z * 0.3 * (1.0 - dens) * smoothstep(0.35, 0.65, 1.0 - b2);
 	if (head_heat.y > 0.0) {
-		float dc = length(vec2(rc.x, rc.y + H * 0.15)) / max(H * head_heat.z, 1.0);
+		float dc = length(vec2(rc.x, rc.y + H * 0.25)) / max(H * head_heat.z, 1.0);
 		float hot = exp(-dc * dc * 2.0) * clamp(head_heat.y / 300.0, 0.0, 1.0);
-		dens *= 1.0 - 0.85 * hot;
+		dens *= 1.0 - 0.95 * hot;
 	}
 	if (fb.w > 0.0 && fb_look.w > 0.3) {
 		// the young cloud grows out of the ball: do not bury the incandescent surface
 		vec3 qf = (p - fb.xyz) / fb.w;
+		qf.y /= fb_shape.x;
 		dens *= mix(1.0, smoothstep(0.8, 1.15, length(qf)), clamp((fb_look.w - 0.3) / 0.5, 0.0, 1.0) * 0.85);
 	}
 	dens *= smoothstep(0.015, 0.08, dens);
@@ -340,8 +360,18 @@ float stem_density(vec3 p, out float n_out) {
 		return 0.0;
 	}
 	float env = smoothstep(r * 1.0, r * 0.7, base);
-	vec3 np = vec3(p.x, (p.y - age * stem_shape.w) / max(stem_col.w, 1.0), p.z) / (max(stem.z, 1.0) * 1.3) + vec3(seed * 0.21);
+	vec3 pt = p;
+	if (stem_twist != 0.0) {
+		float ang = stem_twist * p.y / max(stem.z, 1.0);
+		float ca = cos(ang);
+		float sa = sin(ang);
+		pt.xz = vec2(ca * p.x - sa * p.z, sa * p.x + ca * p.z);
+	}
+	vec3 np = vec3(pt.x, (pt.y - age * stem_shape.w) / max(stem_col.w, 1.0), pt.z) / (max(stem.z, 1.0) * 1.3) + vec3(seed * 0.21);
 	float n = nbl(np * 0.6) * 0.65 + nbl(np * 1.7 + 3.0) * 0.35;
+	if (col_detail > 0.0) {
+		n = mix(n, n * 0.8 + nbl(np * 4.5 + 7.0) * 0.2, col_detail);
+	}
 	float lf = nlf(np * 0.25 + 4.0);
 	n_out = n;
 	float dn = base - ((n - 0.45) * 0.9 + (lf - 0.5) * 0.7) * amp;
@@ -357,11 +387,13 @@ float stem_density(vec3 p, out float n_out) {
 		// jet strength (column kinds pass it in stem_wake.z): spiky HE crowns 1, dense dust plumes ~0.15
 		float jamt = stem_wake.x >= 1.0e8 ? stem_wake.z : 1.0;
 		jet = mix(0.55, smoothstep(0.5, 0.78, jet), jamt);
-		jet = mix(0.55, jet, smoothstep(0.05 * r, 0.45 * r, rx));
+		// on the axis blend to the azimuthal MEDIAN jet (blending to a high value made the axis core
+		// the tallest, densest part of the crown: a lit pillar / spike)
+		jet = mix(mix(0.55, 0.40, jamt), jet, smoothstep(0.05 * r, 0.45 * r, rx));
 		dn -= (jet - 0.5) * r * 0.55 * h01;
 		jetk = mix(0.1, 1.4, jet) * (1.0 - 0.6 * smoothstep(0.75, 1.0, h01) * (1.0 - n));
 	}
-	float dens = smoothstep(r * 0.1, -r * 0.35, dn) * jetk;
+	float dens = smoothstep(r * mix(0.1, 0.04, col_detail), -r * mix(0.35, 0.15, col_detail), dn) * jetk;
 	if (stem_cone > 0.0) {
 		// every jet has its own ragged top (no flat-topped frustum)
 		float rx2 = length(p.xz);
@@ -369,7 +401,7 @@ float stem_density(vec3 p, out float n_out) {
 		float jt = nbl(vec3(cs2.x * 0.55 + seed, cs2.y * 0.55, 0.3));
 		float jamt2 = stem_wake.x >= 1.0e8 ? stem_wake.z : 1.0;
 		float top_j = stem.x + (stem.y - stem.x) * mix(0.92, 0.5 + 0.65 * smoothstep(0.35, 0.8, jt), jamt2) * (0.85 + 0.3 * lf);
-		top_j = mix(stem.x + (stem.y - stem.x) * 0.8, top_j, smoothstep(0.05 * r, 0.45 * r, rx2));
+		top_j = mix(stem.x + (stem.y - stem.x) * mix(0.92, 0.62, jamt2) * (0.85 + 0.3 * lf), top_j, smoothstep(0.05 * r, 0.45 * r, rx2));
 		dens *= smoothstep(top_j + r * 0.2, top_j - r * 0.9, p.y);
 	} else {
 		// fade the top over ~3 radii with a noisy height (no flat-cut pipe tops)
@@ -488,6 +520,20 @@ void fragment() {
 	vec3 sun_c = g_sun_light.rgb;
 	vec3 amb = g_ambient.rgb * g_ambient.w;
 	vec3 fire_c = g_fireball_color.rgb * g_fireball_color.w;
+	float b_fb = 2.0;
+	if (fb.w > 0.0) {
+		vec3 oc = ro - fb.xyz;
+		oc.y /= fb_shape.x;
+		vec3 rds = normalize(vec3(rd.x, rd.y / fb_shape.x, rd.z));
+		b_fb = length(cross(rds, oc)) / max(fb.w, 1.0);
+	}
+	// thinnest active condensation sheet: steps are kept below half of it near the sheets
+	float th_min = 1e9;
+	for (int i = 0; i < 4; i++) {
+		if (rings[i].w > 0.0) {
+			th_min = min(th_min, max(rings[i].z, rings[i].y * 0.012));
+		}
+	}
 	vec3 head_col = mix(head_col_a.rgb, head_col_b.rgb, head_col_a.w);
 
 	vec3 acc = vec3(0.0);
@@ -503,7 +549,12 @@ void fragment() {
 		// wind: the stem and skirt shear with height (base stays put, upper part bends downwind);
 		// the head, fireball, rings and caps drift RIGIDLY with the wind at the head's height
 		vec3 p = p0;
-		p.xz -= wind.xz * age * clamp(p0.y / max(wind_h, 1.0), 0.0, 1.5);
+		float hy = clamp(max(head.y, fb.y) / max(wind_h, 1.0), 0.0, 1.5);
+		float wy = clamp(p0.y / max(wind_h, 1.0), 0.0, 1.5);
+		if (head.w > 0.0 && stem.z > 0.0) {
+			wy = mix(wy, hy, smoothstep(0.8 * stem.y, stem.y, p0.y));
+		}
+		p.xz -= wind.xz * age * wy;
 		vec3 ph = p0;
 		ph.xz -= wind.xz * age * clamp(max(head.y, fb.y) / max(wind_h, 1.0), 0.0, 1.5);
 		float sd = min(min(sdf_fireball(ph), sdf_head(ph)), min(min(sdf_stem(p), sdf_skirt(p)),
@@ -544,13 +595,24 @@ void fragment() {
 				* (1.0 - smoothstep(0.75 + 0.2 * n, 1.05, rim)) * op * (0.35 + 0.65 * smoothstep(0.3, 0.7, n));
 		}
 		float di = 0.0;
+		float di_w = 0.0;   // extinction-weighted (each shell has its own optical scale)
 		for (int k = 0; k < 2; k++) {
 			vec4 sh = k == 0 ? ice : ice2;
 			if (sh.w > 0.0) {
-				float dsh = sdf_shell(ph, sh);
+				vec3 psh = k == 1 ? p : ph;
+				float dsh = sdf_shell(psh, sh);
+				if (k == 1) {
+					// second tier / bell skirt: a hollow open bell whose density fades toward the rim
+					dsh = abs(dsh + sh.z * 0.25) - sh.z * 0.25;
+				}
 				if (dsh < sh.z * 0.4) {
-					float n = nlf(ph / (sh.y * 0.5) + seed + float(k) * 3.0);
-					di += smoothstep(sh.z * 0.1, -sh.z * 0.3, dsh - (n - 0.5) * sh.z * 0.5) * sh.w * 0.3;
+					float n = nlf(ph / (sh.y * 0.5) + seed + float(k) * 3.0) * 0.6 + nbl(ph / max(sh.z * 0.8, 1.0) + float(k)) * 0.4;
+					float dk_ = smoothstep(sh.z * 0.1, -sh.z * 0.3, dsh - (n - 0.5) * sh.z * 0.5) * sh.w * 0.3;
+					if (k == 1) {
+						dk_ *= 1.0 - smoothstep(0.6, 1.0, length(psh.xz) / max(sh.y, 1.0));
+					}
+					di += dk_;
+					di_w += dk_ / max(sh.z, 5.0);
 				}
 			}
 		}
@@ -559,9 +621,10 @@ void fragment() {
 		float dd = 0.0;
 		float dcrack = 0.0;
 		if (sdome < dome_u.x * 0.05) {
-			float cn = nbl(p0 / max(dome_u.x * 0.35, 1.0) + seed);
-			dcrack = dome_u.z * smoothstep(0.62, 0.8, cn);
+			float cn = nlf(p0 / max(dome_u.x * 0.6, 1.0) + seed);
+			dcrack = dome_u.z * (1.0 - smoothstep(0.0, 0.035, abs(cn - 0.5)));
 			dd = smoothstep(dome_u.x * 0.01, -dome_u.x * 0.02, sdome - (nlf(p0 / max(dome_u.x * 0.5, 1.0)) - 0.5) * dome_u.y * 0.2);
+			dd *= smoothstep(1.5 * dome_u.x, 1.1 * dome_u.x, length(p0.xz));
 		}
 		float total = dh + ds + dk + fbo + dr + di + dd;
 		if (total > 0.002) {
@@ -576,16 +639,16 @@ void fragment() {
 			float kr = 1.0 / 600.0;
 			float ki = 1.0 / max(ice.z, 300.0);
 			float kd = 4.0 / max(dome_u.y * 0.1, 0.5);
-			float wsum = dh * kh + ds * ks + dk * kk + fbo * kf + dr * kr + di * ki + dd * kd;
+			float wsum = dh * kh + ds * ks + dk * kk + fbo * kf + dr * kr + di_w + dd * kd;
 			float trans = exp(-wsum * dt);
 			vec3 c_head = head_col * (0.78 + 0.32 * cauli);
 			float lowk = clamp(-rc.y / max(head_shape.x, 1.0), 0.0, 1.0) * head_col_b.w;
 			c_head *= 1.0 - 0.45 * lowk;
 			vec3 c_stem = stem_col.rgb * (0.8 + 0.35 * sn);
 			vec3 c_skirt = skirt_col.rgb * (0.8 + 0.35 * kn) * 0.65;
-			vec3 c_fb = mix(vec3(0.30, 0.13, 0.06), vec3(0.10, 0.07, 0.05), fb_shape.w);
-			vec3 c_dome = ground_col * vec3(0.62, 0.58, 0.52) * (1.0 - 0.6 * dcrack);
-			vec3 albedo = (c_head * dh * kh + c_stem * ds * ks + c_skirt * dk * kk + c_fb * fbo * kf + vec3(0.97) * (dr * kr + di * ki) + c_dome * dd * kd) / max(wsum, 1e-9);
+			vec3 c_fb = mix(vec3(0.30, 0.13, 0.06), vec3(0.10, 0.07, 0.05), clamp(fb_shape.w, 0.0, 1.0));
+			vec3 c_dome = (dome_col.x >= 0.0 ? dome_col : ground_col * vec3(0.62, 0.58, 0.52)) * (1.0 - 0.6 * dcrack);
+			vec3 albedo = (c_head * dh * kh + c_stem * ds * ks + c_skirt * dk * kk + c_fb * fbo * kf + vec3(0.97) * (dr * kr + di_w) + c_dome * dd * kd) / max(wsum, 1e-9);
 
 			// --- lighting
 			// local self-shadow: one noisy tap toward the sun reveals the billows
@@ -639,37 +702,43 @@ void fragment() {
 			if (fb.w > 0.0 && fb_look.w > 0.0) {
 				float dfb = max(length(ph - fb.xyz) - fb.w * 0.7, 0.0);
 				float fl = bb_lum(fb_look.x) * fb_look.y * fb_look.w;
-				float ring_k = (dr * kr + di * ki) / max(wsum, 1e-9);
+				float ring_k = (dr * kr + di_w) / max(wsum, 1e-9);
 				light += blackbody(fb_look.x) * fl * mix(0.25, 1.0, ring_k) * (fb.w * fb.w) / (dfb * dfb + fb.w * fb.w) * (1.0 - fbo);
 			}
 			// --- emission (planck radiance of opaque hot gas)
 			vec3 emit = vec3(0.0);
 			if (fbo > 0.0) {
 				// convective cells: hotter rising plumes, cooler sinking lanes; cooler limb once it radiates
-				float tloc = fb_look.x * mix(0.86, 1.08, smoothstep(0.15, 0.85, fpatch)) * mix(1.08, 0.86, smoothstep(0.4, 1.0, lq));
+				float cell_lo = fb_look.x < 3500.0 ? 0.92 : 0.86;
+				float cell_hi = fb_look.x < 3500.0 ? 1.05 : 1.08;
+				float tloc = fb_look.x * mix(cell_lo, cell_hi, smoothstep(0.15, 0.85, fpatch)) * mix(1.08, 0.86, smoothstep(0.4, 1.0, lq));
 				if (fb_grad > 0.0) {
-					tloc = fb_look.x * mix(0.93, 1.04, smoothstep(0.15, 0.85, fpatch)) * mix(1.30, 0.75, smoothstep(0.1, 1.0, lq));
+					tloc = fb_look.x * mix(0.93, 1.04, smoothstep(0.15, 0.85, fpatch)) * mix(1.30, 0.75, smoothstep(0.1, 1.0, b_fb));
 				}
 				vec3 bc = blackbody(tloc);
 				// film-like saturation of the incandescent colours (AgX would bleach them to white)
-				bc = mix(bc, pow(bc, vec3(1.7)), 0.3);
+				bc = mix(bc, pow(bc, vec3(1.7)), 0.2);
 				if (fb_tint.w > 0.0) {
 					// additive ionised-air glow (Trinity's violet/green early colours)
 					bc += fb_tint.rgb * fb_tint.w * 0.6;
 				}
 				float lum = bb_lum(tloc) * fb_look.y;
+				lum /= 1.0 + lum * g_exposure / 6.0;
 				if (fb_grad > 0.0) {
 					lum *= smoothstep(1500.0, 1900.0, tloc);
 				}
 				lum *= 1.0 + fb_shape.y * (0.7 * smoothstep(0.8, 1.0, lq) - 0.5 * (fmott - 0.5));
-				lum *= 1.0 - fb_shape.w * smoothstep(0.35, 0.7, fpatch) * 0.85;
+				lum *= 1.0 - clamp(fb_shape.w, 0.0, 1.0) * smoothstep(0.35, 0.7, fpatch) * 0.85;
 				emit += bc * lum * (fbo * kf) / max(wsum, 1e-9);
 			}
 			if (dh > 0.0 && head_heat.y > 0.0) {
-				float dc = length(rc) / max(head_shape.x * head_heat.z, 1.0);
+				float dc = length(vec2(rc.x, rc.y + head_shape.x * 0.25)) / max(head_shape.x * head_heat.z, 1.0);
 				float glow = exp(-dc * dc * 1.6) * (0.55 + 0.45 * smoothstep(0.2, 0.8, cauli));
 				float tloc = mix(850.0, head_heat.x, glow);
 				emit += blackbody(tloc) * bb_lum(tloc) * head_heat.y * glow * (dh * kh) / max(wsum, 1e-9);
+			}
+			if (dd > 0.0 && dcrack > 0.0 && fb_look.w > 0.0) {
+				emit += blackbody(1500.0) * bb_lum(1500.0) * fb_look.y * dcrack * (dd * kd) / max(wsum, 1e-9);
 			}
 			vec3 src = albedo * light + emit;
 			if (debug_mode == 1) { src = vec3(t_sun, sunlit * 0.5, ao); }
@@ -688,7 +757,7 @@ void fragment() {
 			acc += T * src * (1.0 - trans);
 			T *= trans;
 		}
-		t += dt;
+		t += (th_min < 1e8 && sdf_rings(ph) < 2.0 * th_min) ? min(dt, th_min * 0.5) : dt;
 	}
 	float alpha = 1.0 - T;
 	if (alpha < 0.002) {

@@ -141,7 +141,7 @@ void fragment() {
 	if (fire.w > 0.0 && dot(fire.rgb, vec3(1.0)) > 0.0) {
 		float rf = fire.w;
 		float dd = max(length(mid - fire_pos) - rf * 0.7, 0.0);
-		col += fire.rgb * 0.25 * (rf * rf) / (dd * dd + rf * rf);
+		col += fire.rgb * 0.25 * (rf * rf) / (dd * dd + rf * rf) * smoothstep(0.0, 0.3, tau);
 		vec3 to_fb = fire_pos - cam;
 		float dfb = length(to_fb);
 		float ang = length(cross(rd, to_fb / dfb));

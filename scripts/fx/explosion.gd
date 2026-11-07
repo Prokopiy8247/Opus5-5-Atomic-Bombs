@@ -166,6 +166,13 @@ func _apply_art_static() -> void:
 	vol_mat.set_shader_parameter("debug_mode", Args.get_int("vdebug", 0))
 	vol_mat.set_shader_parameter("fb_grad", 0.0 if prof.nuclear else 1.0)
 	vol_mat.set_shader_parameter("head_lobes", float(prof.a("head_lobes", 0.0)))
+	vol_mat.set_shader_parameter("col_detail", float(prof.a("col_detail", 0.0)))
+	vol_mat.set_shader_parameter("skirt_front", 1.0 if prof.is_column_kind() else 0.0)
+	var dcol: Array = prof.a("dome_color", [-1.0, -1.0, -1.0])
+	vol_mat.set_shader_parameter("dome_col", Vector3(dcol[0], dcol[1], dcol[2]))
+	vol_mat.set_shader_parameter("stem_twist", float(prof.a("stem_twist", 0.0)))
+	# attached nuclear stems meander a little by default (straight pipes read as CG)
+	vol_mat.set_shader_parameter("stem_wobble", float(prof.a("stem_wobble", 0.35 if (prof.nuclear and not prof.is_column_kind()) else 0.0)))
 	var empty: Array[Vector4] = [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
 	vol_mat.set_shader_parameter("rings", empty)
 
@@ -402,8 +409,11 @@ func metered_luminance(ti: float, amb: float) -> float:
 		# HE flames are not bright enough to make a camera stop down hard (cycle 3: ~1 stop was still
 		# too much at noon): a fraction of a stop at most
 		env_ctl.max_comp = 0.25
+		var wo_he := float(prof.a("whiteout_s", 0.0))
+		if wo_he > 0.0 and ti < wo_he:
+			return maxf(0.08 * lum, 30.0 * (1.0 - ti / wo_he))
 		return 0.08 * lum
-	if cam and float(fs["radius"]) > 0.0 and float(fs["opacity"]) > 0.3 and float(fs["temp"]) > 3000.0:
+	if cam and float(fs["radius"]) > 0.0 and float(fs["opacity"]) > 0.3 and float(fs["temp"]) > 1500.0:
 		var fpos := gz + Vector3(0, float(fs["center_y"]), 0)
 		var to := fpos - cam.global_position
 		var d := to.length()
@@ -415,13 +425,21 @@ func metered_luminance(ti: float, amb: float) -> float:
 			# the auto-framed binocular view is not the eye filled by the ball: coverage capped
 			var cov := clampf(pow(ang_r / half_fov, 2.0) * 6.0, 0.0, 0.35)
 			# a camera / binocular stopped down on a fireball that fills the view (rapatronic look)
-			env_ctl.max_comp = lerpf(4.5, 6.0, cov) if ti < 3.0 * prof.t2 else lerpf(2.0, 3.0, cov)
+			env_ctl.max_comp = lerpf(4.5, 6.0, cov) if ti < 3.0 * prof.t2 else lerpf(1.6, 2.6, cov)
 			var tt: float = fs["temp"]
 			var x := tt / 8000.0
 			# metering keeps the ball ~4 stops above middle grey: blinding white core, structure only
 			# at the limb (cycle-2 review: the ball must not turn into grey-beige cotton)
-			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / (16.0 * amb)
+			# ~4 stops above middle grey while blinding (< 3 t2), then the camera keeps the cooling
+			# ball's colour (yellow -> orange -> red) instead of letting it clip to white
+			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / ((16.0 if ti < 3.0 * prof.t2 else 6.0) * amb)
 			lum = maxf(lum, (1.0 - cov) * (1.0 + lum) + cov * l_fb - 1.0)
+			if prof.w_kt < 1.0 and ti > 3.0 * prof.t2:
+				# a sub-kiloton ball at 10+ km does not keep a camera stopped down
+				env_ctl.max_comp = 0.5
+	var wo := float(prof.a("whiteout_s", 0.0))
+	if wo > 0.0 and ti < wo:
+		lum = maxf(lum, 30.0 * (1.0 - ti / wo))
 	return lum
 
 
@@ -438,12 +456,18 @@ func _update_globals(t: float) -> void:
 	RenderingServer.global_shader_parameter_set("g_blast_age", t)
 	var fs := prof.fireball_state(maxf(t, 0.0))
 	var fpos := gz + Vector3(0, float(fs["center_y"]), 0)
-	RenderingServer.global_shader_parameter_set("g_fireball", Vector4(fpos.x, fpos.y, fpos.z, float(fs["radius"])))
+	RenderingServer.global_shader_parameter_set("g_fireball", Vector4(fpos.x, fpos.y, fpos.z, float(fs["radius"]) if float(fs["opacity"]) > 0.02 or prof.conventional else 0.0))
 	var pw := prof.light_power(t)
 	if prof.is_column_kind():
 		pw *= 0.05
+	if prof.nuclear and not prof.is_column_kind():
+		var hs0 := prof.head_state(t)
+		pw *= maxf(float(fs["opacity"]), 0.3 if float(hs0["heat_glow"]) > 0.0 else 0.0)
 	var col := _bb_color(maxf(float(fs["temp"]), 1500.0))
 	var inten := pw * pow(maxf(prof.w_kt, 0.0001), 0.33) * 40.0 * BlastPhysics.transmittance(obs_dist, Game.humidity)
+	if prof.nuclear and not prof.is_column_kind():
+		var tphys := BlastPhysics.fireball_temperature(prof.w_kt, maxf(t, 1e-4), prof.surface)
+		inten *= float(prof.a("fireball_brightness", 1.0)) * clampf(pow(float(fs["temp"]) / maxf(tphys, 1.0), 4.0), 0.0, 1.0)
 	if prof.conventional:
 		inten *= 0.12
 	var crim := float(prof.a("crimson", 0.0))
@@ -485,7 +509,7 @@ func _update_globals(t: float) -> void:
 	var shock_r := prof.shock_ground_radius(t, arrival_tbl)
 	RenderingServer.global_shader_parameter_set("g_shock", Vector4(shock_r, 1.0, maxf(shock_r * 0.02, 5.0), 1.0 if (prof.surface or prof.dusty) else 0.4))
 	var dmv := prof.dome_state(t)
-	RenderingServer.global_shader_parameter_set("g_dome", Vector4(dmv.x, dmv.y * 0.15, 0.0, 0.0))
+	RenderingServer.global_shader_parameter_set("g_dome", Vector4(dmv.x, 0.0, 0.0, 0.0))
 
 
 func _fluence_radius(q: float) -> float:

@@ -141,7 +141,8 @@ class ShockLayer extends Node3D:
 		var hum := clampf((Game.humidity - 0.45) / 0.35, 0.0, 1.0)
 		# a free-air condensation veil exists only for seconds near the strong front (cycle 3: gated by
 		# p > 1-2 psi it stayed on for minutes as a pen-line 'glass dome' across the sky)
-		mat.set_shader_parameter("condensation", cond_k * hum * smoothstep(4.0, 10.0, p) * (1.0 - smoothstep(6.0, 12.0, t)) * out)
+		var t_end := 40.0 if prof.w_kt > 10000.0 else 12.0
+		mat.set_shader_parameter("condensation", cond_k * hum * smoothstep(4.0 if prof.w_kt <= 10000.0 else 1.5, 10.0, p) * (1.0 - smoothstep(t_end * 0.5, t_end, t)) * out)
 		mat.set_shader_parameter("cond_w", slant * 0.06)
 
 

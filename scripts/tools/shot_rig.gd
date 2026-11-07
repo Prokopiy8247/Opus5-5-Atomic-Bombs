@@ -144,10 +144,12 @@ func _setup_view_dynamic(view: String, ex: Explosion) -> void:
 	var cam: PlayerCamera = main.cam
 	var prof := ex.prof
 	var near := view == "near"
-	var fov_min := Args.get_float("fov", 55.0) if near else 3.0
+	var fov_min := 3.0
 	var fov_max := 100.0 if near else 58.0
 	var bounds := _phase_bounds(prof)
 	var ph := _phase_of(ex.age, bounds)
+	if near:
+		fov_min = 12.0 if ph <= 1 else Args.get_float("fov", 55.0)
 	var a_top := 0.0
 	var a_w := 0.0
 	var ages: Array = []

@@ -77,12 +77,12 @@ vec3 atm_fireball_glow(vec3 cam, vec3 v, float near_w) {
 	// aureole: forward (Mie) scattering of the ball's light by the haze along the line of sight
 	float aur = 1.0 / ((1.0 + x) * (1.0 + x));
 	// broad glow of the whole sky around the ball
-	float wide = exp(-ang / 0.45);
+	float wide = exp(-ang / 0.25);
 	// limb: ~4.5 % of the ball at 35 % humidity, ~7 % in saturated air; ~1 % one radius out,
 	// ~0.2 % three radii out (Tsar 1961 frame)
 	float rel = near_w * 0.03 * (0.7 + 0.9 * hum) * near_f
 			+ 0.012 * (0.6 + 1.2 * hum) * aur
-			+ 0.001 * (0.5 + 1.5 * hum) * wide;
+			+ 0.0003 * (0.5 + 1.5 * hum) * wide;
 	return atm_fireball_tint(cam) * (g_fireball_color.w * ATM_FB_RADIANCE * rel);
 }
 
