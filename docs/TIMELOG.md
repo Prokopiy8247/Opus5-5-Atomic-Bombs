@@ -17,3 +17,6 @@ START 2026-11-07T05:33:02.3679849+01:00
 - 2026-11-07T22:00:47+01:00 Per-event blast synthesis v1 committed (ecf9152): BlastSynth/BlastDSP, rocket ignition/roar, preview + spectrogram tools
 - 2026-11-07T22:43:50+01:00 Audio calibrated against the research and committed (cd3ac7d, 7950b12): shadow zone/inversion presets, SPL map, absorbed smeared echoes, rolling coda, rocket crackle statistics, falling-bomb rush; test_audio extended (synth path) fails=0; selftest 126/126 READY
 - 2026-11-07T22:52:00+01:00 STAGE 10 final QA matrix (2560x1440) START; independent audio code review workflow running
+- 2026-11-07T23:28:52+01:00 Audio code review (13 agents): 9 confirmed bugs fixed (echo gain window/caps, ridge geometry, causal front high-pass, BlastSyn bus, synthesis race, movie determinism, far-field bracket, FAE delay); sweep 140 events clean; test_audio 133/133, selftest 126/126; 60 screens in docs/screens
+- 2026-11-08T00:02:08+01:00 Clean launch (.godot deleted -> run.bat import -> menu-drive READY, synth audio at blast arrival); run_cinematic.bat 20 s tested; movie-exit playback leak fixed; final QA matrix 121/121, 0 errors
+END 2026-11-08T00:05:22+01:00 (active 8h 05m 00s, wall 18h 32m 20s, pause 10h 27m 20s; statistics in docs/PROJECT_STATS.md)

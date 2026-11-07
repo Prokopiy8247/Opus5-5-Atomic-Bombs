@@ -19,7 +19,7 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 | 9 | Polish, optimization, auto-quality | done | auto-quality fixed (D014); worst case ~107 fps at 1440p |
 | 10 | QA matrix, independent review, fixes, final frames | done | 3 review cycles (2.60 -> 3.10 -> 3.65 review, 5.65 after tuning, independent verification 4.85); QA matrix 121/121; FPS report; 60 screens in docs/screens |
 | 11 | Docs (README, CREDITS, QA_REPORT), cleanup | done | README, CREDITS, RESEARCH_NOTES s.7 (sound), DECISIONS D001-D037, QA_REPORT all sections, docs/.gdignore |
-| 12 | Final statistics (section 14) | not started | |
+| 12 | Final statistics (section 14) | done | docs/PROJECT_STATS.md, tools/usage_report.py |
 
 ## Bombs (20)
 
@@ -55,9 +55,9 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 | 3 | QA matrix passes, no crashes/errors; QA_REPORT filled | done: 121/121 launches, 0 errors, 0 warnings, nodes 567 -> 567 (docs/qa_results.json, QA_REPORT section 2) |
 | 4 | FPS measured, section 9 targets met or deviations described | done: bunker 112-352 fps, Tsar night worst case 136-172 fps (all presets), binocular full-frame 24-50 Mt cloud 30-35 fps (docs/fps_report.json, QA_REPORT section 3) |
 | 5 | Clean launch via run.bat (menu, slider, launch, explosion); run_cinematic.bat tested | done: .godot deleted -> run.bat import + menu-drive READY (synth audio at blast arrival); run_cinematic.bat 20 s 720p: 1200 frames + WAV (QA_REPORT section 5) |
-| 6 | README, CREDITS, RESEARCH_NOTES, DECISIONS, PROGRESS, TIMELOG, PROJECT_STATS ready | not started |
-| 7 | Final local git commit | not started |
-| 8 | Time/token/cost calculation done and shown | not started |
+| 6 | README, CREDITS, RESEARCH_NOTES, DECISIONS, PROGRESS, TIMELOG, PROJECT_STATS ready | done |
+| 7 | Final local git commit | done (no push) |
+| 8 | Time/token/cost calculation done and shown | done: docs/PROJECT_STATS.md (active 8h 05m, 6.84M output tokens, $529.89 API-equivalent), repeated in the final message |
 
 ## PAUSED by the user at 2026-11-07T09:41:24.2858342+01:00
 
@@ -90,3 +90,7 @@ State when paused (resume from here):
   sub-lobes. Head held inside the fireball while the ball is opaque. Binocular review framing now
   accounts for ground zero lying below the eye's horizontal and widens to 80 deg for tall clouds.
 - Per-bomb cycle-3 overrides go to tools/profiles_c3/group_[A-E].py (merged last by bomb_profiles.py).
+
+## COMPLETED 2026-11-08T00:05:22+01:00
+
+All section-15 criteria are met (checklist above). Final state: selftest 126/126, test_audio 133/133, QA matrix 121/121 with 0 errors, FPS targets met, clean launch and cinematic render verified, 60 screens in docs/screens.
