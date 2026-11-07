@@ -9,6 +9,8 @@ extends Node
 var main: Node
 
 
+var _shot_ages: Array = []
+
 func run() -> void:
 	var out := Args.get_str("out", OS.get_user_data_dir().path_join("shots"))
 	DirAccess.make_dir_recursive_absolute(out)
@@ -28,6 +30,7 @@ func run() -> void:
 	var view := Args.get_str("view", "bunker")
 	var prefix := Args.get_str("prefix", "b%02d_%s_%skm_%s_%s" % [bomb_n, bd.get("id", "x"), _fmt(dist), tod_s, view])
 	var shots := Args.get_float_list("shots")
+	_shot_ages = Array(shots)
 	if shots.is_empty():
 		shots = PackedFloat64Array([0.002, 0.02, 0.1, 0.5, 1, 2, 5, 10, 20, 40, 90, 180, 360])
 	print("RIG bomb=%d dist=%.2f tod=%s view=%s shots=%s" % [bomb_n, dist, tod_s, view, str(shots)])
@@ -125,24 +128,50 @@ func _setup_view(view: String, ex: Explosion) -> void:
 
 
 func _setup_view_dynamic(view: String, ex: Explosion) -> void:
-	if view == "zoom":
-		# frame the current cloud: fov so that cloud height fills ~70% of the view
-		var cam: PlayerCamera = main.cam
-		var hs := ex.prof.head_state(ex.age)
-		var fs := ex.prof.fireball_state(ex.age)
-		var top := maxf(float(hs["center_y"]) + float(hs["half"]), float(fs["center_y"]) + float(fs["radius"]))
-		var w := maxf(float(hs["radius"]), float(fs["radius"])) * 2.0
-		var d := ex.obs_ground_dist
-		var size := maxf(top, w * 0.6) * 1.35
-		var vfov := 2.0 * atan(size * 0.5 / maxf(d, 1.0))
-		var ang := rad_to_deg(2.0 * atan(tan(vfov * 0.5) * 16.0 / 9.0))
-		cam.fov = clampf(ang, 3.0, 58.0)
-		cam.target_fov = cam.fov
-		var aim := ex.gz + Vector3(0, top * 0.45, 0)
-		if ang > 58.0:
-			aim = ex.gz + Vector3(0, top * 0.55, 0)
-		var dir := aim.normalized()
-		cam.set_look(atan2(-dir.x, -dir.z), asin(clampf(dir.y, -1.0, 1.0)))
+	if view != "zoom":
+		return
+	# Binocular framing with ONE fixed field of view per phase (fireball / growing cloud / mature
+	# cloud), fitted to the largest extent reached in that phase, so the scale progression stays
+	# readable within a phase (review c2). Angular sizes use the cloud's NEAR edge (d - R).
+	var cam: PlayerCamera = main.cam
+	var prof := ex.prof
+	var t_a := maxf(3.0 * prof.t_fb_max, 0.1)
+	var t_b := maxf(0.25 * prof.t_stab, t_a * 8.0)
+	var ph := _phase(ex.age, t_a, t_b)
+	var a_top := 0.0
+	var a_w := 0.0
+	var ages: Array = []
+	for t in _shot_ages:
+		if _phase(t, t_a, t_b) == ph:
+			ages.append(t)
+	if ages.is_empty():
+		ages.append(ex.age)
+	var d := ex.obs_ground_dist
+	for t in ages:
+		var hs := prof.head_state(t)
+		var fs := prof.fireball_state(t)
+		var ss := prof.stem_state(t)
+		var hr := float(hs["radius"]) if float(hs["density"]) > 0.01 else 0.0
+		var fr := float(fs["radius"]) if float(fs["opacity"]) > 0.01 else 0.0
+		var top := maxf(float(hs["center_y"]) + float(hs["half"]) * 1.25 if hr > 0.0 else 0.0, float(fs["center_y"]) + fr * 1.15)
+		top = maxf(top, float(ss["top"]))
+		top = maxf(top, 30.0)
+		var w := maxf(maxf(hr * 1.2, fr * 1.15) * 2.0, float(ss["radius"]) * 2.0)
+		var dn := maxf(d - w * 0.5, d * 0.35)
+		a_top = maxf(a_top, atan(top / dn))
+		a_w = maxf(a_w, 2.0 * atan(w * 0.5 / dn))
+	var vfov := maxf(a_top * 1.3, a_w / (16.0 / 9.0) * 1.15)
+	var hfov := rad_to_deg(2.0 * atan(tan(vfov * 0.5) * 16.0 / 9.0))
+	cam.fov = clampf(hfov, 3.0, 58.0)
+	cam.target_fov = cam.fov
+	var vf := deg_to_rad(cam.fov) / (16.0 / 9.0)
+	var pitch := clampf(a_top * 0.5, vf * 0.15, deg_to_rad(40.0))
+	var dir := (ex.gz - cam.global_position)
+	cam.set_look(atan2(-dir.x, -dir.z), pitch)
+
+
+func _phase(t: float, t_a: float, t_b: float) -> int:
+	return 0 if t < t_a else (1 if t < t_b else 2)
 
 
 func _contact_sheet(files: Array[String], shots: PackedFloat64Array, path: String) -> void:

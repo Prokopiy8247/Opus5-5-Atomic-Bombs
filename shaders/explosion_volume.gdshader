@@ -54,6 +54,7 @@ uniform vec4 ice = vec4(0.0);        // centre y, radius, half height, opacity
 uniform vec4 ice2 = vec4(0.0);
 
 uniform vec3 ground_col = vec3(0.55, 0.47, 0.38);
+uniform vec4 dome_u = vec4(0.0);        // soil heave (Sedan / camouflets): radius, height, crack amount, unused
 uniform vec3 wind = vec3(0.0);          // horizontal drift velocity (m/s) at wind_h; shear below it
 uniform float wind_h = 1000.0;
 uniform float churn = 0.0;              // noise advection (cells / s): boiling, evolving surfaces
@@ -201,6 +202,18 @@ float sdf_shell(vec3 p, vec4 s) {
 	return max(e, -q.y - s.z * 0.35);
 }
 
+// spherical-cap soil dome rising out of the ground (rendered here: the far terrain LOD cannot)
+float sdf_dome(vec3 p) {
+	if (dome_u.y <= 0.05) {
+		return 1e9;
+	}
+	float r = dome_u.x;
+	float h = dome_u.y;
+	float rs = (r * r + h * h) / (2.0 * h);
+	float d = length(p - vec3(0.0, h - rs, 0.0)) - rs;
+	return max(d, -p.y);
+}
+
 float scene_sdf(vec3 p) {
 	float d = sdf_fireball(p);
 	d = min(d, sdf_head(p));
@@ -271,10 +284,10 @@ float head_density(vec3 p, out float cauli, out vec2 rc_out) {
 	float shape_n = pow(b1, sharp) * 0.58 + pow(b2, sharp) * 0.36 + b3 * 0.06;
 	float disp = (shape_n - 0.42) * 1.35 + warp * 0.6;
 	float dn = base - disp * amp;
-	float edge = H * 0.045;
+	float edge = H * 0.07;
 	float dens = smoothstep(edge, -edge * 3.0, dn);
 	// gentle erosion of the thin outer fringe only (no speckles)
-	dens *= 1.0 - head_detail.z * 0.5 * (1.0 - dens) * smoothstep(0.35, 0.65, 1.0 - b2);
+	dens *= 1.0 - head_detail.z * 0.3 * (1.0 - dens) * smoothstep(0.35, 0.65, 1.0 - b2);
 	if (head_heat.y > 0.0) {
 		float dc = length(rc) / max(H * head_heat.z, 1.0);
 		float hot = exp(-dc * dc * 2.0) * clamp(head_heat.y / 300.0, 0.0, 1.0);
@@ -314,17 +327,20 @@ float stem_density(vec3 p, out float n_out) {
 		vec2 cs = rx > 1e-3 ? p.xz / rx : vec2(1.0, 0.0);
 		float jet = nbl(vec3(cs.x * 0.55 + seed, cs.y * 0.55, h01 * 0.25 + rx / max(r, 1.0) * 0.08)) * 0.7
 			+ nbl(vec3(cs.x * 1.3 + 4.1, cs.y * 1.3, h01 * 0.6 + 1.7 + seed)) * 0.3;
-		jet = smoothstep(0.5, 0.78, jet);
+		// jet strength (column kinds pass it in stem_wake.z): spiky HE crowns 1, dense dust plumes ~0.15
+		float jamt = stem_wake.x >= 1.0e8 ? stem_wake.z : 1.0;
+		jet = mix(0.55, smoothstep(0.5, 0.78, jet), jamt);
 		dn -= (jet - 0.5) * r * 0.55 * h01;
 		jetk = mix(0.1, 1.4, jet) * (1.0 - 0.6 * smoothstep(0.75, 1.0, h01) * (1.0 - n));
 	}
-	float dens = smoothstep(r * 0.04, -r * 0.3, dn) * jetk;
+	float dens = smoothstep(r * 0.1, -r * 0.35, dn) * jetk;
 	if (stem_cone > 0.0) {
 		// every jet has its own ragged top (no flat-topped frustum)
 		float rx2 = length(p.xz);
 		vec2 cs2 = rx2 > 1e-3 ? p.xz / rx2 : vec2(1.0, 0.0);
 		float jt = nbl(vec3(cs2.x * 0.55 + seed, cs2.y * 0.55, 0.3));
-		float top_j = stem.x + (stem.y - stem.x) * (0.5 + 0.65 * smoothstep(0.35, 0.8, jt)) * (0.85 + 0.3 * lf);
+		float jamt2 = stem_wake.x >= 1.0e8 ? stem_wake.z : 1.0;
+		float top_j = stem.x + (stem.y - stem.x) * mix(0.92, 0.5 + 0.65 * smoothstep(0.35, 0.8, jt), jamt2) * (0.85 + 0.3 * lf);
 		dens *= smoothstep(top_j + r * 0.2, top_j - r * 0.9, p.y);
 	} else {
 		// fade the top over ~3 radii with a noisy height (no flat-cut pipe tops)
@@ -459,6 +475,8 @@ void fragment() {
 		ph.xz -= wind.xz * age * pow(clamp(max(head.y, fb.y) / max(wind_h, 1.0), 0.0, 1.5), 1.7);
 		float sd = min(min(sdf_fireball(ph), sdf_head(ph)), min(min(sdf_stem(p), sdf_skirt(p)),
 			min(sdf_rings(ph), min(sdf_shell(ph, ice), sdf_shell(ph, ice2)))));
+		float sdome = sdf_dome(p0);
+		sd = min(sd, sdome);
 		float margin = scale_hint * 0.4;
 		if (sd > margin) {
 			t += max(sd - margin * 0.9, dt);
@@ -499,7 +517,15 @@ void fragment() {
 			}
 		}
 		float fbo = df * fb_look.w;
-		float total = dh + ds + dk + fbo + dr + di;
+		// soil dome: opaque, cracked
+		float dd = 0.0;
+		float dcrack = 0.0;
+		if (sdome < dome_u.x * 0.05) {
+			float cn = nbl(p0 / max(dome_u.x * 0.35, 1.0) + seed);
+			dcrack = dome_u.z * smoothstep(0.62, 0.8, cn);
+			dd = smoothstep(dome_u.x * 0.01, -dome_u.x * 0.02, sdome - (nlf(p0 / max(dome_u.x * 0.5, 1.0)) - 0.5) * dome_u.y * 0.2);
+		}
+		float total = dh + ds + dk + fbo + dr + di + dd;
 		if (total > 0.002) {
 			if (first_hit < 0.0) {
 				first_hit = t;
@@ -511,7 +537,8 @@ void fragment() {
 			float kf = 14.0 / max(fb.w, 1.0);
 			float kr = 1.0 / 600.0;
 			float ki = 1.0 / max(ice.z, 300.0);
-			float wsum = dh * kh + ds * ks + dk * kk + fbo * kf + dr * kr + di * ki;
+			float kd = 4.0 / max(dome_u.y * 0.1, 0.5);
+			float wsum = dh * kh + ds * ks + dk * kk + fbo * kf + dr * kr + di * ki + dd * kd;
 			float trans = exp(-wsum * dt);
 			vec3 c_head = head_col * (0.78 + 0.32 * cauli);
 			float lowk = clamp(-rc.y / max(head_shape.x, 1.0), 0.0, 1.0) * head_col_b.w;
@@ -519,7 +546,8 @@ void fragment() {
 			vec3 c_stem = stem_col.rgb * (0.8 + 0.35 * sn);
 			vec3 c_skirt = skirt_col.rgb * (0.8 + 0.35 * kn) * 0.65;
 			vec3 c_fb = mix(vec3(0.30, 0.13, 0.06), vec3(0.10, 0.07, 0.05), fb_shape.w);
-			vec3 albedo = (c_head * dh * kh + c_stem * ds * ks + c_skirt * dk * kk + c_fb * fbo * kf + vec3(0.97) * (dr * kr + di * ki)) / max(wsum, 1e-9);
+			vec3 c_dome = ground_col * vec3(0.62, 0.58, 0.52) * (1.0 - 0.6 * dcrack);
+			vec3 albedo = (c_head * dh * kh + c_stem * ds * ks + c_skirt * dk * kk + c_fb * fbo * kf + vec3(0.97) * (dr * kr + di * ki) + c_dome * dd * kd) / max(wsum, 1e-9);
 
 			// --- lighting
 			// local self-shadow: one noisy tap toward the sun reveals the billows

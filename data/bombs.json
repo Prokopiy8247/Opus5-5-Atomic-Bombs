@@ -1603,6 +1603,7 @@
     ],
     "churn": 1.0,
     "site_humidity": 0.25,
+    "jet_amount": 0.15,
     "cloud_top_m": 3700.0,
     "cap_radius_m": 1000.0,
     "crater_r_m": 185.0,

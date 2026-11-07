@@ -256,7 +256,7 @@ CYCLE2 = {
                     head_color_early=[0.42, 0.17, 0.07], roll=0.6, tint_time=1.0, site_humidity=0.45),
     "baker": dict(site_humidity=0.85, cap_appear=3.0, col_rise=5.5),
     "sedan": dict(col_rise=60.0, col_cone=0.25, col_flare=1.3, cap_aspect=0.9, head_noise_scale=0.3,
-                  head_noise_amp=0.8, vent_radius=45.0, col_delay=3.4, debris_count=150, site_humidity=0.25),
+                  head_noise_amp=0.8, vent_radius=45.0, col_delay=3.4, debris_count=150, site_humidity=0.25, jet_amount=0.15),
     "ivy_king": dict(core_glow=1.4, core_cool_s=90.0, core_radius=0.35, wilson_force=True, site_humidity=0.8),
     "b83": dict(head_noise_amp=0.55, billow_sharp=1.0, head_color_early=[0.26, 0.18, 0.12],
                 head_color_late=[0.36, 0.33, 0.30], whiten_time=1.0),

@@ -255,7 +255,9 @@ func _update_volume(t: float) -> void:
 	if ss.has("front"):
 		vol_mat.set_shader_parameter("stem_wake", Vector4(ss["front"], ss["wake_bottom"], ss["wake"], ss["dust_ramp"]))
 	else:
-		vol_mat.set_shader_parameter("stem_wake", Vector4(1.0e9, 0.0, 0.0, 1.0))
+		vol_mat.set_shader_parameter("stem_wake", Vector4(1.0e9, 0.0, float(prof.a("jet_amount", 1.0)), 1.0))
+	var dm := prof.dome_state(t)
+	vol_mat.set_shader_parameter("dome_u", Vector4(dm.x, dm.y, clampf((t - float(prof.a("dome_time", 1.0)) * 0.6) / maxf(float(prof.a("dome_time", 1.0)), 0.1), 0.0, 1.0), 0.0))
 	var kr: float = ks["radius"] if float(ks["density"]) > 0.001 else 0.0
 	vol_mat.set_shader_parameter("skirt", Vector4(kr, ks["height"], ks["density"], ks["inner"]))
 	var rings := prof.rings_state(t)
@@ -294,6 +296,9 @@ func _update_volume(t: float) -> void:
 			var e3: float = sh.y * 1.1
 			mn = mn.min(Vector3(-e3, sh.x - sh.z * 0.3, -e3))
 			mx = mx.max(Vector3(e3, sh.x + sh.z * 1.2, e3))
+	if dm.y > 0.05:
+		mn = mn.min(Vector3(-dm.x * 1.1, -1.0, -dm.x * 1.1))
+		mx = mx.max(Vector3(dm.x * 1.1, dm.y * 1.3 + 1.0, dm.x * 1.1))
 	if mn.x < mx.x:
 		var drift := wind_v * t * 2.1
 		mn = mn.min(mn + Vector3(drift.x, 0.0, drift.z))

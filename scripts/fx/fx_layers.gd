@@ -1,13 +1,25 @@
 class_name FxLayersLib
 extends RefCounted
 ## Secondary explosion layers (each is a Node3D with setup(ex) / update(age)):
-## ShockLayer (refractive front + Mach stem), DustWallLayer (ground dust sweep),
-## WilsonLayer (condensation shell), DebrisLayer (analytic ballistic fragments/clods).
+## ShockLayer (refraction of the background through the blast front + Mach stem),
+## DustWallLayer (ragged dust ring raised by the front), WilsonLayer (condensation shell),
+## DebrisLayer (analytic ballistic clods + fragment-impact ground puffs).
+## Everything is a pure function of the explosion age (deterministic scrubbing).
+##
+## Draw order vs the raymarched volume (render_priority 0, no depth write): layers that surround
+## the cloud are split into a FAR half drawn before the volume (priority < 0) and a NEAR half drawn
+## after it (priority > 0), so the cloud hides what is behind it and is hidden by what is in front.
 
 const SHOCK_SHADER := preload("res://shaders/shockwave.gdshader")
 const DUST_SHADER := preload("res://shaders/dust_wall.gdshader")
 const WILSON_SHADER := preload("res://shaders/wilson.gdshader")
 const DEBRIS_SHADER := preload("res://shaders/debris.gdshader")
+
+const PRIO_SHOCK := -2       # refraction of the opaque scene only: before everything translucent
+const PRIO_FAR := -1         # far halves (behind the cloud)
+const PRIO_NEAR_DUST := 1    # near halves (in front of the cloud)
+const PRIO_NEAR_WILSON := 3
+const MK82_CHARGE_KG := 89.0
 
 
 static func _sphere_mesh(rings: int, segs: int) -> SphereMesh:
@@ -19,60 +31,129 @@ static func _sphere_mesh(rings: int, segs: int) -> SphereMesh:
 	return s
 
 
+## Two MeshInstance3D sharing one mesh: [far, near]; each gets its own ShaderMaterial with
+## `part` = 0 (far) / 1 (near). Returns [instances, materials].
+static func _split_pair(parent: Node3D, mesh: Mesh, shader: Shader, prio_far: int, prio_near: int) -> Array:
+	var insts: Array[GeometryInstance3D] = []
+	var mats: Array[ShaderMaterial] = []
+	for part in 2:
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		var m := ShaderMaterial.new()
+		m.shader = shader
+		m.render_priority = prio_far if part == 0 else prio_near
+		m.set_shader_parameter("part", float(part))
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.extra_cull_margin = 100000.0
+		parent.add_child(mi)
+		insts.append(mi)
+		mats.append(m)
+	return [insts, mats]
+
+
+static func _set_all(mats: Array, key: String, value: Variant) -> void:
+	for m in mats:
+		(m as ShaderMaterial).set_shader_parameter(key, value)
+
+
+## HE charge size relative to a Mk 82 (cube root), 1.0 for nuclear.
+static func he_scale(prof: ExplosionProfile) -> float:
+	if not prof.conventional:
+		return 1.0
+	var kg := prof.charge_kg if prof.charge_kg > 0.0 else prof.w_kt * 1.0e6
+	return pow(maxf(kg, 1.0) / MK82_CHARGE_KG, 1.0 / 3.0)
+
+
+# ---------------------------------------------------------------------------------------- shock
+
 class ShockLayer extends Node3D:
 	var ex: Explosion
 	var shell: MeshInstance3D
 	var mat: ShaderMaterial
 	var burst_y := 0.0
+	var amp := 1.0            # refraction scale by burst type
+	var cond_k := 0.0         # condensation band (large yields in humid air only)
 
 	func setup(p_ex: Explosion) -> void:
 		ex = p_ex
 		shell = MeshInstance3D.new()
-		shell.mesh = FxLayersLib._sphere_mesh(48, 96)
+		shell.mesh = FxLayersLib._sphere_mesh(32, 64)
 		mat = ShaderMaterial.new()
 		mat.shader = FxLayersLib.SHOCK_SHADER
-		mat.render_priority = 2
+		# refraction samples the screen texture (opaque scene only): it must be drawn before the
+		# volume, otherwise it would paint the background over the cloud (the old pen-line arcs)
+		mat.render_priority = FxLayersLib.PRIO_SHOCK
 		shell.material_override = mat
 		shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		shell.extra_cull_margin = 100000.0
 		add_child(shell)
-		burst_y = maxf(ex.prof.hob, 0.0)
+		var prof := ex.prof
+		burst_y = maxf(prof.hob, 0.0)
+		# at kilometres an HE or sub-kiloton front is a faint shimmer, not a line
+		if prof.conventional:
+			amp = 0.2
+		else:
+			amp = lerpf(0.2, 1.0, smoothstep(0.5, 3.0, prof.blast_yield()))
+		if prof.kind == ExplosionProfile.Kind.NUCLEAR_UNDERWATER:
+			amp *= 0.2
+		amp *= float(prof.a("shock_refraction", 1.0))
+		# a visible condensation band in the front is only justified for big yields in humid air
+		var hum := clampf((Game.humidity - 0.45) / 0.35, 0.0, 1.0)
+		var big := smoothstep(100.0, 3000.0, prof.w_kt) if prof.nuclear else 0.0
+		cond_k = hum * big * float(prof.a("shock_condensation", 1.0))
 
 	func update(t: float) -> void:
-		if t <= 0.0 or ex.prof.kind == ExplosionProfile.Kind.NUCLEAR_BURIED or ex.prof.kind == ExplosionProfile.Kind.CONVENTIONAL_BURIED:
+		var prof := ex.prof
+		if t <= 0.0 or prof.kind == ExplosionProfile.Kind.NUCLEAR_BURIED or prof.kind == ExplosionProfile.Kind.CONVENTIONAL_BURIED:
 			shell.visible = false
 			return
 		var slant := ex.shock_slant_radius(t)
-		var p := BlastPhysics.overpressure(ex.prof.blast_yield(), slant, ex.prof.surface, ex.prof.conventional)
-		var strength := clampf(log(1.0 + p) / log(1.0 + 20.0), 0.0, 1.0) * 0.55 * smoothstep(0.3, 1.5, p)
-		var fsr: float = ex.prof.fireball_state(t)["radius"]
-		strength *= smoothstep(1.2, 1.6, slant / maxf(fsr, 1.0))
-		# the front is hard to see once it is weak and far
-		shell.visible = slant > 1.0 and p > 0.05
+		var w := prof.blast_yield()
+		var p := BlastPhysics.overpressure(w, slant, prof.surface, prof.conventional)
+		var fsr: float = prof.fireball_state(t)["radius"]
+		# the front is not separable from the fireball until it has left it
+		var out := smoothstep(1.2, 1.6, slant / maxf(fsr, 1.0))
+		shell.visible = slant > 1.0 and p > 0.05 and out > 0.0 and amp > 0.0
 		if not shell.visible:
 			return
-		shell.global_position = ex.gz + Vector3(0, burst_y, 0)
-		shell.scale = Vector3.ONE * slant
-		mat.set_shader_parameter("strength", strength)
+		# optical thickness of the compressed layer: leading part of the positive phase
+		var tp := BlastPhysics.positive_phase(w, p, prof.surface)
+		var thick := clampf(0.15 * BlastPhysics.C0 * tp, 0.1, slant * 0.08)
+		var centre := ex.gz + Vector3(0, burst_y, 0)
+		shell.global_position = centre
+		shell.scale = Vector3.ONE * slant * 1.02
+		mat.set_shader_parameter("centre", centre)
 		mat.set_shader_parameter("radius", slant)
-		mat.set_shader_parameter("age", t)
+		mat.set_shader_parameter("p_psi", p)
+		mat.set_shader_parameter("thick", thick)
+		mat.set_shader_parameter("amp", amp * out)
 		mat.set_shader_parameter("ground_y", -burst_y)
 		var stem := 0.0
-		if ex.prof.hob > 0.0 and slant > ex.prof.hob * 1.1:
-			stem = minf(slant * 0.25, ex.prof.hob * 1.5)
+		if prof.hob > 0.0 and slant > prof.hob * 1.1:
+			stem = minf(slant * 0.25, prof.hob * 1.5)
 		mat.set_shader_parameter("stem_h", stem)
-		mat.set_shader_parameter("condensation", Game.humidity * clampf(p / 3.0, 0.0, 1.0))
+		mat.set_shader_parameter("condensation", cond_k * clampf(p / 2.0, 0.0, 1.0) * out)
+		mat.set_shader_parameter("cond_w", clampf(thick, slant * 0.01, slant * 0.05))
 
+
+# ------------------------------------------------------------------------------------ dust ring
 
 class DustWallLayer extends Node3D:
 	var ex: Explosion
-	var wall: MeshInstance3D
-	var mat: ShaderMaterial
+	var walls: Array[GeometryInstance3D] = []
+	var mats: Array[ShaderMaterial] = []
 	var amount := 1.0
+	var hes := 1.0            # HE charge scale (Mk 82 = 1)
+	var h_cap := 4.0          # max dust height (m)
+	var tau := 1.0            # fade time constant after the ring forms (s)
+	var t_start := 0.0        # when the front leaves ~1.5 fireball radii
+	var p0 := 1.0             # overpressure (psi) below which no dust is raised
+	var precursor := false
 
 	func setup(p_ex: Explosion) -> void:
 		ex = p_ex
-		wall = MeshInstance3D.new()
+		var prof := ex.prof
 		var cm := CylinderMesh.new()
 		cm.top_radius = 1.0
 		cm.bottom_radius = 1.0
@@ -81,139 +162,203 @@ class DustWallLayer extends Node3D:
 		cm.rings = 1
 		cm.cap_top = false
 		cm.cap_bottom = false
-		wall.mesh = cm
-		mat = ShaderMaterial.new()
-		mat.shader = FxLayersLib.DUST_SHADER
-		mat.set_shader_parameter("noise_b", FxResources.noise_billow())
-		mat.set_shader_parameter("seed", float(ex.bomb.get("num", 1)) * 0.37)
-		mat.render_priority = 1
-		wall.material_override = mat
-		wall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		wall.extra_cull_margin = 100000.0
-		add_child(wall)
-		var k := ex.prof.kind
-		amount = 1.0 if (ex.prof.surface or ex.prof.dusty) else 0.55
+		var pair := FxLayersLib._split_pair(self, cm, FxLayersLib.DUST_SHADER, FxLayersLib.PRIO_FAR, FxLayersLib.PRIO_NEAR_DUST)
+		walls.assign(pair[0])
+		mats.assign(pair[1])
+		FxLayersLib._set_all(mats, "noise_b", FxResources.noise_billow())
+		FxLayersLib._set_all(mats, "noise_a", FxResources.noise_fbm())
+		FxLayersLib._set_all(mats, "seed", float(ex.bomb.get("num", 1)) * 0.37)
+		FxLayersLib._set_all(mats, "centre", ex.gz)
+		FxLayersLib._set_all(mats, "mode", 0)
+		var k := prof.kind
+		amount = 1.0 if (prof.surface or prof.dusty) else 0.55
 		if k == ExplosionProfile.Kind.NUCLEAR_UNDERWATER:
 			amount = 0.0
-		amount *= float(ex.prof.a("dust_wall", 1.0))
-		var dc: Array = ex.prof.a("dust_color", [0.66, 0.58, 0.48])
-		mat.set_shader_parameter("dust_col", Vector3(dc[0], dc[1], dc[2]))
-		mat.set_shader_parameter("ragged", 1.0 if ex.prof.a("precursor", false) else 0.35)
+		amount *= float(prof.a("dust_wall", 1.0))
+		var dc: Array = prof.a("dust_color", [0.66, 0.58, 0.48])
+		FxLayersLib._set_all(mats, "dust_col", Vector3(dc[0], dc[1], dc[2]))
+		precursor = bool(prof.a("precursor", false))
+		FxLayersLib._set_all(mats, "ragged", 1.0 if precursor else (0.6 if prof.conventional else 0.45))
+		hes = FxLayersLib.he_scale(prof)
+		var wc := pow(maxf(prof.blast_yield(), 1e-6), 1.0 / 3.0)
+		if prof.conventional:
+			h_cap = 4.0 * hes
+		else:
+			h_cap = 20.0 * wc * (1.8 if precursor else 1.0)
+		h_cap = float(prof.a("dust_wall_h_max", h_cap))
+		tau = float(prof.a("dust_wall_tau", 5.4 * wc))
+		p0 = 0.6 if precursor else 1.0
+		var r_on := prof.r_fb_max * 1.5
+		t_start = BlastPhysics.arrival_time(prof.w_kt, sqrt(r_on * r_on + burst_h() * burst_h()), prof.surface, prof.conventional)
+
+	func burst_h() -> float:
+		return maxf(ex.prof.hob, 0.0)
+
+	func _hide() -> void:
+		for w in walls:
+			w.visible = false
 
 	func update(t: float) -> void:
-		var r := ex.prof.shock_ground_radius(t, ex.arrival_tbl)
+		var prof := ex.prof
+		var r := prof.shock_ground_radius(t, ex.arrival_tbl)
 		if t <= 0.0 or r <= 1.0 or amount <= 0.0:
-			wall.visible = false
+			_hide()
 			return
-		var slant := sqrt(r * r + maxf(ex.prof.hob, 0.0) * maxf(ex.prof.hob, 0.0))
-		var p := BlastPhysics.overpressure(ex.prof.blast_yield(), slant, ex.prof.surface, ex.prof.conventional)
-		# dust is raised where the wind behind the front is strong (> ~0.5 psi)
-		var op := clampf((p - 0.3) / 3.0, 0.0, 1.0) * amount
-		wall.visible = op > 0.01
-		if not wall.visible:
+		var hb := burst_h()
+		var slant := sqrt(r * r + hb * hb)
+		var p := BlastPhysics.overpressure(prof.blast_yield(), slant, prof.surface, prof.conventional)
+		# dust is raised only where the wind behind the front is strong (> ~1 psi)
+		var op := clampf((p - p0) / 2.5, 0.0, 1.0) * amount
+		# never inside or hugging the fireball (the old grey 'puck' under the ball)
+		var fsr: float = prof.fireball_state(t)["radius"]
+		var r_ref := maxf(fsr, prof.r_fb_max if prof.conventional else 0.0)
+		op *= smoothstep(1.3, 1.8, slant / maxf(r_ref, 0.5))
+		if prof.conventional:
+			op *= exp(-r / (120.0 * hes))
+		# the ring thins out as it races away (dust settles / spreads behind the front)
+		op *= exp(-maxf(t - t_start, 0.0) / maxf(tau, 0.05))
+		if op <= 0.01:
+			_hide()
 			return
-		var h := clampf(r * 0.035, 3.0, 2500.0) * (1.0 + clampf(p / 10.0, 0.0, 2.0))
-		if ex.prof.a("precursor", false):
-			h *= 1.8
-		wall.global_position = ex.gz + Vector3(0, h * 0.5 - 2.0, 0)
-		wall.scale = Vector3(r, h, r)
-		wall.custom_aabb = AABB(Vector3(-1.2, -50.0, -1.2), Vector3(2.4, 100.0, 2.4))
-		mat.set_shader_parameter("radius", r)
-		mat.set_shader_parameter("height", h)
-		mat.set_shader_parameter("opacity", op)
-		mat.set_shader_parameter("age", t)
+		var h: float
+		if prof.conventional:
+			h = clampf(r * 0.02, 1.0 * hes, 4.0 * hes)
+		else:
+			h = clampf(r * 0.02, 2.0, h_cap) * (1.0 + clampf(p / 10.0, 0.0, 1.0))
+			if precursor:
+				h *= 1.8
+		h = minf(h, h_cap)
+		# mesh: 2 m below the ground up to the tallest ragged lumps
+		var hm := h * 1.9 + 2.0
+		for w in walls:
+			w.visible = true
+			w.global_position = ex.gz + Vector3(0, hm * 0.5 - 2.0, 0)
+			w.scale = Vector3(r, hm, r)
+			(w as MeshInstance3D).custom_aabb = AABB(Vector3(-1.2, -50.0, -1.2), Vector3(2.4, 100.0, 2.4))
+		FxLayersLib._set_all(mats, "radius", r)
+		FxLayersLib._set_all(mats, "height", h)
+		FxLayersLib._set_all(mats, "mesh_h", hm)
+		FxLayersLib._set_all(mats, "opacity", op)
+		FxLayersLib._set_all(mats, "age", t)
 
+
+# --------------------------------------------------------------------------------- Wilson cloud
 
 class WilsonLayer extends Node3D:
 	var ex: Explosion
-	var shell: MeshInstance3D
-	var mat: ShaderMaterial
+	var shells: Array[GeometryInstance3D] = []
+	var mats: Array[ShaderMaterial] = []
 	var t0 := 0.0
 	var dur := 1.0
 	var amount := 0.0
+	var flatten := 1.0
+	var clear_bottom := 1.0
 
 	func setup(p_ex: Explosion) -> void:
 		ex = p_ex
-		shell = MeshInstance3D.new()
-		shell.mesh = FxLayersLib._sphere_mesh(32, 64)
-		mat = ShaderMaterial.new()
-		mat.shader = FxLayersLib.WILSON_SHADER
-		mat.set_shader_parameter("noise_b", FxResources.noise_billow())
-		mat.set_shader_parameter("seed", float(ex.bomb.get("num", 1)) * 1.7)
-		mat.render_priority = 3
-		shell.material_override = mat
-		shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		shell.extra_cull_margin = 100000.0
-		add_child(shell)
+		var prof := ex.prof
+		var pair := FxLayersLib._split_pair(self, FxLayersLib._sphere_mesh(32, 64), FxLayersLib.WILSON_SHADER, FxLayersLib.PRIO_FAR, FxLayersLib.PRIO_NEAR_WILSON)
+		shells.assign(pair[0])
+		mats.assign(pair[1])
+		FxLayersLib._set_all(mats, "noise_b", FxResources.noise_billow())
+		FxLayersLib._set_all(mats, "noise_a", FxResources.noise_fbm())
+		FxLayersLib._set_all(mats, "seed", float(ex.bomb.get("num", 1)) * 1.7)
 		# appears when the rarefaction behind the front cools humid air (~RH > 0.55)
 		var hum := Game.humidity
-		# a spherical Wilson shell is a kiloton phenomenon; megaton clouds show rings/skirts instead
-		var default_w := 1.0 if ex.prof.w_kt <= 150.0 else 0.0
-		amount = clampf((hum - 0.45) / 0.35, 0.0, 1.0) * float(ex.prof.a("wilson", default_w))
-		if ex.prof.w_kt > 150.0 and not ex.prof.art.has("wilson_force"):
-			amount = 0.0
-		dur = maxf(ex.prof.wilson_t, 0.25) * float(ex.prof.a("wilson_duration", 1.0))
-		t0 = float(ex.prof.a("wilson_start", 0.0))
+		# a spherical shell is a kiloton phenomenon; above ~150 kt only bombs whose profile asks for
+		# it (King, RDS-37: 'wilson' > 0) get one, rendered as flattened stacked discs
+		var big := prof.w_kt > 150.0
+		var default_w := 0.0 if big else 1.0
+		amount = clampf((hum - 0.45) / 0.35, 0.0, 1.0) * float(prof.a("wilson", default_w))
+		dur = maxf(prof.wilson_t, 0.25) * float(prof.a("wilson_duration", 1.0))
+		t0 = float(prof.a("wilson_start", 0.0))
 		if t0 <= 0.0:
 			# when the front reaches ~ the Wilson radius
-			t0 = ex.prof.wilson_t0
+			t0 = prof.wilson_t0
+		flatten = float(prof.a("wilson_flatten", 0.55 if big else 1.0))
+		FxLayersLib._set_all(mats, "flatten", flatten)
+		FxLayersLib._set_all(mats, "thick", float(prof.a("wilson_thick", 0.3)))
+		FxLayersLib._set_all(mats, "discs", float(prof.a("wilson_discs", 0.75 if big else 0.0)))
+		# the dome evaporates from the bottom up (Baker) - airbursts thin out evenly
+		clear_bottom = float(prof.a("wilson_clear", 1.0 if prof.surface else 0.4))
+
+	func _hide() -> void:
+		for s in shells:
+			s.visible = false
 
 	func update(t: float) -> void:
 		if amount <= 0.0 or t < t0 or t > t0 + dur * 2.2:
-			shell.visible = false
+			_hide()
 			return
 		var x := (t - t0) / dur
-		var op := smoothstep(0.0, 0.15, x) * (1.0 - smoothstep(0.6, 2.2, x)) * amount
-		shell.visible = op > 0.005
-		if not shell.visible:
+		var op := smoothstep(0.0, 0.15, x) * (1.0 - smoothstep(0.9, 2.2, x)) * amount
+		if op <= 0.005:
+			_hide()
 			return
+		var prof := ex.prof
 		var slant := ex.shock_slant_radius(t) * 0.92
-		var cy := maxf(ex.prof.hob, 0.0)
-		if ex.prof.kind == ExplosionProfile.Kind.NUCLEAR_UNDERWATER:
+		var cy := maxf(prof.hob, 0.0)
+		if prof.kind == ExplosionProfile.Kind.NUCLEAR_UNDERWATER:
 			cy = 0.0
-		shell.global_position = ex.gz + Vector3(0, cy, 0)
-		shell.scale = Vector3(slant, slant * float(ex.prof.a("wilson_flatten", 1.0)), slant)
-		mat.set_shader_parameter("opacity", op)
-		mat.set_shader_parameter("radius", slant)
-		mat.set_shader_parameter("ground_y", -cy)
-		mat.set_shader_parameter("age", t)
+		var centre := ex.gz + Vector3(0, cy, 0)
+		for s in shells:
+			s.visible = true
+			s.global_position = centre
+			s.scale = Vector3(slant, slant * flatten, slant) * 1.03
+		FxLayersLib._set_all(mats, "centre", centre)
+		FxLayersLib._set_all(mats, "radius", slant)
+		FxLayersLib._set_all(mats, "tau", 1.3 * op)
+		# droplets evaporate in growing holes, and from the bottom up
+		FxLayersLib._set_all(mats, "evap", smoothstep(0.35, 2.0, x))
+		FxLayersLib._set_all(mats, "clear_y", lerpf(-1.2, 0.55, smoothstep(0.3, 1.8, x) * clear_bottom))
+		FxLayersLib._set_all(mats, "ground_y", -cy)
+		FxLayersLib._set_all(mats, "age", t)
 
+
+# --------------------------------------------------------------------------- debris and puffs
 
 class DebrisLayer extends Node3D:
 	var ex: Explosion
 	var mmi: MultiMeshInstance3D
 	var mat: ShaderMaterial
+	var puffs: Array[GeometryInstance3D] = []
+	var puff_mats: Array[ShaderMaterial] = []
 
 	func setup(p_ex: Explosion, count: int, speed: float, cone_deg: float, size: float, color: Vector3, hot: float, spread_r: float, delay: float = 0.0) -> void:
 		ex = p_ex
+		var prof := ex.prof
 		mmi = MultiMeshInstance3D.new()
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_custom_data = true
-		var bm := BoxMesh.new()
-		bm.size = Vector3(1.0, 0.6, 0.8)
-		mm.mesh = bm
-		var n := int(count * clampf(Game.quality_steps_scale(), 0.4, 1.5))
+		mm.mesh = FxLayersLib.rock_mesh()
+		# fewer pieces: most of the ejecta mass is dust (volume); a few clods read, a cloud of specks does not
+		var n := int(count * clampf(Game.quality_steps_scale(), 0.4, 1.5) * float(prof.a("debris_frac", 0.6)))
 		mm.instance_count = n
 		var rng := RandomNumberGenerator.new()
 		rng.seed = int(ex.bomb.get("num", 1)) * 7919
 		for i in n:
+			# wide, small-skewed size spread: 0.25..2.3 x the nominal size (log distributed)
+			var f := 0.25 * pow(9.2, pow(rng.randf(), 1.8))
+			var sz := size * f
+			var big := clampf((f - 0.25) / 2.05, 0.0, 1.0)
 			var az := rng.randf() * TAU
 			var el := deg_to_rad(90.0 - rng.randf() * cone_deg)
 			var dir := Vector3(cos(el) * cos(az), sin(el), cos(el) * sin(az))
-			var v := dir * speed * pow(rng.randf(), 0.6)
-			var start := Vector3(cos(az), 0.0, sin(az)) * spread_r * rng.randf() + Vector3(0, 0.5, 0)
-			mm.set_instance_transform(i, Transform3D(Basis(), start))
+			# speeds skewed slow; big blocks are thrown slower than small clods
+			var v := dir * speed * (0.1 + 0.9 * pow(rng.randf(), 1.6)) * lerpf(1.0, 0.6, big)
+			var start := Vector3(cos(az), 0.0, sin(az)) * spread_r * sqrt(rng.randf()) + Vector3(0, 0.5, 0)
+			var axis := (Vector3(rng.randf() - 0.5, rng.randf() - 0.5, rng.randf() - 0.5) + Vector3(0.0, 1e-3, 0.0)).normalized()
+			var shape := Basis(axis, rng.randf() * TAU) * Basis.from_scale(Vector3(rng.randf_range(0.8, 1.25), rng.randf_range(0.5, 0.9), rng.randf_range(0.7, 1.1)) * sz)
+			mm.set_instance_transform(i, Transform3D(shape, start))
 			mm.set_instance_custom_data(i, Color(v.x, v.y, v.z, rng.randf() * 100.0))
-			var sz := lerpf(0.35, 2.2, pow(rng.randf(), 2.5))
-			mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * sz), start))
 		mmi.multimesh = mm
 		mat = ShaderMaterial.new()
 		mat.shader = FxLayersLib.DEBRIS_SHADER
-		mat.set_shader_parameter("size_scale", size)
+		mat.set_shader_parameter("size_ref", size)
 		mat.set_shader_parameter("base_col", color)
 		mat.set_shader_parameter("hot", hot)
-		mat.set_shader_parameter("drag", 0.12)
+		mat.set_shader_parameter("drag", float(prof.a("debris_drag", 0.6)))
 		mat.set_shader_parameter("t_launch", delay)
 		mmi.material_override = mat
 		mmi.extra_cull_margin = 50000.0
@@ -221,6 +366,106 @@ class DebrisLayer extends Node3D:
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(mmi)
 		mmi.global_position = ex.gz
+		_setup_puffs(rng)
 
-	func update(_t: float) -> void:
-		pass
+	## Fragment fan of cased HE bombs: small tan dust puffs where casing fragments hit the ground.
+	func _setup_puffs(rng: RandomNumberGenerator) -> void:
+		var prof := ex.prof
+		var hes := FxLayersLib.he_scale(prof)
+		var def_n := roundi(36.0 * sqrt(hes)) if prof.kind == ExplosionProfile.Kind.CONVENTIONAL_SURFACE else 0
+		var n := int(prof.a("frag_puffs", def_n))
+		if n <= 0:
+			return
+		var r_max := float(prof.a("frag_puff_r", 150.0 * hes))
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_custom_data = true
+		var qm := QuadMesh.new()
+		qm.size = Vector2.ONE
+		mm.mesh = qm
+		mm.instance_count = n
+		for i in n:
+			var az := rng.randf() * TAU
+			# dense near the crater, sparse far out
+			var rr := lerpf(20.0 * minf(hes, 2.0), r_max, pow(rng.randf(), 1.5))
+			var px := ex.gz.x + cos(az) * rr
+			var pz := ex.gz.z + sin(az) * rr
+			var pos := Vector3(px, TerrainMath.height(px, pz), pz) - ex.gz
+			# fragments (~1-2 km/s) land within ~0.1-0.5 s, the near ones first
+			var t_birth := 0.1 + 0.25 * rr / r_max + rng.randf() * 0.15
+			var s := rng.randf_range(2.0, 4.0) * sqrt(hes)
+			mm.set_instance_transform(i, Transform3D(Basis(), pos))
+			mm.set_instance_custom_data(i, Color(t_birth, s, s * 0.6, rng.randf() * 10.0))
+		# the puffs are the ground itself thrown up: soil colour, not the pale dust-wall colour
+		var dc: Array = prof.a("ground_color", [0.55, 0.47, 0.38])
+		for part in 2:
+			var inst := MultiMeshInstance3D.new()
+			inst.multimesh = mm
+			var m := ShaderMaterial.new()
+			m.shader = FxLayersLib.DUST_SHADER
+			m.render_priority = FxLayersLib.PRIO_FAR if part == 0 else FxLayersLib.PRIO_NEAR_DUST
+			m.set_shader_parameter("mode", 1)
+			m.set_shader_parameter("part", float(part))
+			m.set_shader_parameter("centre", ex.gz)
+			m.set_shader_parameter("noise_b", FxResources.noise_billow())
+			m.set_shader_parameter("noise_a", FxResources.noise_fbm())
+			m.set_shader_parameter("dust_col", Vector3(dc[0], dc[1], dc[2]))
+			m.set_shader_parameter("puff_life", float(prof.a("frag_puff_life", 3.0)))
+			m.set_shader_parameter("opacity", 0.6)
+			inst.material_override = m
+			inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			inst.extra_cull_margin = 5000.0
+			inst.custom_aabb = AABB(Vector3(-r_max - 50.0, -100.0, -r_max - 50.0), Vector3(r_max * 2.0 + 100.0, 200.0, r_max * 2.0 + 100.0))
+			add_child(inst)
+			inst.global_position = ex.gz
+			puffs.append(inst)
+			puff_mats.append(m)
+
+	func update(t: float) -> void:
+		for m in puff_mats:
+			m.set_shader_parameter("age", t)
+
+
+## Low-poly jittered rock (icosahedron with per-vertex radial noise, flat shaded), built once.
+static var _rock: ArrayMesh
+
+
+static func rock_mesh() -> ArrayMesh:
+	if _rock != null:
+		return _rock
+	var g := (1.0 + sqrt(5.0)) * 0.5
+	var v := [Vector3(-1, g, 0), Vector3(1, g, 0), Vector3(-1, -g, 0), Vector3(1, -g, 0),
+		Vector3(0, -1, g), Vector3(0, 1, g), Vector3(0, -1, -g), Vector3(0, 1, -g),
+		Vector3(g, 0, -1), Vector3(g, 0, 1), Vector3(-g, 0, -1), Vector3(-g, 0, 1)]
+	var f := [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4],
+		[11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+		[4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1337
+	var pts: Array[Vector3] = []
+	for p in v:
+		pts.append((p as Vector3).normalized() * 0.5 * rng.randf_range(0.7, 1.2))
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	for tri in f:
+		var a: Vector3 = pts[tri[0]]
+		var b: Vector3 = pts[tri[1]]
+		var c: Vector3 = pts[tri[2]]
+		var nrm := (b - a).cross(c - a)
+		if nrm.dot(a + b + c) < 0.0:
+			# make (a, b, c) counter-clockwise seen from outside
+			nrm = -nrm
+			var tmp := b
+			b = c
+			c = tmp
+		nrm = nrm.normalized()
+		# Godot front faces are clockwise as seen from outside: emit (a, c, b)
+		verts.append_array([a, c, b])
+		norms.append_array([nrm, nrm, nrm])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
+	_rock = ArrayMesh.new()
+	_rock.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return _rock
