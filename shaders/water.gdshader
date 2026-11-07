@@ -1,7 +1,9 @@
 // Lagoon water: small wind waves + the explosion's outgoing ring wave train (scrubbable),
 // fresnel sky reflection approximated with the haze colour, foam on crests.
 shader_type spatial;
-render_mode cull_back, diffuse_burley, specular_schlick_ggx;
+// cull_disabled: the polar disc in water_pond.gd is wound counter-clockwise (Godot front faces are
+// clockwise), so cull_back hid the whole lagoon from above (cycle 3: "no visible lagoon")
+render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 
 #include "res://shaders/atmos.gdshaderinc"
 
