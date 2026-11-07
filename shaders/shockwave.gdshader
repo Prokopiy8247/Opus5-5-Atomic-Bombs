@@ -32,7 +32,7 @@ void fragment() {
 	vec3 n = normalize(NORMAL);
 	vec3 v = normalize(VIEW);
 	float graze = 1.0 - abs(dot(n, v));
-	float rim = pow(graze, 10.0);
+	float rim = pow(graze, 16.0);
 	// clip under the ground
 	float above = smoothstep(-0.02, 0.01, v_local.y * radius - ground_y);
 	// ragged front (precursor / dust) near the ground

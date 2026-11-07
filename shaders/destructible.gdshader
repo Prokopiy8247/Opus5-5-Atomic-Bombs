@@ -254,9 +254,10 @@ void rack(inout vec3 v, inout vec3 n, float th, vec3 lpush, vec3 laxis, float ba
 	}
 }
 
-// One rigid piece on a ballistic, drag-limited path that comes to rest lying flat on the ground.
+// One rigid piece on a ballistic, drag-limited path. It turns by A_tot about fax while flying;
+// fang is the rotation that would lay it flat, so its lowest point is kept on the ground.
 void debris(inout vec3 v, inout vec3 n, vec3 pv, float pr, vec3 fax, float fang, vec2 ext,
-		float tau, float S, float vy, float spread, float k_flip, float yaw_tot, float rest_extra,
+		float tau, float S, float vy, float spread, float A_tot, float yaw_tot, float rest_extra,
 		vec3 lpush, vec3 lside, vec3 inst_o, mat3 m3, float sc, float base_g) {
 	vec3 dir = normalize(lpush + lside * spread * (pr * 2.0 - 1.0));
 	vec3 land = pv + dir * S;
@@ -268,7 +269,6 @@ void debris(inout vec3 v, inout vec3 n, vec3 pv, float pr, vec3 fax, float fang,
 	float drop = max(y0 - y1, 0.0);
 	float T = max((vy + sqrt(vy * vy + 2.0 * g * drop)) / g, 0.3);
 	float f = sat(tau / T);
-	float A_tot = fang + k_flip * PI;
 	float A = A_tot * f;
 	vec3 P;
 	float eh = ease_out2(f);
@@ -422,20 +422,31 @@ void vertex() {
 		float coll_thr = 2.9 + 1.1 * rr(seed, 2.0);
 		float blow_thr = 4.8 + rr(seed, 3.0);
 		if (hit && part != P_FOUND) {
+			float tilt = (fract(pr * 5.71) - 0.5) * 0.4;   // debris rests propped on other debris
 			if (part == P_ROOF && psi >= roof_thr) {
 				float S = (6.0 + 22.0 * sat((psi - roof_thr) / 3.0) + 80.0 * sat((psi - 8.0) / 25.0)) * imp * (0.25 + 0.75 * hfs);
-				debris(v, n, pv, pr, fax, fang, ext, tau, S, 2.0 + 3.0 * pr * hfs, 0.5, floor(pr * 2.0),
+				S *= 0.7 + 0.6 * fract(pr * 3.17);
+				debris(v, n, pv, pr, fax, fang, ext, tau, S, 2.0 + 3.0 * pr * hfs, 0.7, fang + floor(pr * 2.0) * PI + tilt,
 					(pr - 0.5) * 3.0, 0.06 * pr, lpush, lside, inst_o, m3, sc, base_g);
 				absolute = true;
 			} else if (psi >= blow_thr) {
 				float S = (10.0 + 25.0 * sat((psi - blow_thr) / 5.0) + 90.0 * sat((psi - 10.0) / 30.0)) * imp * (0.15 + 0.85 * hfs);
-				debris(v, n, pv, pr, fax, fang, ext, tau, S, (1.0 + 3.0 * pr) * hfs, 0.6, floor(pr * 2.0),
+				S *= 0.6 + 0.8 * fract(pr * 3.17);
+				debris(v, n, pv, pr, fax, fang, ext, tau, S, (1.0 + 3.0 * pr) * hfs, 0.8, fang + floor(pr * 2.0) * PI + tilt,
 					(pr - 0.5) * 2.5, 0.12 * pr, lpush, lside, inst_o, m3, sc, base_g);
 				absolute = true;
 			} else if (psi >= coll_thr) {
-				float thm = mix(0.35, 1.35, sat((psi - coll_thr) / max(blow_thr - coll_thr, 0.1)));
+				float thm = mix(0.35, 1.2, sat((psi - coll_thr) / max(blow_thr - coll_thr, 0.1)));
 				float f = topple(tau / 1.3, 0.45);
+				vec3 pv_r = pv;
+				vec3 nd = vec3(0.0, 1.0, 0.0);
+				rack(pv_r, nd, f * thm * hfs, lpush, laxis, 0.15);
 				rack(v, n, f * thm * hfs, lpush, laxis, 0.15);
+				// the frame breaks up: every panel twists a little about its own centre
+				vec3 jax = normalize(vec3(pr - 0.5, 0.35, fract(pr * 13.7) - 0.5));
+				mat3 J = rot_axis(jax, (fract(pr * 5.3) - 0.5) * 0.6 * f);
+				v = pv_r + J * (v - pv_r);
+				n = J * n;
 				// vertical blast (beneath an air burst): crushed in place instead
 				float crush = mix(1.0, 0.2, f * (1.0 - hfs));
 				v.y = 0.15 + (v.y - 0.15) * crush;
@@ -447,13 +458,15 @@ void vertex() {
 		if (hit && part != P_FOUND) {
 			if (part == P_ROOF && psi >= roof_thr) {
 				float S = (3.0 + 6.0 * sat((psi - roof_thr) / 3.0) + 40.0 * sat((psi - 10.0) / 30.0)) * imp * (0.25 + 0.75 * hfs);
-				debris(v, n, pv, pr, fax, fang, ext, tau, S, (1.0 + 1.5 * pr) * hfs, 0.5, 0.0,
+				debris(v, n, pv, pr, fax, fang, ext, tau, S, (1.0 + 1.5 * pr) * hfs, 0.6, fang + (fract(pr * 5.71) - 0.5) * 0.5,
 					(pr - 0.5) * 1.5, 0.3 * pr, lpush, lside, inst_o, m3, sc, base_g);
 				absolute = true;
 			} else if (part != P_ROOF && psi >= crum_thr) {
-				float S = (1.0 + 5.0 * sat((psi - crum_thr) / 6.0) + 25.0 * sat((psi - 15.0) / 40.0)) * imp * (0.3 + 0.7 * hfs);
-				debris(v, n, pv, pr, fax, fang, ext, tau, S, 0.3 + 1.2 * pr, 0.9, 0.0,
-					(pr - 0.5) * 1.2, 0.9 * pr * pr, lpush, lside, inst_o, m3, sc, base_g);
+				// masonry crumbles into a heap: chunks drop near the footprint, tumbling partly
+				float S = (0.8 + 3.0 * fract(pr * 3.17) + 4.0 * sat((psi - crum_thr) / 6.0) + 25.0 * sat((psi - 15.0) / 40.0)) * imp * (0.3 + 0.7 * hfs);
+				float A_tot = fang * (0.25 + 0.75 * fract(pr * 7.31)) * (fract(pr * 2.9) < 0.5 ? 1.0 : -1.0);
+				debris(v, n, pv, pr, fax, fang, ext, tau, S, 0.2 + 0.8 * pr, 1.8, A_tot,
+					(pr - 0.5) * 2.0, 0.7 * pr * pr, lpush, lside, inst_o, m3, sc, base_g);
 				absolute = true;
 			} else if (psi >= 1.7) {
 				// cracked walls: a faint shudder, then still
@@ -481,7 +494,7 @@ void vertex() {
 			if (psi >= snap_thr && part != P_STUMP && part != P_ROOT) {
 				float S = (10.0 + 1.2 * (psi - snap_thr)) * imp * hfs;
 				debris(v, n, vec3(0.0, juni ? 0.0 : 1.2, 0.0), pr, laxis, PI * 0.5 * hfs, vec2(0.0, juni ? 0.4 : 0.6),
-					tau, min(S, 120.0), 1.0 * hfs, 0.35, 0.0, (rr(seed, 3.0) - 0.5) * 1.5, 0.0,
+					tau, min(S, 120.0), 1.0 * hfs, 0.35, PI * 0.5 * hfs, (rr(seed, 3.0) - 0.5) * 1.5, 0.0,
 					lpush, lside, inst_o, m3, sc, base_g);
 				absolute = true;
 			} else if (psi >= top_thr && hfs > 0.2) {
@@ -522,7 +535,7 @@ void vertex() {
 		if (hit && psi >= s_thr) {
 			if (part == P_TURRET && psi >= r_thr) {
 				float S = min((8.0 + 0.25 * (psi - r_thr)) * imp * (0.4 + 0.6 * hfs), 120.0);
-				debris(v, n, pv, pr, fax, fang, ext, tau, S, 3.0 + 3.0 * pr, 0.4, 1.0, (pr - 0.5) * 4.0, 0.0,
+				debris(v, n, pv, pr, fax, fang, ext, tau, S, 3.0 + 3.0 * pr, 0.4, fang + PI, (pr - 0.5) * 4.0, 0.0,
 					lpush, lside, inst_o, m3, sc, base_g);
 			} else {
 				float roll = psi >= r_thr ? PI * 0.5 * step(0.4, hfs) : 0.0;
@@ -581,7 +594,7 @@ void vertex() {
 			float thr = 10.0 + 8.0 * pr;
 			if (hit && psi >= thr) {
 				float S = min((1.5 + 0.3 * (psi - thr)) * imp * (0.3 + 0.7 * hfs), 30.0);
-				debris(v, n, pv, pr, vec3(1.0, 0.0, 0.0), (pr - 0.5) * 0.5, ext, tau, S, 0.3, 0.15, 0.0,
+				debris(v, n, pv, pr, vec3(1.0, 0.0, 0.0), 0.0, ext, tau, S, 0.3, 0.15, (pr - 0.5) * 0.5,
 					(pr - 0.5) * 0.4, 0.0, lpush, lside, inst_o, m3, sc, base_g);
 				absolute = true;
 			}
@@ -602,7 +615,7 @@ void vertex() {
 			v_damage = sat((psi - crack_thr) / 80.0) * 0.6 + 0.4;
 		}
 		if (hit && psi >= kill_thr && part == P_SLAB) {
-			debris(v, n, pv, pr, vec3(1.0, 0.0, 0.0), (pr - 0.5) * 0.6, ext, tau, 2.0 + 0.02 * (psi - kill_thr), 0.5, 0.2, 0.0,
+			debris(v, n, pv, pr, vec3(1.0, 0.0, 0.0), 0.0, ext, tau, 2.0 + 0.02 * (psi - kill_thr), 0.5, 0.2, (pr - 0.5) * 0.6,
 				(pr - 0.5) * 0.5, 0.0, lpush, lside, inst_o, m3, sc, base_g);
 			absolute = true;
 		}
@@ -613,7 +626,7 @@ void vertex() {
 			float clad_thr = (part == P_DOOR ? 2.0 + 0.8 * pr : 1.5 + 1.0 * pr);
 			if ((part == P_CLAD || part == P_DOOR) && psi >= clad_thr) {
 				float S = min((10.0 + 15.0 * (psi - clad_thr)) * imp * (0.2 + 0.8 * hfs), 160.0);
-				debris(v, n, pv, pr, fax, fang, ext, tau, S, (2.0 + 4.0 * pr) * hfs, 0.45, floor(pr * 2.0),
+				debris(v, n, pv, pr, fax, fang, ext, tau, S, (2.0 + 4.0 * pr) * hfs, 0.6, fang + floor(pr * 2.0) * PI + (fract(pr * 5.71) - 0.5) * 0.4,
 					(pr - 0.5) * 3.0, 0.05 * pr, lpush, lside, inst_o, m3, sc, base_g);
 				absolute = true;
 			} else if (psi >= frame_thr) {
@@ -631,7 +644,7 @@ void vertex() {
 			if (part == P_WING && psi >= thr_wreck) {
 				// wings snap off and tumble on their own
 				float S = min((12.0 + 22.0 * (psi - thr_wreck)) * imp * (0.2 + 0.8 * hfs), 220.0);
-				debris(v, n, pv, pr, vec3(1.0, 0.0, 0.0), 0.0, ext, tau, S, (3.0 + 3.0 * pr) * hfs, 0.5, floor(pr * 2.0),
+				debris(v, n, pv, pr, vec3(1.0, 0.0, 0.0), 0.0, ext, tau, S, (3.0 + 3.0 * pr) * hfs, 0.5, floor(pr * 2.0) * PI + (fract(pr * 5.71) - 0.5) * 0.3,
 					(pr - 0.5) * 4.0, 0.0, lpush, lside, inst_o, m3, sc, base_g);
 				absolute = true;
 			} else {
@@ -676,7 +689,7 @@ void vertex() {
 		float kill_thr = 9.0 + 1.5 * rr(seed, 3.0);
 		if (hit && psi >= kill_thr && part == P_BOGIE) {
 			float S = min((3.0 + 1.5 * (psi - kill_thr)) * imp * hfs, 80.0);
-			debris(v, n, pv, pr, vec3(1.0, 0.0, 0.0), 0.0, ext, tau, S, 1.5 * hfs, 0.6, floor(pr * 2.0),
+			debris(v, n, pv, pr, vec3(1.0, 0.0, 0.0), 0.0, ext, tau, S, 1.5 * hfs, 0.6, floor(pr * 2.0) * PI,
 				(pr - 0.5) * 3.0, 0.0, lpush, lside, inst_o, m3, sc, base_g);
 			absolute = true;
 		} else if (hit && psi >= der_thr) {
@@ -722,8 +735,11 @@ void vertex() {
 			// the blast wind blows most flames out for a few seconds, the debris rekindles
 			b *= 1.0 - 0.85 * smoothstep(0.0, 0.15, tau) * exp(-tau / 4.0);
 		}
-		if (part == P_LEAVES && hit) {
-			b *= 1.0 - (kind == K_JUNIPER ? sat((psi - 3.0) / 4.0) : sat((psi - 1.2) / 1.3));
+		if (part == P_LEAVES) {
+			b *= 0.6;
+			if (hit) {
+				b *= 1.0 - (kind == K_JUNIPER ? sat((psi - 3.0) / 4.0) : sat((psi - 1.2) / 1.3));
+			}
 		}
 		v_burn = b;
 	}
@@ -734,7 +750,7 @@ void vertex() {
 		}
 	}
 	if (hit) {
-		v_dust = 0.35 * sat(psi / 4.0) * smoothstep(0.0, 0.6, tau);
+		v_dust = 0.16 * sat(psi / 4.0) * smoothstep(0.0, 0.6, tau);
 	}
 }
 
@@ -855,14 +871,23 @@ void fragment() {
 
 	// ---- flames: flickering tongues licking upward
 	if (v_burn > 0.001) {
-		vec3 fp = wp * 0.9 + vec3(0.0, -age * 2.6, 0.0) + s * 31.0;
-		float n1 = vnoise3(fp);
-		float n2 = vnoise3(fp * 2.3 + vec3(0.0, -age * 3.1, 0.0));
-		float fl = smoothstep(0.35, 0.85, n1 * 0.65 + n2 * 0.45);
-		float mask = part == P_GLASS ? 1.0 : (0.35 + 0.65 * face);
-		vec3 fcol = mix(vec3(1.0, 0.28, 0.04), vec3(1.0, 0.62, 0.22), n2);
-		emis += fcol * v_burn * fl * mask * 14.0 * fire_gain;
-		alb *= 1.0 - 0.6 * v_burn;
+		vec3 fq = vec3(wp.x * 1.3, wp.y * 0.45 - age * 2.3, wp.z * 1.3) + s * 37.0;
+		float n1 = vnoise3(fq);
+		float n2 = vnoise3(fq * 2.6 + vec3(0.0, -age * 1.9, 0.0));
+		float tongue = smoothstep(0.6, 0.9, n1 * 0.7 + n2 * 0.42);
+		float low = exp(-max(v_local.y, 0.0) / 3.5);
+		float flick = 0.75 + 0.25 * sin(age * 11.0 + s * 50.0 + wp.x * 0.7);
+		vec3 fcol = mix(vec3(1.0, 0.30, 0.05), vec3(1.0, 0.62, 0.22), n2);
+		if (part == P_GLASS) {
+			// the room behind the window is on fire
+			emis += fcol * v_burn * (0.6 + 0.4 * n1) * flick * 3.0 * fire_gain;
+		} else {
+			float mask = 0.4 + 0.6 * face;
+			emis += fcol * tongue * low * mask * v_burn * flick * 4.5 * fire_gain;
+			float em = smoothstep(0.74, 0.95, vnoise3(wp * 3.3 + s * 11.0));
+			emis += vec3(1.0, 0.22, 0.03) * em * v_burn * 1.2 * fire_gain;
+			alb *= 1.0 - 0.7 * v_burn;
+		}
 	}
 
 	// ---- fireball light: warm flash tint on the side facing the blast

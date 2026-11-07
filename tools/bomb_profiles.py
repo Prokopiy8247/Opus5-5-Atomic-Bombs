@@ -11,18 +11,20 @@ PROFILES = {
     # 1. Mk 82: sharp flash, small black-grey dirt cloud, fan of fragments, 5-8 m crater
     "mk82": dict(
         explosive="aluminized", fireball_scale=1.6, emission=220.0, fireball_noise=0.35, fireball_noise_scale=3.0,
-        cloud_top_m=90.0, cap_radius_m=22.0, cap_half_m=18.0, t_stab_s=25.0, stem_radius_m=9.0,
+        cloud_top_m=90.0, cap_radius_m=22.0, cap_half_m=20.0, t_stab_s=25.0, stem_radius_m=12.0,
         head_color_early=SOOT, head_color_late=[0.32, 0.29, 0.26], stem_color=DIRT, skirt_color=DUST,
-        dark_base=0.3, torus=0.25, head_noise_amp=0.45, head_noise_scale=0.7, skirt=0.8, skirt_max_r=40.0,
+        dark_base=0.3, torus=0.0, head_noise_amp=0.7, head_noise_scale=0.8, billow_sharp=0.8, skirt=0.8, skirt_max_r=40.0,
+        stem_density=0.55, stem_flare=2.6, stem_waist=-0.3,
         crater=True, crater_scale=1.5, crater_time=0.25, debris_count=1800, debris_speed=90.0, debris_size=0.18,
         debris_cone=75.0, debris_hot=0.8, wilson=0.4, stem_delay=0.05, stem_speed_rel=1.0, dust_wall=0.8,
     ),
     # 2. Mk 84: orange ball, black-brown column, dust ring, visible shock ring on dry ground
     "mk84": dict(
         explosive="aluminized", fireball_scale=2.4, emission=220.0, fireball_noise=0.35, fireball_noise_scale=3.0,
-        cloud_top_m=260.0, cap_radius_m=55.0, cap_half_m=45.0, t_stab_s=45.0, stem_radius_m=18.0,
+        cloud_top_m=260.0, cap_radius_m=55.0, cap_half_m=48.0, t_stab_s=45.0, stem_radius_m=26.0,
         head_color_early=[0.09, 0.07, 0.06], head_color_late=[0.30, 0.26, 0.22], stem_color=[0.22, 0.17, 0.12],
-        skirt_color=DUST, dark_base=0.4, torus=0.35, head_noise_amp=0.45, head_noise_scale=0.7,
+        skirt_color=DUST, dark_base=0.4, torus=0.1, head_noise_amp=0.65, head_noise_scale=0.8, billow_sharp=0.8,
+        stem_density=0.7, stem_flare=2.4, stem_waist=-0.3,
         skirt=1.0, skirt_max_r=110.0, crater=True, crater_scale=2.0, crater_time=0.35,
         debris_count=2600, debris_speed=110.0, debris_size=0.3, debris_cone=70.0, debris_hot=0.7,
         wilson=0.5, stem_delay=0.05, stem_speed_rel=1.0, dust_wall=1.0,
@@ -55,7 +57,7 @@ PROFILES = {
         explosive="aluminized", fireball_scale=2.6, emission=260.0, fireball_noise=0.4, fireball_noise_scale=3.5,
         cloud_top_m=1800.0, cap_radius_m=420.0, cap_half_m=260.0, t_stab_s=150.0, stem_radius_m=120.0,
         head_color_early=[0.06, 0.05, 0.05], head_color_late=[0.28, 0.26, 0.25], stem_color=[0.20, 0.17, 0.14],
-        skirt_color=DUST, dark_base=0.5, torus=0.8, head_noise_amp=0.4, skirt=1.0, skirt_max_r=500.0,
+        skirt_color=DUST, dark_base=0.5, torus=0.8, head_noise_amp=0.55, billow_sharp=0.75, skirt=1.0, skirt_max_r=500.0,
         crater=False, debris_count=1200, debris_speed=70.0, debris_size=0.35, debris_cone=60.0,
         wilson=1.0, stem_delay=0.4, stem_speed_rel=0.8, dust_wall=1.0, core_glow=1.0,
     ),

@@ -40,6 +40,10 @@ const IGNITE_K := [1.0, 1.3, 1.6, 1.0, 1.4, 1.4, 1.0, 1.0, 1.0, 1.5, 1.0, 1.0, 1
 ## smoke column source size (m; 0 = no smoke) and probability for a burning object to smoke
 const SMOKE := [6.0, 5.0, 3.0, 1.4, 2.4, 3.0, 0.0, 0.0, 0.0, 0.8, 0.0, 0.0, 0.0, 0.0, 4.0, 4.0, 0.0]
 const SMOKE_P := [1.0, 1.0, 0.35, 0.15, 0.8, 0.8, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 0.0, 0.8, 1.0, 0.0]
+## dust cloud size (m; 0 = none), probability and delay after the shock arrival (s)
+const DUST := [7.0, 9.0, 3.0, 0.0, 3.0, 4.0, 5.0, 7.0, 4.0, 0.0, 0.0, 14.0, 0.0, 20.0, 9.0, 6.0, 0.0]
+const DUST_P := [1.0, 1.0, 0.25, 0.0, 0.7, 0.7, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0]
+const DUST_DELAY := [0.3, 0.4, 1.2, 0.0, 0.4, 0.4, 0.2, 2.6, 2.4, 0.0, 0.0, 0.8, 0.0, 0.6, 0.6, 0.8, 0.0]
 const SHADOW := [true, true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, false]
 
 # part ids (must match destructible.gdshader)
@@ -75,7 +79,7 @@ const RING_PSI := [100.0, 50.0, 20.0, 10.0, 5.0, 3.0, 2.0, 1.0, 0.5]
 const FIXED_R := [1000.0, 3000.0]
 const GRID := 20.0
 const MAX_RING_R := 120000.0
-const MAX_SMOKE := 700
+const MAX_SMOKE := 1000
 const WIRE_H := 9.45
 const WIRE_SAG := 0.6
 
@@ -550,6 +554,15 @@ func _add_instance(type: int, xf: Transform3D, sample: Vector3) -> int:
 		var cw := _f32(floorf(minf(psi, 500.0) * 10.0) + _rng.randf() * 0.99)
 		_smoke_list.append([top, Color(ign + delay, -sz if veg else sz, arr, cw)])
 		_min_ign = minf(_min_ign, ign + delay)
+	# a dust cloud where something collapses, tumbles or crashes down
+	var ds: float = DUST[type]
+	if ds > 0.0 and psi < 999.0 and _smoke_list.size() < MAX_SMOKE:
+		var need := 1 if (type == T_TANK or type == T_BRIDGE) else 2
+		if state_for(type, psi, seed_gpu) >= need and _rng.randf() < float(DUST_P[type]):
+			var dsz := ds * xf.basis.get_scale().x * _rng.randf_range(0.85, 1.2)
+			var dcw := _f32(floorf(minf(psi, 500.0) * 10.0) + _rng.randf() * 0.99)
+			_smoke_list.append([xf.origin, Color(arr + float(DUST_DELAY[type]), dsz + 1000.0, arr, dcw)])
+			_min_ign = minf(_min_ign, arr)
 	return _objects.size() - 1
 
 
@@ -1268,21 +1281,22 @@ func _build_wood(rng: RandomNumberGenerator) -> ArrayMesh:
 	mb.color = Color(0.58, 0.57, 0.54)
 	mb.box(Vector3(0, -0.45, 0), Vector3(W + 0.3, 1.2, D + 0.3))
 	var wall_col := Color(0.86, 0.84, 0.80)
+	# front / back walls in two panels each (they break apart separately)
 	for s: float in [1.0, -1.0]:
-		var c := Vector3(0, fl + hw * 0.5, s * (D * 0.5 - t * 0.5))
-		mb.part = P_WALL
-		mb.color = wall_col
-		mb.piece(c, rng.randf(), Vector3(s, 0, 0), PI * 0.5, Vector2(hw * 0.5, t * 0.5))
-		mb.box(c, Vector3(W, hw, t))
 		var zf := s * (D * 0.5 + 0.012)
-		for wx: float in [-2.3, 2.3]:
-			mb.glass(Vector3(wx, fl + 1.55, zf), Vector3(0.55, 0, 0), Vector3(0, 0.62, 0), Vector3(0, 0, s), rng.randf())
-		if s > 0.0:
-			mb.part = P_DOOR
-			mb.color = Color(0.36, 0.24, 0.16)
-			mb.quad(Vector3(-0.48, fl, zf), Vector3(0.48, fl, zf), Vector3(0.48, fl + 2.05, zf), Vector3(-0.48, fl + 2.05, zf), Vector3(0, 0, 1))
-		else:
-			mb.glass(Vector3(0, fl + 1.55, zf), Vector3(0.4, 0, 0), Vector3(0, 0.5, 0), Vector3(0, 0, -1), rng.randf())
+		for hx: float in [-1.0, 1.0]:
+			var c := Vector3(hx * W * 0.25, fl + hw * 0.5, s * (D * 0.5 - t * 0.5))
+			mb.part = P_WALL
+			mb.color = wall_col
+			mb.piece(c, rng.randf(), Vector3(s, 0, 0), PI * 0.5, Vector2(hw * 0.5, t * 0.5))
+			mb.box(c, Vector3(W * 0.5, hw, t))
+			mb.glass(Vector3(hx * 2.4, fl + 1.55, zf), Vector3(0.55, 0, 0), Vector3(0, 0.62, 0), Vector3(0, 0, s), rng.randf())
+			if hx > 0.0 and s > 0.0:
+				mb.part = P_DOOR
+				mb.color = Color(0.36, 0.24, 0.16)
+				mb.quad(Vector3(0.45, fl, zf), Vector3(1.4, fl, zf), Vector3(1.4, fl + 2.05, zf), Vector3(0.45, fl + 2.05, zf), Vector3(0, 0, 1))
+			elif hx < 0.0 and s < 0.0:
+				mb.glass(Vector3(-0.8, fl + 1.55, zf), Vector3(0.4, 0, 0), Vector3(0, 0.5, 0), Vector3(0, 0, -1), rng.randf())
 	for s: float in [1.0, -1.0]:
 		var c := Vector3(s * (W * 0.5 - t * 0.5), fl + hw * 0.5, 0)
 		mb.part = P_WALL
@@ -1300,9 +1314,11 @@ func _build_wood(rng: RandomNumberGenerator) -> ArrayMesh:
 		var mid := Vector3(0, top + ridge * 0.5, s * D * 0.25)
 		var down := Vector3(0, -sin(alpha), s * cos(alpha))
 		var nrm := Vector3(0, cos(alpha), s * sin(alpha))
-		var c := mid + down * 0.22 + nrm * 0.09
-		mb.piece(c, rng.randf(), Vector3(-s, 0, 0), alpha, Vector2(slope_len * 0.5, 0.09))
-		mb.box(c, Vector3(W + 0.6, 0.16, slope_len), Basis(Vector3.RIGHT, s * alpha))
+		# each slope in three sections that tear off on their own
+		for k in 3:
+			var c := mid + down * 0.22 + nrm * 0.09 + Vector3((k - 1) * (W + 0.6) / 3.0, 0, 0)
+			mb.piece(c, rng.randf(), Vector3(-s, 0, 0), alpha, Vector2(slope_len * 0.5, 0.09))
+			mb.box(c, Vector3((W + 0.6) / 3.0, 0.16, slope_len), Basis(Vector3.RIGHT, s * alpha))
 	mb.part = P_CHIMNEY
 	mb.color = Color(0.46, 0.23, 0.17)
 	var cc := Vector3(2.4, top + 1.3, -1.1)
@@ -1366,9 +1382,10 @@ func _build_brick(rng: RandomNumberGenerator) -> ArrayMesh:
 		var mid := Vector3(0, top + rise * 0.5, s * D * 0.25)
 		var down := Vector3(0, -sin(alpha), s * cos(alpha))
 		var nrm := Vector3(0, cos(alpha), s * sin(alpha))
-		var c := mid + down * 0.25 + nrm * 0.1
-		mb.piece(c, rng.randf(), Vector3(-s, 0, 0), alpha, Vector2(slope_len * 0.5, 0.1))
-		mb.box(c, Vector3(W + 0.7, 0.18, slope_len), Basis(Vector3.RIGHT, s * alpha))
+		for k in 3:
+			var c := mid + down * 0.25 + nrm * 0.1 + Vector3((k - 1) * (W + 0.7) / 3.0, 0, 0)
+			mb.piece(c, rng.randf(), Vector3(-s, 0, 0), alpha, Vector2(slope_len * 0.5, 0.1))
+			mb.box(c, Vector3((W + 0.7) / 3.0, 0.18, slope_len), Basis(Vector3.RIGHT, s * alpha))
 	mb.part = P_CHIMNEY
 	mb.color = Color(0.45, 0.22, 0.16)
 	var cc := Vector3(-3.0, top + 1.6, 1.2)
@@ -1899,10 +1916,12 @@ func _build_smoke_strip() -> ArrayMesh:
 	return m
 
 
-## Smoke columns over burning objects: camera-facing strips that grow from the ignition time,
-## are torn downwind by the blast wind at the shock arrival (fresh smoke then rises again from
-## the source) and glow orange at the foot. INSTANCE_CUSTOM: x ignition (s), y size (m, negative
-## = vegetation smoke), z shock arrival (s), w = floor(psi*10) + seed.
+## Smoke plumes over burning objects and dust clouds where structures collapse: camera-facing
+## strips. INSTANCE_CUSTOM: x start time (s), y size (m; negative = vegetation smoke,
+## +1000 = dust cloud), z shock arrival (s), w = floor(psi * 10) + seed. Plumes grow from the
+## ignition time, are torn downwind by the blast wind at the shock arrival (fresh smoke then
+## rises again from the source) and glow orange at the foot; dust clouds billow out, drift with
+## the blast wind and settle.
 const SMOKE_SHADER := """
 shader_type spatial;
 render_mode blend_mix, depth_draw_never, cull_disabled, unshaded, shadows_disabled;
@@ -1918,17 +1937,24 @@ varying float v_fire;
 varying vec2 v_uv;
 varying vec3 v_wp;
 varying float v_seed;
-varying float v_veg;
+varying float v_mode;
 varying float v_size;
 
-float sat(float x) { return clamp(x, 0.0, 1.0); }
+float sat(float x) {
+	return clamp(x, 0.0, 1.0);
+}
+
+float wind_u(float psi) {
+	return 5.0 * psi / (7.0 * 14.7) * 343.0 / sqrt(1.0 + 6.0 * psi / (7.0 * 14.7));
+}
 
 void vertex() {
 	vec4 ic = INSTANCE_CUSTOM;
 	float age = g_blast_age;
 	float ti = age - ic.x;
-	float size = abs(ic.y);
-	v_veg = ic.y < 0.0 ? 1.0 : 0.0;
+	bool dust = ic.y > 500.0;
+	float size = dust ? ic.y - 1000.0 : abs(ic.y);
+	v_mode = dust ? 2.0 : (ic.y < 0.0 ? 1.0 : 0.0);
 	float psi = floor(ic.w) * 0.1;
 	v_seed = fract(ic.w);
 	vec3 o = MODEL_MATRIX[3].xyz;
@@ -1939,33 +1965,44 @@ void vertex() {
 	v_uv = UV;
 	vec3 wpos = o;
 	if (age >= 0.0 && ti > 0.0) {
-		float rise = 2.5 + size * 0.35;
-		float Hmax = size * 12.0 + 40.0;
-		float H = Hmax * (1.0 - exp(-rise * ti / Hmax));
-		float y = UV.y * H;
-		float w = size * (0.6 + 1.8 * UV.y) + y * 0.12;
 		vec3 right = normalize(vec3(INV_VIEW_MATRIX[0].x, 0.0, INV_VIEW_MATRIX[0].z) + vec3(1e-5, 0.0, 0.0));
-		vec3 drift = vec3(0.9, 0.0, 0.3) * y * 0.18;
-		float tb = age - ic.z;
 		vec3 wd = o - burst_pos;
 		vec3 push = length(wd.xz) > 0.1 ? normalize(vec3(wd.x, 0.0, wd.z)) : vec3(1.0, 0.0, 0.0);
-		if (tb > 0.0 && psi > 0.3) {
-			float u = 5.0 * psi / (7.0 * 14.7) * 343.0 / sqrt(1.0 + 6.0 * psi / (7.0 * 14.7));
-			float tp = max(0.5 * w13, 0.05);
-			float D = min(u * tp * 0.8 * (1.0 - exp(-tb / tp)), 600.0);
-			float ynew = rise * tb;
-			float old = smoothstep(ynew - 0.1 * H - 2.0, ynew + 0.1 * H + 2.0, y);
-			drift += push * D * old;
-			drift -= push * min(D * 0.15, 40.0) * old * sat((tb - tp) / (3.0 * tp));
+		float tb = age - ic.z;
+		float tp = max(0.5 * w13, 0.05);
+		float u = wind_u(psi);
+		if (dust) {
+			float R = size * (0.6 + 2.2 * (1.0 - exp(-ti / 1.4)) + 0.04 * ti);
+			float H = R * (0.55 + 0.15 * sat(ti / 6.0));
+			float y = UV.y * H;
+			float w = 2.0 * R * (1.0 - 0.3 * UV.y * UV.y);
+			float D = min(u * tp * 0.35 * (1.0 - exp(-max(tb, 0.0) / tp)), size * 6.0);
+			wpos = o + right * (UV.x - 0.5) * w + vec3(0.0, y - 0.15 * size, 0.0) + push * D;
+			v_h = y;
+			v_a = sat(ti / 0.25) * exp(-ti / 10.0);
+		} else {
+			float rise = 2.0 + size * 0.5;
+			float Hmax = size * 15.0 + 40.0;
+			float H = Hmax * (1.0 - exp(-rise * ti / Hmax));
+			float y = UV.y * H;
+			float w = size * (0.8 + 2.4 * UV.y) + y * 0.28;
+			vec3 drift = vec3(0.9, 0.0, 0.35) * y * 0.12 * (0.5 + UV.y);
+			if (tb > 0.0 && psi > 0.3) {
+				float D = min(u * tp * 0.8 * (1.0 - exp(-tb / tp)), 600.0);
+				float ynew = rise * tb;
+				float old = smoothstep(ynew - 0.1 * H - 2.0, ynew + 0.1 * H + 2.0, y);
+				drift += push * D * old;
+				drift -= push * min(D * 0.15, 40.0) * old * sat((tb - tp) / (3.0 * tp));
+			}
+			wpos = o + right * (UV.x - 0.5) * w + vec3(0.0, y, 0.0) + drift;
+			v_h = y;
+			v_a = sat(ti / 2.0) * mix(1.0, 0.5, sat(ti / 600.0));
+			float fire = sat(ti) * mix(1.0, 0.3, sat(ti / 240.0));
+			if (tb > 0.0 && psi > 1.5) {
+				fire *= 1.0 - 0.85 * sat(tb / 0.15) * exp(-tb / 4.0);
+			}
+			v_fire = v_mode > 0.5 ? fire * 0.5 : fire;
 		}
-		wpos = o + right * (UV.x - 0.5) * w + vec3(0.0, y, 0.0) + drift;
-		v_h = y;
-		v_a = sat(ti / 2.0);
-		float fire = sat(ti) * mix(1.0, 0.3, sat(ti / 240.0));
-		if (tb > 0.0 && psi > 1.5) {
-			fire *= 1.0 - 0.85 * sat(tb / 0.15) * exp(-tb / 4.0);
-		}
-		v_fire = fire;
 	}
 	VERTEX = wpos - o;
 	v_wp = wpos;
@@ -1999,23 +2036,36 @@ void fragment() {
 	float age = max(g_blast_age, 0.0);
 	vec2 uv = v_uv;
 	float xs = (uv.x - 0.5) * 2.0;
-	float n = fbm2(vec2(uv.x * 2.5 + v_seed * 13.0, v_h / max(v_size * 2.5, 1.0) - age * 0.22));
-	float edge = 1.0 - smoothstep(0.3, 1.0, abs(xs) + (n - 0.5) * 0.9);
-	float top = 1.0 - smoothstep(0.65, 1.0, uv.y + (n - 0.5) * 0.35);
-	float bottom = smoothstep(0.0, 0.05, uv.y);
-	float dens = sat(edge * top * bottom * (0.4 + 1.1 * n)) * v_a;
-	float a = dens * (v_veg > 0.5 ? 0.5 : 0.82);
-	vec3 base = v_veg > 0.5 ? vec3(0.34, 0.32, 0.29) : vec3(0.075, 0.07, 0.065);
-	vec3 lit = g_ambient.rgb * g_ambient.w * 0.9 + g_sun_light.rgb * max(g_sun_dir.y, 0.0) * 0.45;
-	vec3 col = base * lit;
-	float glow = v_fire * exp(-v_h / max(v_size * 1.2, 1.0));
-	float fl = 0.6 + 0.4 * sin(age * 13.0 + v_seed * 40.0) * sin(age * 7.3 + uv.x * 5.0);
-	col += vec3(1.0, 0.38, 0.08) * glow * fl * 5.0;
-	a = max(a, sat(glow * 1.4) * edge * bottom * v_a);
+	vec3 lit = g_ambient.rgb * g_ambient.w * 0.9 + g_sun_light.rgb * max(g_sun_dir.y, 0.0) * 0.5;
+	vec3 col;
+	float a;
+	if (v_mode > 1.5) {
+		float n = fbm2(vec2(uv.x * 2.2 + v_seed * 17.0, uv.y * 1.6 - age * 0.05) * 1.5);
+		float d = length(vec2(xs, uv.y * 1.15));
+		float m = 1.0 - smoothstep(0.45, 1.0, d + (n - 0.5) * 0.7);
+		a = sat(m * (0.5 + 0.9 * n)) * v_a * 0.85;
+		col = vec3(0.50, 0.43, 0.34) * lit * (0.7 + 0.5 * n + 0.2 * uv.y);
+	} else {
+		float scale = max(v_size * 2.0, 1.0);
+		float n = fbm2(vec2(uv.x * 2.0 + v_seed * 13.0, v_h / scale - age * 0.25));
+		float n2 = fbm2(vec2(uv.x * 4.5 - v_seed * 7.0, v_h / scale * 2.2 - age * 0.4));
+		float nn = n * 0.65 + n2 * 0.35;
+		float edge = 1.0 - smoothstep(0.25, 1.0, abs(xs) + (nn - 0.5) * 1.1);
+		float top = 1.0 - smoothstep(0.6, 1.0, uv.y + (nn - 0.5) * 0.4);
+		float bottom = smoothstep(0.0, 0.05, uv.y);
+		float dil = mix(1.0, 0.45, uv.y);
+		a = sat(edge * top * bottom * dil * (0.3 + 1.2 * nn)) * v_a * (v_mode > 0.5 ? 0.55 : 0.9);
+		vec3 base = v_mode > 0.5 ? vec3(0.36, 0.34, 0.31) : vec3(0.07, 0.065, 0.06);
+		col = base * lit * (0.65 + 0.7 * nn);
+		float glow = v_fire * exp(-v_h / max(v_size * 0.7, 0.5));
+		float fl = 0.65 + 0.35 * sin(age * 13.0 + v_seed * 40.0) * sin(age * 7.3 + uv.x * 5.0);
+		col += vec3(1.0, 0.38, 0.08) * glow * fl * 2.5;
+		a = max(a, sat(glow * 1.2) * edge * bottom * v_a);
+	}
 	if (g_fireball_color.w > 0.0 && g_fireball.w > 0.0) {
 		float d = length(g_fireball.xyz - v_wp);
 		float k = pow(g_fireball.w / max(d, g_fireball.w), 2.0);
-		col += base * g_fireball_color.rgb * min(g_fireball_color.w * k * 0.5, 40.0);
+		col += col * g_fireball_color.rgb * min(g_fireball_color.w * k * 2.0, 40.0);
 	}
 	ALBEDO = col;
 	ALPHA = sat(a);

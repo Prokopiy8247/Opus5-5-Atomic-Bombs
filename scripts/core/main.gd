@@ -84,6 +84,9 @@ func _load_optional_modules() -> void:
 		if us:
 			ui = us.new()
 			ui.name = "UI"
+			# main owns the mouse mode and the Tab key (camera look must follow the menu state)
+			ui.manage_mouse = false
+			ui.handle_tab_key = false
 			add_child(ui)
 			ui.setup(Game.bombs)
 			ui.launch_requested.connect(_on_launch_requested)
@@ -105,6 +108,18 @@ func _start_game() -> void:
 		ui.show_menu(true)
 	_update_mouse()
 	print("READY")
+	if Args.has("ui_shot"):
+		# QA: screenshot of the terminal menu (optionally in English / another bomb)
+		if Args.has("lang"):
+			Game.set_language(Args.get_str("lang", "ru"))
+		for i in 90:
+			await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var out := Args.get_str("out", OS.get_user_data_dir())
+		DirAccess.make_dir_recursive_absolute(out)
+		var p := out.path_join("ui_menu_%s.png" % Game.lang)
+		print("SHOT ", p, " err=", get_viewport().get_texture().get_image().save_png(p))
+		get_tree().quit()
 
 
 # ------------------------------------------------------------------ world / targets

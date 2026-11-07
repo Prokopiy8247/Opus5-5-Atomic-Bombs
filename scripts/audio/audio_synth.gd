@@ -574,7 +574,7 @@ static func make_rocket_loop() -> AudioStreamWAV:
 		lo2 += f2 * bd2
 		var hi2 := x - lo2 - 1.2 * bd2
 		bd2 += f2 * hi2
-		out[i] = (lo1 * 2.0 + bd2 * 0.65 + hi2 * 0.14) * (0.85 + 0.15 * fl[i]) + cr[i] * 0.45
+		out[i] = (lo1 * 2.0 - bd2 * 0.65 + hi2 * 0.14) * (0.85 + 0.15 * fl[i]) + cr[i] * 0.45
 	out = loopify(out, xn)
 	normalize(out, 0.9)
 	return to_wav(out, int(rate), true)

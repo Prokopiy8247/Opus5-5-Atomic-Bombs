@@ -79,16 +79,17 @@ func _noise_tex(freq: float, seed: int, normal := false, ramp: Gradient = null) 
 
 func _make_materials() -> void:
 	var g := Gradient.new()
-	g.set_color(0, Color(0.34, 0.33, 0.31))
-	g.set_color(1, Color(0.58, 0.57, 0.54))
+	g.set_color(0, Color(0.40, 0.39, 0.37))
+	g.add_point(0.55, Color(0.50, 0.49, 0.46))
+	g.set_color(g.get_point_count() - 1, Color(0.56, 0.55, 0.52))
 	concrete = StandardMaterial3D.new()
-	concrete.albedo_texture = _noise_tex(0.004, 11, false, g)
+	concrete.albedo_texture = _noise_tex(0.018, 11, false, g)
 	concrete.normal_enabled = true
-	concrete.normal_texture = _noise_tex(0.02, 12, true)
-	concrete.normal_scale = 0.5
-	concrete.roughness = 0.92
+	concrete.normal_texture = _noise_tex(0.06, 12, true)
+	concrete.normal_scale = 0.35
+	concrete.roughness = 0.94
 	concrete.uv1_triplanar = true
-	concrete.uv1_scale = Vector3(0.35, 0.35, 0.35)
+	concrete.uv1_scale = Vector3(0.5, 0.5, 0.5)
 	concrete_floor = concrete.duplicate()
 	concrete_floor.albedo_color = Color(0.72, 0.72, 0.72)
 	concrete_floor.roughness = 0.8

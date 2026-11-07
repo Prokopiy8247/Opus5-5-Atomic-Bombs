@@ -287,7 +287,17 @@ float stem_density(vec3 p, out float n_out) {
 	float lf = nlf(np * 0.25 + 4.0);
 	n_out = n;
 	float dn = base - ((n - 0.45) * 0.9 + (lf - 0.5) * 0.7) * amp;
-	float dens = smoothstep(r * 0.04, -r * 0.3, dn);
+	float jetk = 1.0;
+	if (stem_cone > 0.0) {
+		// ejecta crown: radial jets of soil fanning out of the crater, ragged at the top
+		float h01 = clamp((p.y - stem.x) / max(stem.y - stem.x, 1.0), 0.0, 1.0);
+		float ang = atan(p.z, p.x);
+		float jet = nbl(vec3(ang * 2.2 + seed, h01 * 0.9, seed * 0.3)) * 0.7 + nbl(vec3(ang * 5.1, h01 * 2.3 + 1.7, seed)) * 0.3;
+		jet = smoothstep(0.35, 0.75, jet);
+		dn -= (jet - 0.5) * r * 0.55 * h01;
+		jetk = mix(0.35, 1.35, jet) * (1.0 - 0.6 * smoothstep(0.75, 1.0, h01) * (1.0 - n));
+	}
+	float dens = smoothstep(r * 0.04, -r * 0.3, dn) * jetk;
 	return dens * stem.w;
 }
 

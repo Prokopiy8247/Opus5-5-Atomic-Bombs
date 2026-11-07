@@ -278,7 +278,7 @@ func _scenario_visual(tag: String, gz: Vector3, w: float, hob: float, surface: b
 	var views: Array = []
 	# overview: elevated, ~1.5 km (A) / 6 km (B) from ground zero, from the east side
 	if tag == "a":
-		views.append(["overview", gz + Vector3(1300, 240, 700), gz + Vector3(-150, 0, -300), 62.0])
+		views.append(["overview", gz + Vector3(1300, 240, 700), gz + Vector3(-150, 0, -300), 45.0])
 	else:
 		views.append(["overview", gz + Vector3(5200, 900, 3200), gz + Vector3(-600, 0, -1500), 62.0])
 	for target: float in ([10.0, 5.0, 3.0, 2.0] if tag == "a" else [20.0, 10.0, 5.0, 3.0]):
@@ -360,8 +360,8 @@ func _closeup(target: float, gz2: Vector2) -> Array:
 	var u_t := Vector2(-u_r.y, u_r.x)
 	# stand on the side away from the bunker's line of sight, a bit downwind
 	var side := 1.0 if (o + u_t * 10.0).length() > o.length() else -1.0
-	var c2 := o + u_t * side * 70.0 + u_r * 25.0
-	var eye := Vector3(c2.x, TerrainMath.height(c2.x, c2.y) + 24.0, c2.y)
+	var c2 := o + u_t * side * 55.0 + u_r * 22.0
+	var eye := Vector3(c2.x, TerrainMath.height(c2.x, c2.y) + 17.0, c2.y)
 	var look := pos + Vector3(u_r.x, 0, u_r.y) * 18.0 + Vector3(0, 2.0, 0)
 	return ["p%s" % str(target), eye, look, 50.0, arr]
 

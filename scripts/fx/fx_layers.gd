@@ -44,7 +44,7 @@ class ShockLayer extends Node3D:
 			return
 		var slant := ex.shock_slant_radius(t)
 		var p := BlastPhysics.overpressure(ex.prof.blast_yield(), slant, ex.prof.surface, ex.prof.conventional)
-		var strength := clampf(log(1.0 + p) / log(1.0 + 20.0), 0.0, 1.0)
+		var strength := clampf(log(1.0 + p) / log(1.0 + 20.0), 0.0, 1.0) * 0.55
 		# the front is hard to see once it is weak and far
 		shell.visible = slant > 1.0 and p > 0.05
 		if not shell.visible:

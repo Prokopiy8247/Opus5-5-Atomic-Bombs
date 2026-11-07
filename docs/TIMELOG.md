@@ -5,3 +5,4 @@ START 2026-11-07T05:33:02.3679849+01:00
 - 2026-11-07T05:37:38+01:00 STAGE 2 skeleton START
 - 2026-11-07T06:42:08+01:00 STAGE 2 skeleton END (world, rig, git); STAGE 3/4/5 world+physics+reference explosion IN PROGRESS; modules workflow wf_37398165-ddc started
 - 2026-11-07T07:16:51+01:00 STAGE 1 research END; STAGE 2 END; STAGE 3 END; STAGE 4 END (selftest 112/112); STAGE 5/6 review cycle 1 START
+- 2026-11-07T07:44:28+01:00 FPS spot check 1440p: Little Boy bunker 265-293 fps; Tsar night bunker 217-275; Tsar zoom full-screen 46-181 fps
