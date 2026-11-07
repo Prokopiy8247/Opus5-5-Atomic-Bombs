@@ -384,11 +384,11 @@ func metered_luminance(ti: float, amb: float) -> float:
 		if ang < half_fov + ang_r:
 			var cov := clampf(pow(ang_r / half_fov, 2.0) * 6.0, 0.0, 1.0)
 			# a camera / binocular stopped down on a fireball that fills the view (rapatronic look)
-			env_ctl.max_comp = lerpf(6.0, 8.5, cov) if prof.nuclear else 4.0
+			env_ctl.max_comp = lerpf(6.0, 10.0, cov) if prof.nuclear else 4.0
 			var tt: float = fs["temp"]
 			var x := tt / 8000.0
 			# metering aims the fireball ~2 stops above middle grey (bright, but with visible structure)
-			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / (6.0 * amb)
+			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / (3.0 * amb)
 			lum = maxf(lum, (1.0 - cov) * (1.0 + lum) + cov * l_fb - 1.0)
 	return lum
 

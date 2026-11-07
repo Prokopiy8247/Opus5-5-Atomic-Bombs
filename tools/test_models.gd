@@ -38,6 +38,10 @@ func _initialize() -> void:
 	_build_scene()
 	_check_sizes()
 	_check_missiles()
+	_check_api()
+	_check_geometry()
+	_check_robustness()
+	_check_leaks()
 	if DisplayServer.get_name() == "headless":
 		_finish()
 	else:
@@ -305,6 +309,237 @@ func _check_missiles() -> void:
 		failures += 1
 	print("parachute d=20: aabb=", pbox, " height=", pc.get_meta("height"), " ", "OK" if pok else "BAD")
 	pc.free()
+
+
+func _fail(msg: String) -> void:
+	failures += 1
+	print("  FAIL: ", msg)
+
+
+## The public functions exist, are static and take the documented arguments.
+func _check_api() -> void:
+	var want := {"build": 1, "build_missile": 1, "build_parachute": 2, "parachute_diameter": 1}
+	var found := {}
+	for m in (BM as Script).get_script_method_list():
+		var nm := String(m.get("name", ""))
+		if want.has(nm):
+			found[nm] = true
+			if (int(m.get("flags", 0)) & METHOD_FLAG_STATIC) == 0:
+				_fail("api: %s is not static" % nm)
+			if (m.get("args", []) as Array).size() != int(want[nm]):
+				_fail("api: %s takes %d args" % [nm, (m.get("args", []) as Array).size()])
+	for nm in want:
+		if not found.has(nm):
+			_fail("api: missing " + String(nm))
+	var b0: Dictionary = bombs[0]
+	var m0 := BM.build(b0)
+	for k in ["id", "model", "length", "diameter", "aabb", "tris", "conceptual"]:
+		if not m0.has_meta(k):
+			_fail("api: build() lacks meta " + k)
+	if m0.get_node_or_null("Mesh") == null:
+		_fail("api: build() lacks child Mesh")
+	m0.free()
+	var ms := BM.build_missile(b0)
+	for k in ["height", "diameter", "body_length", "nozzle_radius", "seat_y"]:
+		if not ms.has_meta(k):
+			_fail("api: build_missile() lacks meta " + k)
+	ms.free()
+	var pc := BM.build_parachute(10.0, Color.WHITE)
+	for k in ["height", "diameter", "skirt_y"]:
+		if not pc.has_meta(k):
+			_fail("api: build_parachute() lacks meta " + k)
+	for c in ["Canopy", "Lines"]:
+		if pc.get_node_or_null(c) == null:
+			_fail("api: build_parachute() lacks child " + c)
+	pc.free()
+	var bi := _find("ivy_mike")
+	if bi >= 0:
+		var im := BM.build(bombs[bi])
+		if not bool(im.get_meta("conceptual")) or im.get_node_or_null("Cradle") == null:
+			_fail("api: ivy_mike must be conceptual and have a Cradle")
+		im.free()
+	print("api check done")
+
+
+## Scans every vertex/normal of a node tree: finite positions, unit normals.
+## Returns [vertex_count, bad_count].
+func _scan_tree(n: Node) -> Array:
+	var verts := 0
+	var bad := 0
+	for c in n.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
+			var mesh := (c as MeshInstance3D).mesh as ArrayMesh
+			for si in mesh.get_surface_count():
+				var arr := mesh.surface_get_arrays(si)
+				var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+				var ns: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+				var ids: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+				verts += vs.size()
+				for i in vs.size():
+					var p: Vector3 = vs[i]
+					if not p.is_finite():
+						bad += 1
+					elif i < ns.size():
+						var nn: Vector3 = ns[i]
+						if not nn.is_finite() or absf(nn.length() - 1.0) > 0.01:
+							bad += 1
+				for i in ids.size():
+					if ids[i] < 0 or ids[i] >= vs.size():
+						bad += 1
+				if mesh.surface_get_material(si) == null:
+					bad += 1
+		var sub := _scan_tree(c)
+		verts += int(sub[0])
+		bad += int(sub[1])
+	return [verts, bad]
+
+
+## Signed volume of surface 0 of a mesh (closed solids). Godot front faces are
+## clockwise, so an outward-facing closed surface gives a positive value here.
+func _volume(mesh: ArrayMesh, si: int) -> float:
+	var arr := mesh.surface_get_arrays(si)
+	var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var ids: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var v := 0.0
+	for t in range(0, ids.size(), 3):
+		v -= vs[ids[t]].dot(vs[ids[t + 1]].cross(vs[ids[t + 2]]))
+	return v / 6.0
+
+
+func _check_geometry() -> void:
+	var total_v := 0
+	var total_bad := 0
+	for i in bombs.size():
+		var b: Dictionary = bombs[i]
+		var m := BM.build(b)
+		var r := _scan_tree(m)
+		total_v += int(r[0])
+		total_bad += int(r[1])
+		# Surface 0 is the closed body solid: it must enclose a positive
+		# volume close to that of the cylinder L x D (outward normals).
+		var mesh := (m.get_node("Mesh") as MeshInstance3D).mesh as ArrayMesh
+		var vol := _volume(mesh, 0)
+		var L := float(b.get("length_m", 1.0))
+		var R := float(b.get("diameter_m", 1.0)) * 0.5
+		var ratio := vol / (PI * R * R * L)
+		if ratio < 0.25 or ratio > 1.3:
+			_fail("body volume of %s: %.3f m3 (%.2f of cylinder)" % [String(b.get("id", "")), vol, ratio])
+		var ms := BM.build_missile(b)
+		r = _scan_tree(ms)
+		total_v += int(r[0])
+		total_bad += int(r[1])
+		var mvol := _volume((ms.get_node("Body") as MeshInstance3D).mesh as ArrayMesh, 0)
+		if mvol <= 0.0:
+			_fail("missile body of %s is inside-out (volume %.3f)" % [String(b.get("id", "")), mvol])
+		ms.free()
+		var pc := BM.build_parachute(BM.parachute_diameter(b), Color(0.9, 0.5, 0.1))
+		r = _scan_tree(pc)
+		total_v += int(r[0])
+		total_bad += int(r[1])
+		pc.free()
+		m.free()
+	if total_v == 0:
+		print("  geometry scan: no vertex data readable (rendering server without mesh storage), skipped")
+	elif total_bad > 0:
+		_fail("geometry scan: %d bad vertices/normals/indices/materials of %d" % [total_bad, total_v])
+	else:
+		print("geometry scan: %d vertices, all finite, unit normals, valid indices, materials set, bodies outward" % total_v)
+	# Trinity detonator directions: 32 distinct, evenly spread.
+	var dirs: Array[Vector3] = BM._ti_dirs()
+	var min_ang := PI
+	for a in dirs.size():
+		for c in range(a + 1, dirs.size()):
+			min_ang = minf(min_ang, dirs[a].angle_to(dirs[c]))
+	if dirs.size() != 32 or rad_to_deg(min_ang) < 35.0:
+		_fail("gadget directions: %d dirs, min separation %.1f deg" % [dirs.size(), rad_to_deg(min_ang)])
+	else:
+		print("gadget directions: 32, min separation %.1f deg" % rad_to_deg(min_ang))
+
+
+## Odd inputs must not crash or produce NaN.
+func _check_robustness() -> void:
+	var cases: Array[Dictionary] = [
+		{},
+		{"model": "no_such_model", "length_m": 0.0, "diameter_m": -1.0},
+		{"model": "tsar", "length_m": 500.0, "diameter_m": 0.001, "colors": {"body": [1, 0]}},
+		{"model": "gadget", "length_m": 0.01, "diameter_m": 0.01, "colors": "bad"},
+		{"model": "sausage", "id": 42, "device": true},
+	]
+	for b in cases:
+		var m := BM.build(b)
+		var r := _scan_tree(m)
+		var box: AABB = m.get_meta("aabb")
+		if int(r[1]) > 0 or not box.position.is_finite() or not box.size.is_finite() or int(m.get_meta("tris")) <= 0:
+			_fail("robustness: build(%s)" % str(b))
+		m.free()
+		var ms := BM.build_missile(b)
+		r = _scan_tree(ms)
+		if int(r[1]) > 0 or not is_finite(float(ms.get_meta("height"))):
+			_fail("robustness: build_missile(%s)" % str(b))
+		ms.free()
+		var d := BM.parachute_diameter(b)
+		if not is_finite(d) or d < 5.0 or d > 50.0:
+			_fail("robustness: parachute_diameter(%s) = %f" % [str(b), d])
+	for dm: float in [-3.0, 0.0, 0.5, 200.0]:
+		var pc := BM.build_parachute(dm, Color(1, 1, 1, 0.5))
+		if int(_scan_tree(pc)[1]) > 0 or not is_finite(float(pc.get_meta("height"))):
+			_fail("robustness: build_parachute(%f)" % dm)
+		pc.free()
+	print("robustness check done")
+
+
+## Builds and frees everything 20 times (also the launcher's payload
+## separation); object, node and resource counts must not grow.
+func _check_leaks() -> void:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var t_build := 0
+	var t_missile := 0
+	var t_chute := 0
+	var n_calls := 0
+	var counts: Array = []
+	for cycle in 21:
+		for b: Dictionary in bombs:
+			var t0 := Time.get_ticks_usec()
+			var m := BM.build(b)
+			var t1 := Time.get_ticks_usec()
+			var ms := BM.build_missile(b)
+			var t2 := Time.get_ticks_usec()
+			var pc := BM.build_parachute(BM.parachute_diameter(b), Color(0.9, 0.5, 0.1))
+			var t3 := Time.get_ticks_usec()
+			if cycle > 0:
+				t_build += t1 - t0
+				t_missile += t2 - t1
+				t_chute += t3 - t2
+				n_calls += 1
+			holder.add_child(m)
+			holder.add_child(ms)
+			holder.add_child(pc)
+			# Payload separation: reparent keeping its transform (the tree is
+			# not live during _initialize, so compose the transforms by hand).
+			var p: Node3D = ms.get_node("Payload")
+			var gt := ms.transform * p.transform
+			ms.remove_child(p)
+			holder.add_child(p)
+			p.transform = gt
+			m.free()
+			ms.free()
+			p.free()
+			pc.free()
+		if cycle == 0 or cycle == 20:
+			counts.append([Performance.get_monitor(Performance.OBJECT_COUNT), Performance.get_monitor(Performance.OBJECT_NODE_COUNT), Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT), Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT), Performance.get_monitor(Performance.MEMORY_STATIC)])
+	holder.free()
+	var a: Array = counts[0]
+	var z: Array = counts[1]
+	print("leak check (after cycle 1 -> after cycle 21): objects %d -> %d, nodes %d -> %d, resources %d -> %d, orphans %d -> %d, static mem %.2f -> %.2f MB" % [int(a[0]), int(z[0]), int(a[1]), int(z[1]), int(a[2]), int(z[2]), int(a[3]), int(z[3]), float(a[4]) / 1048576.0, float(z[4]) / 1048576.0])
+	if int(z[0]) > int(a[0]) or int(z[1]) > int(a[1]) or int(z[2]) > int(a[2]) or int(z[3]) > int(a[3]):
+		_fail("leak: object/node/resource counts grew over 20 cycles")
+	if float(z[4]) - float(a[4]) > 8.0 * 1048576.0:
+		_fail("leak: static memory grew by %.1f MB" % ((float(z[4]) - float(a[4])) / 1048576.0))
+	var nb := float(maxi(n_calls, 1))
+	print("timing per call: build %.2f ms, build_missile %.2f ms, build_parachute %.2f ms" % [t_build / nb / 1000.0, t_missile / nb / 1000.0, t_chute / nb / 1000.0])
+	if t_build / nb > 20000.0 or t_missile / nb > 40000.0 or t_chute / nb > 20000.0:
+		_fail("timing: a builder takes more than 20-40 ms per call")
 
 
 # ----------------------------------------------------------- screenshots ---

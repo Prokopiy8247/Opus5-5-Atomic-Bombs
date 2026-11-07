@@ -16,8 +16,10 @@ extends Node3D
 ##   rings() -> Array                                       [{psi, r, arrival}] placed rings
 ##   damage_summary(age) -> Dictionary                      CPU mirror of the main thresholds
 ##   instance_total() -> int
-## opts (all optional): nuclear (bool, default w_kt >= 0.05), blast_scale (air-blast coupling,
-##   e.g. 0.1 buried / 0.3 underwater), fireball_r (m), crater_r (m), density (0.3..1.5), seed.
+## opts (all optional): nuclear (bool, default w_kt >= 0.05), conventional (bool, default
+##   not nuclear; selects the HE blast fits), blast_scale (air-blast coupling, e.g. 0.1 buried /
+##   0.3 underwater), fireball_r (m), crater_r (m), exclude_r (m, keep-out radius around ground
+##   zero, e.g. the Baker lagoon), density (0.2..2), seed (int).
 ## The node must stay at the world origin (it is top_level; instance transforms are world).
 
 const SHADER := preload("res://shaders/destructible.gdshader")
@@ -182,6 +184,8 @@ func setup(gz: Vector3, w_kt: float, hob: float, surface: bool, humidity: float,
 	_ub = (-_gz2 / gl) if gl > 1.0 else Vector2(0, 1)
 	_up = Vector2(-_ub.y, _ub.x)
 	_r_min = maxf(maxf(_fb_ground * 1.15, _crater_r * 1.6), 8.0)
+	# e.g. the Baker lagoon: nothing is placed inside this ground radius
+	_r_min = maxf(_r_min, float(opts.get("exclude_r", 0.0)))
 	_build_psi_table()
 	_imp = clampf(sqrt(pow(_w_blast, 1.0 / 3.0) / 2.466), 0.25, 2.0)
 	var r1psi := _ring_r(1.0)
@@ -925,6 +929,10 @@ func _windbreak(r: float, phi: float, n: int) -> void:
 		return
 	var perp := Vector2(-u.y, u.x)
 	var spacing := clampf(r * 0.01, 7.0, 14.0)
+	# keep the row short compared with its radius (small yields: everything is within ~100 m)
+	n = mini(n, int(r * 0.6 / spacing))
+	if n < 4:
+		return
 	for i in n:
 		var rr_i := r + (i - n * 0.5) * spacing
 		_place(T_TREE, _gz2 + u * rr_i + perp * _rng.randf_range(-1.2, 1.2), _rng.randf() * TAU, _rng.randf_range(0.85, 1.2))
@@ -2109,7 +2117,7 @@ void fragment() {
 		float nn = n * 0.65 + n2 * 0.35;
 		float edge = 1.0 - smoothstep(0.25, 1.0, abs(xs) + (nn - 0.5) * 1.1);
 		float top = 1.0 - smoothstep(0.6, 1.0, uv.y + (nn - 0.5) * 0.4);
-		float bottom = smoothstep(0.0, 0.05, uv.y);
+		float bottom = smoothstep(0.0, max(v_size * 0.6, 1.5), v_h);
 		float dil = mix(1.0, 0.45, uv.y);
 		a = sat(edge * top * bottom * dil * (0.3 + 1.2 * nn)) * v_a * (v_mode > 0.5 ? 0.55 : 0.9) * (1.0 - 0.9 * v_brk);
 		// smoke torn off by the blast wind is mixed away within about a second

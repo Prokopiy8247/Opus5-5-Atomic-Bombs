@@ -475,11 +475,15 @@ func _column_head(t: float, st: Dictionary) -> Dictionary:
 	var rise_extra := float(a("cap_rise", 0.0)) * late
 	# the cloud keeps the height the ejecta reached (it does not sink with the collapsing column)
 	var h_ref := float(a("col_height", 100.0)) * clampf(grow * 3.0, 0.0, 1.0) if bool(a("cap_hold_peak", false)) else h
-	st["center_y"] = maxf(h, h_ref) * 0.92 + rise_extra
+	st["center_y"] = maxf(h, h_ref) * float(a("cap_center_k", 0.92)) + rise_extra
 	st["radius"] = r
 	st["half"] = r * float(a("cap_aspect", 0.55))
 	st["torus"] = float(a("torus", 0.0)) * late
 	var dens := float(a("head_density", 1.0)) * clampf(grow * 1.5, 0.0, 1.0)
+	var app := float(a("cap_appear", 0.0))
+	if app > 0.0:
+		# smoke/dust condenses out of the crown instead of popping in as a ball
+		dens *= smoothstep(0.0, 1.0, (t - float(a("col_delay", 0.05))) / app)
 	var fade_at := float(a("cap_fade", 1e9))
 	if t > fade_at:
 		dens *= clampf(1.0 - (t - fade_at) / maxf(fade_at, 1.0), 0.05, 1.0)

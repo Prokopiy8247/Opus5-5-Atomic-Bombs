@@ -129,6 +129,27 @@ func _preview_sheet() -> void:
 	print("SHOT ", p, " err=", sheet.save_png(p))
 
 
+## Timing of the menu's physics estimates (headless is fine).
+func _bench() -> void:
+	var TM: GDScript = load("res://scripts/ui/terminal_menu.gd")
+	var worst_e := 0.0
+	var worst_d := 0.0
+	for i in G.bombs.size():
+		var b: Dictionary = G.bombs[i]
+		var t0 := Time.get_ticks_usec()
+		for d in [0.5, 2.0, 10.0, 50.0, 200.0]:
+			TM.estimate(b, d, 0.0, 0.5)
+		var te := float(Time.get_ticks_usec() - t0) / 5000.0
+		t0 = Time.get_ticks_usec()
+		TM.danger_range(b, 0.0, 0.5, 10.0, true)
+		TM.danger_range(b, 0.0, 0.5, 25.0, false)
+		var td := float(Time.get_ticks_usec() - t0) / 1000.0
+		worst_e = maxf(worst_e, te)
+		worst_d = maxf(worst_d, td)
+		print("BENCH #%d %s estimate %.2f ms/call, danger ranges %.1f ms" % [i + 1, String(b.get("burst_type", "")), te, td])
+	print("BENCH worst estimate %.2f ms, worst danger %.1f ms" % [worst_e, worst_d])
+
+
 ## Only the RU + EN menu screenshots (used for checking other resolutions / aspect ratios).
 func _menu_only() -> void:
 	UiRoot = load("res://scripts/ui/ui_root.gd")
@@ -168,6 +189,11 @@ func _run() -> void:
 		DirAccess.make_dir_recursive_absolute(out_dir)
 	if a.has("--menu-only"):
 		await _menu_only()
+		return
+	if a.has("--bench"):
+		_bench()
+		print("READY")
+		quit()
 		return
 	print("UI TEST display=", DisplayServer.get_name(), " bombs=", G.bombs.size(), " out=", out_dir)
 	G.set_language("ru")

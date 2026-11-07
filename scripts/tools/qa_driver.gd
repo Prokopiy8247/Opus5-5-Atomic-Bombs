@@ -9,9 +9,48 @@ extends Node
 var main: Node
 var results: Array = []
 var _errors_before := 0
+var _log: ErrCounter
+
+
+## Counts engine/script/shader errors in-process, so each QA run can assert "no errors in the log".
+class ErrCounter extends Logger:
+	var errors := 0
+	var warnings := 0
+	var samples: Array = []
+	var _m := Mutex.new()
+
+	func _log_error(function: String, file: String, line: int, code: String, rationale: String, editor_notify: bool, error_type: int, script_backtraces: Array[ScriptBacktrace]) -> void:
+		_m.lock()
+		if error_type == Logger.ERROR_TYPE_WARNING:
+			warnings += 1
+		else:
+			errors += 1
+			if samples.size() < 20:
+				samples.append("%s:%d %s %s %s" % [file, line, function, code, rationale])
+		_m.unlock()
+
+	func _log_message(message: String, error: bool) -> void:
+		pass
+
+
+func _nodes() -> int:
+	# range objects are rebuilt per bomb (their count depends on the yield), so they are excluded
+	var n := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	if main.range_objs:
+		n -= _count(main.range_objs)
+	return n
+
+
+func _count(nd: Node) -> int:
+	var c := 1
+	for ch in nd.get_children():
+		c += _count(ch)
+	return c
 
 
 func run() -> void:
+	_log = ErrCounter.new()
+	OS.add_logger(_log)
 	var out := Args.get_str("out", OS.get_user_data_dir().path_join("qa"))
 	DirAccess.make_dir_recursive_absolute(out)
 	var bombs: Array = []
@@ -45,7 +84,7 @@ func run() -> void:
 				results.append(r)
 				run_i += 1
 				if run_i == 2:
-					nodes_start = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+					nodes_start = _nodes()
 					mem_start = Performance.get_monitor(Performance.MEMORY_STATIC)
 				print("QA %s" % JSON.stringify(r))
 	# feature toggles on the last explosion
@@ -53,7 +92,7 @@ func run() -> void:
 	main.reset_scene()
 	for i in 10:
 		await get_tree().process_frame
-	var nodes_end := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	var nodes_end := _nodes()
 	var mem_end := Performance.get_monitor(Performance.MEMORY_STATIC)
 	var fails := 0
 	for r in results:
@@ -61,18 +100,21 @@ func run() -> void:
 			fails += 1
 	var summary := {"runs": results.size(), "fails": fails, "nodes_start": nodes_start, "nodes_end": nodes_end,
 		"mem_start_mb": snappedf(mem_start / 1048576.0, 0.1), "mem_end_mb": snappedf(mem_end / 1048576.0, 0.1),
-		"minutes": snappedf((Time.get_ticks_msec() - t_all) / 60000.0, 0.1)}
+		"minutes": snappedf((Time.get_ticks_msec() - t_all) / 60000.0, 0.1),
+		"errors": _log.errors, "warnings": _log.warnings, "error_samples": _log.samples}
 	print("QA_SUMMARY %s" % JSON.stringify(summary))
 	var f := FileAccess.open(out.path_join("qa_results.json"), FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({"summary": summary, "runs": results}, "\t"))
 		f.close()
-	print("READY" if fails == 0 and nodes_end <= nodes_start + 50 else "FAIL")
+	OS.remove_logger(_log)
+	print("READY" if fails == 0 and _log.errors == 0 and nodes_end <= nodes_start + 50 else "FAIL")
 	get_tree().quit()
 
 
 func _one(n: int, d: float, dm: String, tod_s: String, hold: float, idx: int, out: String) -> Dictionary:
 	var r := {"bomb": n, "dist_km": snappedf(d, 0.01), "mode": dm, "tod": tod_s, "ok": false}
+	var err0 := _log.errors
 	Game.time_scale = 1.0
 	Game.paused = false
 	main.launch(n - 1, d, 0.0)
@@ -102,7 +144,9 @@ func _one(n: int, d: float, dm: String, tod_s: String, hold: float, idx: int, ou
 	r["age"] = snappedf(main.explosion.age if main.explosion else -1.0, 0.1)
 	r["p_bunker_psi"] = snappedf(main.explosion.p_obs if main.explosion else 0.0, 0.001)
 	r["destroyed"] = main.state == main.State.DESTROYED
-	r["ok"] = bool(r["detonated"]) and float(r["age"]) > 0.0
+	r["errors"] = _log.errors - err0
+	r["nodes"] = _nodes()
+	r["ok"] = bool(r["detonated"]) and float(r["age"]) > 0.0 and int(r["errors"]) == 0
 	if idx % 6 == 0:
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(out.path_join("qa_%02d_%s_%s.png" % [n, dm, tod_s]))

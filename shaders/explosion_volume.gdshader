@@ -353,9 +353,9 @@ float fireball_density(vec3 p, out float lq_out, out float patch_out, out float 
 	float dd = lq - 1.0 - disp;
 	dd = max(dd, (fb_cut_y - p.y) / max(fb.w, 1.0) + (n1 - 0.5) * 0.08);
 	lq_out = lq;
-	patch_out = nbl(nq * 1.3 + 7.7) * 0.6 + nbl(nq * 3.7 + 1.9) * 0.4;
+	patch_out = nbl(nq * 0.9 + 7.7) * 0.55 + nbl(nq * 2.6 + 1.9) * 0.3 + n1 * 0.15;
 	mott_out = mott;
-	return smoothstep(0.02, -0.06, dd);
+	return smoothstep(0.05, -0.12, dd);
 }
 
 void vertex() {
@@ -420,7 +420,8 @@ void fragment() {
 		}
 		vec3 p = ro + rd * t;
 		// wind drift and shear: everything above the ground is advected with height
-		p.xz -= wind.xz * age * clamp(p.y / max(wind_h, 1.0), 0.0, 1.5);
+		// curved shear profile: the base stays put, the upper cloud bends downwind
+		p.xz -= wind.xz * age * pow(clamp(p.y / max(wind_h, 1.0), 0.0, 1.5), 1.7);
 		float sd = scene_sdf(p);
 		float margin = scale_hint * 0.4;
 		if (sd > margin) {
@@ -539,8 +540,11 @@ void fragment() {
 			// --- emission (planck radiance of opaque hot gas)
 			vec3 emit = vec3(0.0);
 			if (fbo > 0.0) {
-				float tloc = fb_look.x * mix(0.82, 1.12, fpatch) * mix(1.1, 0.92, clamp(lq, 0.0, 1.0));
+				// convective cells: hotter rising plumes, cooler sinking lanes; cooler limb once it radiates
+				float tloc = fb_look.x * mix(0.70, 1.18, smoothstep(0.15, 0.85, fpatch)) * mix(1.08, 0.86, smoothstep(0.4, 1.0, lq));
 				vec3 bc = blackbody(tloc);
+				// film-like saturation of the incandescent colours (AgX would bleach them to white)
+				bc = mix(bc, pow(bc, vec3(1.7)), 0.55);
 				if (fb_tint.w > 0.0) {
 					// additive ionised-air glow (Trinity's violet/green early colours)
 					bc += fb_tint.rgb * fb_tint.w * 0.6;

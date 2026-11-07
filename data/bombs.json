@@ -66,9 +66,9 @@
     "emission": 220.0,
     "fireball_noise": 0.35,
     "fireball_noise_scale": 3.0,
-    "col_height": 28.0,
-    "col_radius": 4.0,
-    "col_cone": 4.0,
+    "col_height": 26.0,
+    "col_radius": 4.5,
+    "col_cone": 5.0,
     "col_rise": 0.35,
     "col_delay": 0.02,
     "col_fall": 0.8,
@@ -76,14 +76,17 @@
     "col_density": 1.3,
     "col_flare": 1.6,
     "col_waist": -0.2,
-    "col_cap_r": 16.0,
-    "cap_aspect": 0.85,
+    "col_cap_r": 11.0,
+    "cap_aspect": 0.7,
     "cap_rise": 230.0,
     "cap_grow_time": 120.0,
-    "cap_late_grow": 1.4,
+    "cap_late_grow": 2.5,
     "cap_fade": 70.0,
     "cap_hold_peak": true,
-    "whiten_s": 400.0,
+    "whiten_s": 60.0,
+    "cap_appear": 0.7,
+    "cap_center_k": 0.72,
+    "head_density": 0.75,
     "head_noise_amp": 0.75,
     "head_noise_scale": 0.45,
     "billow_sharp": 0.8,
@@ -129,8 +132,8 @@
     "wilson": 0.0,
     "dust_wall": 0.6,
     "wind": [
-     3.0,
-     -1.0
+     1.5,
+     -0.5
     ],
     "churn": 4.0,
     "fireball_r_m": 7.5,
@@ -205,9 +208,9 @@
     "emission": 220.0,
     "fireball_noise": 0.35,
     "fireball_noise_scale": 3.0,
-    "col_height": 50.0,
+    "col_height": 48.0,
     "col_radius": 8.0,
-    "col_cone": 3.5,
+    "col_cone": 4.5,
     "col_rise": 0.6,
     "col_delay": 0.03,
     "col_fall": 1.2,
@@ -215,14 +218,17 @@
     "col_density": 1.3,
     "col_flare": 1.8,
     "col_waist": -0.2,
-    "col_cap_r": 34.0,
-    "cap_aspect": 0.85,
+    "col_cap_r": 22.0,
+    "cap_aspect": 0.7,
     "cap_rise": 380.0,
     "cap_grow_time": 120.0,
-    "cap_late_grow": 1.3,
+    "cap_late_grow": 2.3,
     "cap_fade": 90.0,
     "cap_hold_peak": true,
-    "whiten_s": 400.0,
+    "whiten_s": 80.0,
+    "cap_appear": 1.0,
+    "cap_center_k": 0.72,
+    "head_density": 0.8,
     "head_noise_amp": 0.75,
     "head_noise_scale": 0.45,
     "billow_sharp": 0.8,
@@ -268,8 +274,8 @@
     "wilson": 0.0,
     "dust_wall": 1.0,
     "wind": [
-     3.0,
-     -1.0
+     1.5,
+     -0.5
     ],
     "churn": 4.0,
     "fireball_r_m": 13.0,
@@ -351,13 +357,15 @@
     "col_spread": 0.6,
     "col_fall": 2.6,
     "col_fall_time": 5.0,
-    "col_cap_r": 45.0,
-    "cap_aspect": 0.6,
-    "cap_late_grow": 0.6,
+    "col_cap_r": 60.0,
+    "cap_aspect": 0.55,
+    "cap_late_grow": 1.4,
     "cap_grow_time": 60.0,
-    "cap_rise": 120.0,
+    "cap_rise": 60.0,
     "cap_fade": 45.0,
-    "cap_hold_peak": true,
+    "cap_hold_peak": false,
+    "head_density": 0.6,
+    "head_noise_amp": 0.7,
     "col_density": 1.1,
     "col_flare": 2.2,
     "col_waist": -0.3,
@@ -404,8 +412,8 @@
     "wilson": 0.0,
     "dust_wall": 0.3,
     "wind": [
-     2.0,
-     -1.0
+     1.0,
+     -0.5
     ],
     "churn": 2.0,
     "cloud_top_m": 300.0,
@@ -491,13 +499,14 @@
     "col_spread": 0.7,
     "col_fall": 3.0,
     "col_fall_time": 6.0,
-    "col_cap_r": 65.0,
-    "cap_aspect": 0.7,
-    "cap_late_grow": 0.5,
+    "col_cap_r": 80.0,
+    "cap_aspect": 0.6,
+    "cap_late_grow": 1.3,
     "cap_grow_time": 80.0,
-    "cap_rise": 200.0,
+    "cap_rise": 120.0,
     "cap_fade": 60.0,
-    "cap_hold_peak": true,
+    "cap_hold_peak": false,
+    "head_density": 0.65,
     "col_density": 1.2,
     "col_flare": 2.6,
     "col_waist": -0.3,
@@ -546,8 +555,8 @@
     "wilson": 0.0,
     "dust_wall": 0.35,
     "wind": [
-     2.5,
-     -1.0
+     1.25,
+     -0.5
     ],
     "churn": 2.0,
     "fireball_r_m": 8.0,
@@ -670,8 +679,8 @@
     "dust_wall": 1.0,
     "core_glow": 1.0,
     "wind": [
-     3.0,
-     -2.0
+     1.5,
+     -1.0
     ],
     "churn": 3.0,
     "fireball_r_m": 70.0,
@@ -773,8 +782,8 @@
     "skirt": 1.0,
     "dust_wall": 1.0,
     "wind": [
-     -2.7,
-     -6.5
+     -1.35,
+     -3.25
     ],
     "churn": 2.0,
     "fireball_r_m": 17.0,
@@ -887,8 +896,8 @@
     "stem_density": 0.4,
     "dust_wall": 0.6,
     "wind": [
-     2.0,
-     -2.0
+     1.0,
+     -1.0
     ],
     "churn": 2.5,
     "fireball_r_m": 60.0,
@@ -987,8 +996,8 @@
     "crater": false,
     "dust_wall": 0.5,
     "wind": [
-     2.0,
-     -3.0
+     1.0,
+     -1.5
     ],
     "churn": 1.5,
     "fireball_r_m": 38.0,
@@ -1093,8 +1102,8 @@
     "wilson": 0.6,
     "crater": false,
     "wind": [
-     6.0,
-     -6.0
+     3.0,
+     -3.0
     ],
     "churn": 1.5,
     "fireball_r_m": 175.0,
@@ -1196,8 +1205,8 @@
     "core_glow": 0.6,
     "dark_base": 0.7,
     "wind": [
-     -4.0,
-     -4.0
+     -2.0,
+     -2.0
     ],
     "churn": 1.5,
     "fireball_r_m": 190.0,
@@ -1305,8 +1314,8 @@
     "core_glow": 0.6,
     "whiten_time": 0.9,
     "wind": [
-     4.0,
-     -5.0
+     2.0,
+     -2.5
     ],
     "churn": 1.5,
     "fireball_r_m": 300.0,
@@ -1432,8 +1441,8 @@
     "dust_wall": 0.0,
     "head_noise_amp": 0.4,
     "wind": [
-     3.0,
-     -2.0
+     1.5,
+     -1.0
     ],
     "churn": 1.0,
     "cloud_top_m": 3000.0,
@@ -1566,8 +1575,8 @@
     "wilson": 0.0,
     "dust_wall": 0.0,
     "wind": [
-     3.0,
-     -3.0
+     1.5,
+     -1.5
     ],
     "churn": 1.0,
     "cloud_top_m": 3700.0,
@@ -1682,8 +1691,8 @@
     "rings": 1,
     "core_cool_s": 40.0,
     "wind": [
-     3.0,
-     -2.0
+     1.5,
+     -1.0
     ],
     "fireball_r_m": 650.0,
     "cloud_top_m": 23000.0,
@@ -1796,8 +1805,8 @@
     "dust_wall": 1.3,
     "rings": 1,
     "wind": [
-     5.0,
-     -3.0
+     2.5,
+     -1.5
     ],
     "fireball_r_m": 1250.0,
     "cloud_top_m": 21000.0,
@@ -1919,8 +1928,8 @@
     "whiten_time": 0.4,
     "core_cool_s": 45.0,
     "wind": [
-     3.0,
-     -2.0
+     1.5,
+     -1.0
     ],
     "fireball_r_m": 1000.0,
     "cloud_top_m": 20000.0,
@@ -2080,8 +2089,8 @@
     "whiten_time": 0.4,
     "core_cool_s": 80.0,
     "wind": [
-     4.0,
-     -2.0
+     2.0,
+     -1.0
     ],
     "fireball_r_m": 2600.0,
     "cloud_top_m": 37000.0,
@@ -2285,8 +2294,8 @@
     "crimson": 1.0,
     "core_cool_s": 90.0,
     "wind": [
-     4.0,
-     -3.0
+     2.0,
+     -1.5
     ],
     "fireball_r_m": 3500.0,
     "cloud_top_m": 40000.0,
@@ -2415,8 +2424,8 @@
     "whiten_time": 0.35,
     "core_cool_s": 120.0,
     "wind": [
-     6.0,
-     -3.0
+     3.0,
+     -1.5
     ],
     "fireball_r_m": 3000.0,
     "cloud_top_m": 53000.0,
@@ -2546,8 +2555,8 @@
     "whiten_time": 0.35,
     "core_cool_s": 150.0,
     "wind": [
-     6.0,
-     -3.0
+     3.0,
+     -1.5
     ],
     "fireball_r_m": 4000.0,
     "cloud_top_m": 65000.0

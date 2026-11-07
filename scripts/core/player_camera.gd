@@ -20,6 +20,7 @@ var shake := 0.0            # current shake amplitude (0..1+)
 var tremor := 0.0           # low-frequency ground tremor
 var _shake_t := 0.0
 var _noise := FastNoiseLite.new()
+var force_embrasure := false   # test rig: binocular view from the embrasure regardless of FOV
 var _orbit := false
 var _orbit_target := Vector3.ZERO
 var _orbit_angle := 0.0
@@ -122,6 +123,8 @@ func _process(delta: float) -> void:
 		# with binoculars the observer leans into the embrasure, so the roof no longer cuts the sky
 		var k := clampf((55.0 - fov) / 35.0, 0.0, 1.0)
 		k = k * k * (3.0 - 2.0 * k)
+		if force_embrasure:
+			k = 1.0
 		position = BUNKER_EYE.lerp(EMBRASURE_EYE, k)
 	if cine:
 		_cine_move(rdelta)

@@ -250,8 +250,31 @@ func _visual() -> void:
 		await _scenario_visual("a", Vector3(0, TerrainMath.height(0, -12000), -12000), 15.0, 580.0, false)
 	if only == "" or only == "b":
 		await _scenario_visual("b", Vector3(1500, TerrainMath.height(1500, -45000), -45000), 1200.0, 2.0, true)
+	if only == "" or only == "c":
+		await _scenario_visual("c", Vector3(0, TerrainMath.height(0, -2000), -2000), 0.0001, 1.0, true, {"nuclear": false})
+	await _perf()
 	RenderingServer.global_shader_parameter_set("g_blast_age", -1.0)
 	_finish()
+
+
+## Average frame time with the range objects shown / hidden (scenario A at age 10 s).
+func _perf() -> void:
+	var gz := Vector3(0, TerrainMath.height(0, -12000), -12000)
+	ro.setup(gz, 15.0, 580.0, false, 0.55)
+	_set_globals(10.0, gz, gz + Vector3(0, 580, 0), 15.0, false)
+	for view: Array in [["bunker", Vector3(0, 0, 0), gz + Vector3(0, 30, 0), 70.0], ["close", gz + Vector3(1300, 240, 700), gz + Vector3(-150, 0, -300), 45.0]]:
+		_aim(view[1], view[2], view[3])
+		var res := []
+		for vis: bool in [false, true]:
+			ro.visible = vis
+			for f in 30:
+				await process_frame
+			var t0 := Time.get_ticks_usec()
+			for f in 120:
+				await process_frame
+			res.append((Time.get_ticks_usec() - t0) / 120000.0)
+		print("PERF %s: frame %.2f ms without objects, %.2f ms with objects" % [view[0], res[0], res[1]])
+	ro.visible = true
 
 
 func _simple_env() -> void:
@@ -270,15 +293,20 @@ func _simple_env() -> void:
 	root.add_child(sun)
 
 
-func _scenario_visual(tag: String, gz: Vector3, w: float, hob: float, surface: bool) -> void:
-	ro.setup(gz, w, hob, surface, 0.55)
+func _scenario_visual(tag: String, gz: Vector3, w: float, hob: float, surface: bool, opts: Dictionary = {}) -> void:
+	ro.setup(gz, w, hob, surface, 0.55, opts)
 	var burst := gz + Vector3(0, maxf(hob, 0.0), 0)
 	print("visual %s: %d objects" % [tag, ro.instance_total()])
 	var gz2 := Vector2(gz.x, gz.z)
 	var views: Array = []
+	# what the player sees from the bunker window (default FOV and the binocular zoom)
+	views.append(["bunker", Vector3(0, 0, 0), gz + Vector3(0, 30, 0), 70.0])
+	views.append(["binocular", Vector3(0, 0, 0), gz + Vector3(900, 0, 0), 6.0])
 	# overview: elevated, ~1.5 km (A) / 6 km (B) from ground zero, from the east side
 	if tag == "a":
 		views.append(["overview", gz + Vector3(1300, 240, 700), gz + Vector3(-150, 0, -300), 45.0])
+	elif tag == "c":
+		views.append(["overview", gz + Vector3(120, 45, 90), gz + Vector3(-10, 0, -20), 55.0])
 	else:
 		views.append(["overview", gz + Vector3(5200, 900, 3200), gz + Vector3(-600, 0, -1500), 62.0])
 	for target: float in ([10.0, 5.0, 3.0, 2.0] if tag == "a" else [20.0, 10.0, 5.0, 3.0]):
@@ -310,8 +338,9 @@ func _scenario_visual(tag: String, gz: Vector3, w: float, hob: float, surface: b
 	for k: String in shots:
 		_sheet(shots[k], 3, out_dir.path_join("%s_%s_sheet.png" % [tag, k]))
 	# fine time scrub through the passage of the front at one station (continuity: nothing pops)
-	if do_scrub and views.size() > 2:
-		var v: Array = views[2]
+	var closeups: Array = views.filter(func(x: Array) -> bool: return x.size() > 4 and String(x[0]).begins_with("p"))
+	if do_scrub and closeups.size() > 1:
+		var v: Array = closeups[1]
 		var arr: float = v[4]
 		var imgs: Array = []
 		for i in 18:
@@ -329,7 +358,7 @@ func _scenario_visual(tag: String, gz: Vector3, w: float, hob: float, surface: b
 		env_ctl.call("apply_tod", 3)
 		for t: float in [6.0, 20.0]:
 			_set_globals(t, gz, burst, w, surface)
-			for v: Array in [views[0], views[min(2, views.size() - 1)]]:
+			for v: Array in ([views[0], closeups[min(1, closeups.size() - 1)]] if closeups.size() > 0 else [views[0]]):
 				_aim(v[1], v[2], v[3])
 				for f in 4:
 					await process_frame
@@ -393,6 +422,11 @@ func _set_globals(t: float, gz: Vector3, burst: Vector3, w: float, surface: bool
 		RenderingServer.global_shader_parameter_set("g_fireball_color", Vector4(0, 0, 0, 0))
 		RenderingServer.global_shader_parameter_set("g_shock", Vector4(0, 0, 0, 0))
 		RenderingServer.global_shader_parameter_set("g_crater", Vector4(0, 0, 0, 0))
+		return
+	if w < 0.05:
+		# conventional charge: no nuclear fireball / thermal pulse in this test
+		RenderingServer.global_shader_parameter_set("g_fireball_color", Vector4(0, 0, 0, 0))
+		RenderingServer.global_shader_parameter_set("g_shock", Vector4(0, 0, 0, 0))
 		return
 	var R := BlastPhysics.fireball_radius(w, t, surface)
 	var rise := 0.0 if t < 3.0 else 30.0 * (t - 3.0)

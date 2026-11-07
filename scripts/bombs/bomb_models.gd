@@ -244,7 +244,7 @@ static func build(bomb: Dictionary) -> Node3D:
 	var L := maxf(float(bomb.get("length_m", 2.0)), 0.1)
 	var D := maxf(float(bomb.get("diameter_m", 0.4)), 0.05)
 	var R := D * 0.5
-	var model := String(bomb.get("model", "generic"))
+	var model := str(bomb.get("model", "generic"))
 	var c_body := _col(bomb, "body", Color(0.35, 0.38, 0.3))
 	var c_band := _col(bomb, "band", Color(0.9, 0.8, 0.1))
 	var c_acc := _col(bomb, "accent", Color(0.2, 0.2, 0.2))
@@ -312,7 +312,8 @@ static func build(bomb: Dictionary) -> Node3D:
 		_:
 			_m_gp(g, L, R, false)
 	var root := Node3D.new()
-	root.name = "Bomb_" + String(bomb.get("id", model))
+	var bid := str(bomb.get("id", model))
+	root.name = "Bomb_" + bid.validate_node_name()
 	var box := g.aabb()
 	if cradle != null:
 		box = box.merge(cradle.aabb())
@@ -327,7 +328,7 @@ static func build(bomb: Dictionary) -> Node3D:
 		root.add_child(cm)
 		tris += cradle.tri_count()
 	box.position.x -= cx
-	root.set_meta("id", String(bomb.get("id", model)))
+	root.set_meta("id", bid)
 	root.set_meta("model", model)
 	root.set_meta("length", box.size.x)
 	root.set_meta("diameter", body_r * 2.0)
@@ -680,18 +681,26 @@ static func _canopy_pt(gi: int, u: float, v: float, gores: int, rc: float, skirt
 	return Vector3(r * cos(th), y, r * sin(th))
 
 
+## 32 evenly spread directions: the 12 vertices of an icosahedron plus the 20
+## vertices of its dual dodecahedron (face centres of a truncated icosahedron).
+## Neighbouring directions are ~37 degrees apart.
 static func _ti_dirs() -> Array[Vector3]:
 	var p := (1.0 + sqrt(5.0)) * 0.5
 	var ip := 1.0 / p
 	var out: Array[Vector3] = []
 	for s1: float in [-1.0, 1.0]:
 		for s2: float in [-1.0, 1.0]:
+			# Icosahedron (0, +-1, +-p) and cyclic permutations.
 			out.append(Vector3(0.0, s1, s2 * p).normalized())
 			out.append(Vector3(s1, s2 * p, 0.0).normalized())
 			out.append(Vector3(s2 * p, 0.0, s1).normalized())
-			out.append(Vector3(0.0, s1 * ip, s2 * p).normalized())
-			out.append(Vector3(s1 * ip, s2 * p, 0.0).normalized())
-			out.append(Vector3(s2 * p, 0.0, s1 * ip).normalized())
+			# Dual dodecahedron (0, +-p, +-1/p) and cyclic permutations, then
+			# (+-1, +-1, +-1). The dual must use this orientation: the
+			# (0, +-1/p, +-p) set lies only ~11 degrees from the icosahedron
+			# vertices, which made the detonator boxes overlap in pairs.
+			out.append(Vector3(0.0, s1 * p, s2 * ip).normalized())
+			out.append(Vector3(s1 * ip, 0.0, s2 * p).normalized())
+			out.append(Vector3(s2 * p, s1 * ip, 0.0).normalized())
 			for s3: float in [-1.0, 1.0]:
 				out.append(Vector3(s1, s2, s3).normalized())
 	return out
@@ -870,6 +879,9 @@ static func _m_gadget(g: Geo, L: float, _R: float) -> void:
 	g.torus("metal", Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3.ZERO), rs * 1.005, 0.018, SEGS, 6)
 	var dirs := _ti_dirs()
 	var bs := Vector3(0.13, 0.10, 0.075) * (L / 1.5)
+	# Harness rings sit this far from the poles, clear of the nearest
+	# detonator boxes (their centres are ~21 degrees from the poles).
+	var ring_a := deg_to_rad(12.0)
 	for d in dirs:
 		var bz := d
 		var bx := Geo.basis_x(d).y
@@ -881,7 +893,7 @@ static func _m_gadget(g: Geo, L: float, _R: float) -> void:
 		if hz.length_squared() < 1e-6:
 			continue
 		hz = hz.normalized()
-		var e := (pole * cos(deg_to_rad(16.0)) + hz * sin(deg_to_rad(16.0))).normalized()
+		var e := (pole * cos(ring_a) + hz * sin(ring_a)).normalized()
 		var pts := PackedVector3Array()
 		for k in 7:
 			var q := d.slerp(e, float(k) / 6.0)
@@ -891,8 +903,8 @@ static func _m_gadget(g: Geo, L: float, _R: float) -> void:
 	for sx: float in [1.0, -1.0]:
 		g.box("acc", Transform3D(Basis(Vector3(0.0, 0.0, 1.0), PI * 0.5), Vector3(sx * (rs + bs.z * 0.5), 0.0, 0.0)), Vector3(bs.y * 1.3, bs.z, bs.x * 1.3))
 	for sy: float in [1.0, -1.0]:
-		var yc := sy * rs * cos(deg_to_rad(16.0)) * 1.03
-		g.torus("band", Transform3D(Basis(Vector3(0.0, 0.0, 1.0), PI * 0.5), Vector3(0.0, yc, 0.0)), rs * sin(deg_to_rad(16.0)) * 1.03, 0.035, 20, 6)
+		var yc := sy * rs * cos(ring_a) * 1.03
+		g.torus("band", Transform3D(Basis(Vector3(0.0, 0.0, 1.0), PI * 0.5), Vector3(0.0, yc, 0.0)), rs * sin(ring_a) * 1.03, 0.035, 20, 6)
 	# Lifting fixture on top.
 	g.torus("metal", Transform3D(Basis.IDENTITY, Vector3(0.0, rs * 1.02 + 0.06, 0.0)), 0.06, 0.015, 12, 5)
 

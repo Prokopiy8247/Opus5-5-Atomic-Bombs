@@ -124,7 +124,7 @@ func apply_tod(t: int) -> void:
 				"amb_col": Color(0.25, 0.22, 0.30), "amb_scale": 1.0, "fog_col": Color(0.42, 0.36, 0.38), "fog_sun": Color(1.0, 0.5, 0.25), "fog_bright": 0.9}
 		_:
 			p = {"az": 0.0, "el": -28.0, "sun_col": Color(1.0, 0.8, 0.6), "sun_e": 0.0, "sky_i": 20.0,
-				"exposure": 2.2, "fog": 0.000015, "turb": 1.0, "night": 1.0, "amb": 0.3,
+				"exposure": 3.2, "fog": 0.000015, "turb": 1.0, "night": 1.0, "amb": 0.3,
 				"amb_col": Color(0.010, 0.013, 0.022), "amb_scale": 1.0, "fog_col": Color(0.008, 0.010, 0.016), "fog_sun": Color(0.02, 0.025, 0.04), "fog_bright": 1.0}
 	tod_params = p
 	var sd := dir_from_az_el(p["az"], p["el"])
@@ -154,7 +154,7 @@ func apply_tod(t: int) -> void:
 	var night: float = p["night"]
 	var sun_light := Vector4(sc.r * se, sc.g * se, sc.b * se, 1.0)
 	if night > 0.0:
-		sun_light = Vector4(0.62 * 0.05, 0.72 * 0.05, 1.0 * 0.05, 1.0)
+		sun_light = Vector4(0.62 * 0.11, 0.72 * 0.11, 1.0 * 0.11, 1.0)
 	RenderingServer.global_shader_parameter_set("g_sun_light", sun_light)
 	var amb: Color = p.get("amb_col", Color(0.32, 0.42, 0.58))
 	var amb_s: float = p.get("amb_scale", 1.0)

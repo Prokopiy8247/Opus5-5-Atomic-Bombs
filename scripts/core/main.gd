@@ -28,6 +28,7 @@ var _world_ready := false
 var _fps_acc := 0.0
 var _fps_frames := 0
 var _quality_cooldown := 0.0
+var _q_live := 1.0               # current raymarch quality scale (g_quality)
 var _destroyed_shown := false
 var _shot_counter := 0
 var _flight_bomb := -1
@@ -151,7 +152,7 @@ func prepare_world(tod_i: int, bomb_idx: int) -> void:
 	var b := Game.bomb(bomb_idx)
 	var snow := 1.0 if (bool(b.get("snow", false)) and Game.snow_override != 0) or Game.snow_override == 1 else 0.0
 	RenderingServer.global_shader_parameter_set("g_snow", snow)
-	RenderingServer.global_shader_parameter_set("g_quality", Game.quality_steps_scale())
+	_set_quality_scale(Game.quality_steps_scale())
 	if not _world_ready:
 		await FxResources.wait_ready(get_tree())
 		_warm_up_shaders()
@@ -199,9 +200,22 @@ func _place_range(bomb_idx: int, dist_km: float, az: float) -> void:
 	target_gz = target_position(dist_km, az)
 	_setup_water(b, target_gz)
 	terrain.set_patch(target_gz, _patch_extent(b))
-	if range_objs and range_objs.has_method("setup"):
-		var surface := String(b.get("burst_type", "")).contains("SURFACE") or String(b.get("burst_type", "")).contains("TOWER")
-		range_objs.setup(target_gz, float(b.get("yield_kt", 1.0)), float(b.get("burst_height_m", 0.0)), surface, Game.humidity)
+	_setup_range_objects(b, target_gz)
+
+
+func _setup_range_objects(b: Dictionary, gz: Vector3) -> void:
+	if range_objs == null or not range_objs.has_method("setup") or Args.has("norange"):
+		return
+	var prof := ExplosionProfile.new(b)
+	var exclude := 0.0
+	if water:
+		exclude = float(b.get("profile", {}).get("pond_radius_m", 4000.0))
+		exclude = maxf(exclude, Vector2(gz.x, gz.z).length() - 1000.0)
+	range_objs.setup(gz, prof.w_kt, prof.hob, prof.surface, Game.humidity, {
+		"nuclear": prof.nuclear, "conventional": prof.conventional,
+		"fireball_r": prof.r_fb_max, "crater_r": prof.crater_r,
+		"blast_scale": prof.blast_yield() / maxf(prof.w_kt, 1e-9),
+		"exclude_r": exclude})
 
 
 func _setup_water(b: Dictionary, gz: Vector3) -> void:
@@ -227,9 +241,7 @@ func detonate_now(bomb_idx: int, dist_km: float, az_deg: float) -> Explosion:
 	target_gz = gz
 	_setup_water(b, gz)
 	terrain.set_patch(gz, _patch_extent(b))
-	if range_objs and range_objs.has_method("setup") and not Args.has("norange"):
-		var surface := String(b.get("burst_type", "")).contains("SURFACE") or String(b.get("burst_type", "")).contains("TOWER")
-		range_objs.setup(gz, float(b.get("yield_kt", 1.0)), float(b.get("burst_height_m", 0.0)), surface, Game.humidity)
+	_setup_range_objects(b, gz)
 	explosion = Explosion.new()
 	explosion.name = "Explosion"
 	explosion.observer = Vector3.ZERO
@@ -338,7 +350,7 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 		"quality":
 			Game.quality = int(value)
 			Game.auto_quality = false
-			RenderingServer.global_shader_parameter_set("g_quality", Game.quality_steps_scale())
+			_set_quality_scale(Game.quality_steps_scale())
 		"lang":
 			Game.set_language(String(value))
 		"hud":
@@ -493,13 +505,18 @@ func _auto_quality(delta: float) -> void:
 	_fps_frames = 0
 	if _quality_cooldown > 0.0:
 		return
-	var q := float(RenderingServer.global_shader_parameter_get("g_quality"))
+	var q := _q_live
 	if fps < 50.0 and q > 0.4:
 		q = maxf(0.4, q * 0.8)
 		_quality_cooldown = 2.0
 	elif fps > 85.0 and q < Game.quality_steps_scale():
 		q = minf(Game.quality_steps_scale(), q * 1.15)
 		_quality_cooldown = 3.0
+	_set_quality_scale(q)
+
+
+func _set_quality_scale(q: float) -> void:
+	_q_live = q
 	RenderingServer.global_shader_parameter_set("g_quality", q)
 
 
@@ -509,7 +526,7 @@ func _movie_autopilot() -> void:
 	# run_cinematic.bat: --write-movie ... -- --bomb N [--dist KM] [--tod T] [--view V]
 	Game.quality = Game.Quality.CINEMATIC
 	Game.auto_quality = false
-	RenderingServer.global_shader_parameter_set("g_quality", Game.quality_steps_scale())
+	_set_quality_scale(Game.quality_steps_scale())
 	var n := Args.get_int("bomb", 20) - 1
 	var b := Game.bomb(n)
 	var d := Args.get_float("dist", float(b.get("rec_km", 20.0)))

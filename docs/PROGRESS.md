@@ -25,26 +25,26 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 
 | # | Bomb | Profile | Render cycles | Status |
 |---|---|---|---|---|
-| 1 | Mk 82 | - | 0 | not started |
-| 2 | Mk 84 | - | 0 | not started |
-| 3 | Tallboy | - | 0 | not started |
-| 4 | Grand Slam | - | 0 | not started |
-| 5 | GBU-43/B MOAB | - | 0 | not started |
-| 6 | W54 Davy Crockett (Little Feller I) | - | 0 | not started |
-| 7 | Father of All Bombs (ATBIP) | - | 0 | not started |
-| 8 | B61 Mod 12 (0.3 kt) | - | 0 | not started |
-| 9 | Little Boy | - | 0 | not started |
-| 10 | Grable | - | 0 | not started |
-| 11 | Trinity | - | 0 | not started |
-| 12 | Baker | - | 0 | not started |
-| 13 | Sedan | - | 0 | not started |
-| 14 | Ivy King | - | 0 | not started |
-| 15 | B83 | - | 0 | not started |
-| 16 | RDS-37 | - | 0 | not started |
-| 17 | Ivy Mike | - | 0 | not started |
-| 18 | Castle Bravo | - | 0 | not started |
-| 19 | Test No. 219 | - | 0 | not started |
-| 20 | Tsar Bomba | - | 0 | not started |
+| 1 | Mk 82 (0.0001 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `mk82` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 2 | Mk 84 (0.0005 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `mk84` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 3 | Tallboy (0.003 kt, CONVENTIONAL_BURIED) | tools/bomb_profiles.py `tallboy` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 4 | Grand Slam (0.0066 kt, CONVENTIONAL_BURIED) | tools/bomb_profiles.py `grand_slam` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 5 | GBU-43/B MOAB (0.011 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `moab` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 6 | W54 Davy Crockett (0.018 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `davy_crockett` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 7 | ATBIP "Father of All Bombs" (0.044 kt, THERMOBARIC) | tools/bomb_profiles.py `foab` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 8 | B61 Mod 12 (0.3 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `b61_12` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 9 | Grable (15.0 kt, NUCLEAR_LOW_AIR) | tools/bomb_profiles.py `grable` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 10 | Little Boy (Hiroshima) (16.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `little_boy` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 11 | Trinity ("Gadget") (21.0 kt, NUCLEAR_TOWER) | tools/bomb_profiles.py `trinity` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 12 | Baker (Crossroads) (23.0 kt, NUCLEAR_UNDERWATER) | tools/bomb_profiles.py `baker` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 13 | Sedan (Plowshare) (104.0 kt, NUCLEAR_BURIED) | tools/bomb_profiles.py `sedan` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 14 | Ivy King (500.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `ivy_king` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 15 | B83 (1200.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `b83` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 16 | RDS-37 (1600.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `rds37` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 17 | Ivy Mike (10400.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `ivy_mike` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 18 | Castle Bravo (15000.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `castle_bravo` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 19 | Test No. 219 (24200.0 kt, NUCLEAR_HIGH_AIR) | tools/bomb_profiles.py `test219` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
+| 20 | Tsar Bomba (AN602) (50000.0 kt, NUCLEAR_HIGH_AIR) | tools/bomb_profiles.py `tsar` | 2 (cycle 1 reviewed, cycle 2 rendered) | in progress |
 
 ## Section 15 completion checklist
 

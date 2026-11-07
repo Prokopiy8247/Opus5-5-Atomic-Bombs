@@ -69,7 +69,7 @@ func run() -> void:
 		files.append(path)
 		if Args.has("dbgstate"):
 			print("MAT fb=", ex.vol_mat.get_shader_parameter("fb"), " fb_look=", ex.vol_mat.get_shader_parameter("fb_look"), " head=", ex.vol_mat.get_shader_parameter("head"), " head_heat=", ex.vol_mat.get_shader_parameter("head_heat"), " stem=", ex.vol_mat.get_shader_parameter("stem"), " skirt=", ex.vol_mat.get_shader_parameter("skirt"))
-			print("STATE t=", t, " fb=", ex.prof.fireball_state(t), " head=", ex.prof.head_state(t), " glob_fc=", RenderingServer.global_shader_parameter_get("g_fireball_color"), " sun=", RenderingServer.global_shader_parameter_get("g_sun_light"), " amb=", RenderingServer.global_shader_parameter_get("g_ambient"))
+			print("STATE t=", t, " fb=", ex.prof.fireball_state(t), " head=", ex.prof.head_state(t))
 		print("SHOT ", path, " err=", err, " exp=%.5f adapt=%.2f maxc=%.1f flash=%.1f" % [main.env_ctl.current_exposure(), main.env_ctl.adapt_log, main.env_ctl.max_comp, main.env_ctl.flash_lum])
 	if Args.has("sheet"):
 		_contact_sheet(files, shots, out.path_join("%s_sheet.png" % prefix))
@@ -92,6 +92,7 @@ func _setup_view(view: String, ex: Explosion) -> void:
 	var to := ex.gz
 	var hs := ex.prof
 	cam.set_cine(view != "bunker" and view != "zoom")
+	cam.force_embrasure = view == "zoom"
 	match view:
 		"bunker", "zoom":
 			var d := Vector2(to.x, to.z)

@@ -24,10 +24,16 @@ const VENT_DB := -19.0
 const HUM_DB := -28.0
 const ROCKET_DB := 10.0
 const WHISTLE_DB := -9.0
+## The falling-bomb whistle keeps its full level up to this distance, then falls off as 1/r
+## (floored at WHISTLE_MIN_DB so it stays a faint cue at long range).
+const WHISTLE_REF_M := 1500.0
+const WHISTLE_MIN_DB := -24.0
 const UI_DB := -10.0
 const UI_KINDS := ["click", "select", "launch", "warn", "error"]
+const MAX_THUNDER := 7
+## One player per thunder roll: reusing a playing player would cut its tail (set_stream stops it).
 const BLAST_IDS := ["crack", "crack2", "thump", "infra", "rumble", "thunder0", "thunder1",
-		"thunder2", "thunder3", "roar", "wind"]
+		"thunder2", "thunder3", "thunder4", "thunder5", "thunder6", "roar", "wind"]
 const BUNKER_IDS := ["tremor", "debris", "glass"]
 const LOOP_STREAM := {"roar": "roar", "wind": "wind"}
 
@@ -104,6 +110,8 @@ var _rk_gain := 0.0
 var _wh_state := 0                 # 0 off, 1 falling, 2 fading
 var _wh_t := 0.0
 var _wh_gain := 0.0
+var _src_pos := Vector3.ZERO       # last rocket_start/rocket_update position (the flying payload)
+var _src_known := false
 
 
 # =============================================================================== public API
@@ -139,18 +147,25 @@ func rocket_start(world_pos: Vector3) -> void:
 		return
 	_rocket_ign.stop()
 	_rocket_loop.stop()
-	_rocket_ign.position = world_pos
-	_rocket_loop.position = world_pos
-	_rk_delay = world_pos.distance_to(_listener_pos()) / SOUND_SPEED
+	_rk_delay = 0.0
+	_src_known = _finite3(world_pos)
+	if _src_known:
+		_rocket_ign.position = world_pos
+		_rocket_loop.position = world_pos
+		_src_pos = world_pos
+		_rk_delay = world_pos.distance_to(_listener_pos()) / SOUND_SPEED
 	_rk_state = 1
 	_rk_gain = 0.0
 
 
+## Moves the booster sound; also the source position of the falling-bomb whistle.
 func rocket_update(world_pos: Vector3) -> void:
-	if not is_setup:
+	if not is_setup or not _finite3(world_pos):
 		return
 	_rocket_ign.position = world_pos
 	_rocket_loop.position = world_pos
+	_src_pos = world_pos
+	_src_known = true
 
 
 func rocket_stop() -> void:
@@ -186,19 +201,22 @@ func on_detonation(p: Dictionary) -> void:
 	_stop_layers()
 	whistle_stop()
 	event_log.clear()
-	_w = maxf(float(p.get("yield_kt", 1.0)), 1.0e-6)
-	_d = maxf(float(p.get("distance_m", 10000.0)), 1.0)
+	# NaN / inf / missing values fall back to physical defaults (never reach a volume or a timer)
+	_w = maxf(_num(p, "yield_kt", 1.0), 1.0e-6)
+	_d = maxf(_num(p, "distance_m", 10000.0), 1.0)
 	_kind = String(p.get("kind", "NUCLEAR_AIR"))
 	var surface := _kind.contains("SURFACE") or _kind.contains("TOWER") or _kind.contains("BURIED") \
 			or _kind.contains("UNDERWATER")
-	_t_shock = maxf(float(p.get("t_shock", _d / SOUND_SPEED)), 0.0)
-	var t_seis := maxf(float(p.get("t_seismic", _d / BlastPhysics.SEISMIC_V)), 0.0)
-	_psi = float(p.get("p_psi", -1.0))
+	_t_shock = maxf(_num(p, "t_shock", _d / SOUND_SPEED), 0.0)
+	var t_seis := maxf(_num(p, "t_seismic", _d / BlastPhysics.SEISMIC_V), 0.0)
+	_psi = _num(p, "p_psi", -1.0)
 	if _psi < 0.0:
 		_psi = BlastPhysics.overpressure(_w, _d, surface)
+	if is_nan(_psi) or is_inf(_psi):
+		_psi = 0.0
 	var nuclear := bool(p.get("nuclear", _w >= 0.01))
 	var mega := bool(p.get("megaton", _w >= 1000.0))
-	var hob := float(p.get("hob_m", 0.0))
+	var hob := _num(p, "hob_m", 0.0)
 	var lw := _log10(_w / 15.0)
 	var mods := _kind_mods(_kind)
 	var rng := RandomNumberGenerator.new()
@@ -245,13 +263,13 @@ func on_detonation(p: Dictionary) -> void:
 	# distant thunder rolls / echoes from the ranges
 	var n_th := 0
 	if nuclear:
-		n_th = clampi(2 + int(1.3 * _log10(maxf(_w, 1.0))), 2, 7)
+		n_th = clampi(2 + int(1.3 * _log10(maxf(_w, 1.0))), 2, MAX_THUNDER)
 	else:
 		n_th = 1 if _w < 0.005 else 2
 	var tt := _t_shock + rng.randf_range(2.5, 4.0)
 	for k in n_th:
 		var tdb2 := _lvl - 5.0 - 2.2 * k + (2.0 if mega else 0.0) - (4.0 if not nuclear else 0.0)
-		_add_ev(tt, "thunder%d" % (k % 4), "thunder_a" if k % 2 == 0 else "thunder_b", tdb2,
+		_add_ev(tt, "thunder%d" % k, "thunder_a" if k % 2 == 0 else "thunder_b", tdb2,
 				clampf(pt * rng.randf_range(0.85, 1.12), 0.5, 1.5))
 		tt += rng.randf_range(1.6, 4.5) * (1.0 + 0.12 * _log10(maxf(_w, 1.0)))
 
@@ -468,7 +486,7 @@ func _gen_job(i: int) -> void:
 
 func _make_players() -> void:
 	for id: String in BLAST_IDS:
-		_p[id] = _player("L_" + id, "Blast", 2 if id.begins_with("thunder") else 1)
+		_p[id] = _player("L_" + id, "Blast", 1)
 	for id: String in BUNKER_IDS:
 		_p[id] = _player("L_" + id, "Bunker", 1)
 	_tinnitus = _player("Tinnitus", "Master", 1)
