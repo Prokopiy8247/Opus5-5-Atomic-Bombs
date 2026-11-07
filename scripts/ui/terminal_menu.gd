@@ -135,6 +135,8 @@ var _last_ms := 0
 var _anim_t := 0.0
 var _reveal := 1.0
 var _sync_t := 0.0
+var _danger_key := ""
+var _danger_cache := Vector2.ZERO    # x = 10 psi / 10 cal range, y = 25 psi range (km)
 
 
 func _init() -> void:
@@ -1328,7 +1330,8 @@ func _update_estimates() -> void:
 	_p_val.text = UiTheme.fmt_psi(p)
 	_p_val.add_theme_color_override("font_color", UiTheme.RED if p >= P_WARN else (UiTheme.AMBER if p >= 1.0 else UiTheme.GREEN))
 	if bool(est["thermal"]):
-		_q_val.text = UiTheme.fmt_sig(q, 3) + " " + Game.tr_key("unit.cal")
+		var qs := ("< " + UiTheme.fmt_fixed(0.01, 2)) if q < 0.01 else UiTheme.fmt_sig(q, 3)
+		_q_val.text = qs + " " + Game.tr_key("unit.cal")
 		_q_val.add_theme_color_override("font_color", UiTheme.RED if q >= Q_WARN else (UiTheme.AMBER if q >= 1.0 else UiTheme.GREEN))
 	else:
 		_q_val.text = Game.tr_key("zone.na")
@@ -1343,8 +1346,12 @@ func _update_estimates() -> void:
 		warns.append(Game.tr_key("ui.warn_heat"))
 	_warn_l.text = "\n".join(warns)
 	_warn_l.visible = not warns.is_empty()
-	_scale.danger_km = danger_range(b, az_deg, Game.humidity, P_WARN, true)
-	_scale.destroy_km = danger_range(b, az_deg, Game.humidity, P_DESTROY, false)
+	var dkey := "%d|%.2f|%.3f|%.6f" % [sel, az_deg, Game.humidity, float(b.get("yield_kt", 0.0))]
+	if dkey != _danger_key:
+		_danger_key = dkey
+		_danger_cache = Vector2(danger_range(b, az_deg, Game.humidity, P_WARN, true), danger_range(b, az_deg, Game.humidity, P_DESTROY, false))
+	_scale.danger_km = _danger_cache.x
+	_scale.destroy_km = _danger_cache.y
 	_scale.queue_redraw()
 	var circles: Array = []
 	for k in ZONES:
@@ -1669,6 +1676,12 @@ class RangeMap extends Control:
 		danger = p_danger
 		queue_redraw()
 
+	func _tag(font: Font, pos: Vector2, text: String, fs: int, col: Color) -> void:
+		var sz := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+		var p := Vector2(clampf(pos.x, 3.0, size.x - sz.x - 3.0), clampf(pos.y, fs + 2.0, size.y - 3.0))
+		draw_rect(Rect2(p + Vector2(-3.0, -fs + 1.0), Vector2(sz.x + 6.0, fs + 3.0)), Color(0.0, 0.025, 0.012, 0.82))
+		draw_string(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+
 	static func _nice(x: float) -> float:
 		var e := pow(10.0, floorf(log(maxf(x, 1e-6)) / log(10.0)))
 		var m := x / e
@@ -1726,17 +1739,21 @@ class RangeMap extends Control:
 		draw_line(target - Vector2(7, 0), target + Vector2(7, 0), tc, 2.0)
 		draw_line(target - Vector2(0, 7), target + Vector2(0, 7), tc, 2.0)
 		draw_arc(target, 4.0, 0.0, TAU, 16, tc, 1.0, true)
-		var tl := Game.tr_key("map.target")
-		draw_string(font, target + Vector2(9.0, -6.0), tl, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, tc)
 		# bunker marker
 		var bc := UT.RED if danger else UT.GREEN_BRIGHT
 		draw_rect(Rect2(bunker - Vector2(5, 5), Vector2(10, 10)), bc)
 		var bl := Game.tr_key("map.bunker")
 		var bw := font.get_string_size(bl, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		var bpos := bunker + Vector2(-bw * 0.5, 20.0)
-		bpos.x = clampf(bpos.x, 4.0, w - bw - 4.0)
-		bpos.y = minf(bpos.y, h - 4.0)
-		draw_string(font, bpos, bl, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, bc)
+		var close := bunker.distance_to(target) < 46.0
+		var bpos := bunker + Vector2(-bw * 0.5, 22.0)
+		if bpos.y > h - 4.0:
+			bpos = bunker + Vector2(12.0, 5.0)
+		_tag(font, bpos, bl, fs, bc)
+		var tl := Game.tr_key("map.target")
+		var tpos := target + Vector2(10.0, -8.0)
+		if close:
+			tpos = target + Vector2(10.0, -18.0)
+		_tag(font, tpos, tl, fs, tc)
 		# north arrow
 		var nx := Vector2(w - 18.0, 20.0)
 		draw_colored_polygon(PackedVector2Array([nx + Vector2(0, -10), nx + Vector2(-5, 2), nx + Vector2(5, 2)]), UT.GREEN_DIM)

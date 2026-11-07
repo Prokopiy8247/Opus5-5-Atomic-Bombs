@@ -12,6 +12,7 @@ uniform float ground_y = 0.0;     // local y of the ground (shell is clipped bel
 uniform float stem_h = 0.0;       // Mach stem height (local, 0 = none)
 uniform vec3 tint = vec3(1.0);
 uniform float condensation = 0.0; // humid air: faint white in the shell
+global uniform float g_exposure;
 
 varying vec3 v_local;
 varying vec3 v_world;
@@ -51,7 +52,7 @@ void fragment() {
 	// visible almost only through refraction: tiny brightening at the limb
 	// visible only through refraction of what lies behind it (no tinted "glass dome")
 	float a = (rim * 0.9 + stem * 0.6) * strength * above;
-	vec3 col = bg + condensation * rim * rim * vec3(0.05);
+	vec3 col = bg + condensation * rim * rim * vec3(0.05) * g_exposure;
 	ALBEDO = col * tint;
 	ALPHA = clamp(a, 0.0, 1.0);
 }

@@ -49,10 +49,12 @@ void fragment() {
 	vec3 L = normalize(g_sun_dir);
 	vec3 wn = normalize((INV_VIEW_MATRIX * vec4(n, 0.0)).xyz);
 	float lit = clamp(dot(wn, L) * 0.5 + 0.6, 0.15, 1.0);
-	vec3 col = vec3(0.96, 0.97, 1.0) * (g_sun_light.rgb * lit + g_ambient.rgb * g_ambient.w * 0.9);
-	col += g_fireball_color.rgb * g_fireball_color.w * 0.003;
+	// thin droplet veil: strongly forward-scattering, also lit by the fireball behind it
+	float fwd = pow(max(dot(-v, normalize((INV_VIEW_MATRIX * vec4(0.0, 0.0, -1.0, 0.0)).xyz)), 0.0), 2.0);
+	vec3 col = vec3(0.96, 0.97, 1.0) * (g_sun_light.rgb * (lit + 0.3) + g_ambient.rgb * g_ambient.w * 1.2);
+	col += g_fireball_color.rgb * g_fireball_color.w * 0.02;
 	vec4 fog = atm_fog(CAMERA_POSITION_WORLD, v_world);
-	col = mix(col, fog.rgb, fog.a);
+	col = mix(col * g_exposure, fog.rgb, fog.a);
 	ALBEDO = col;
 	ALPHA = clamp(a, 0.0, 0.95);
 }

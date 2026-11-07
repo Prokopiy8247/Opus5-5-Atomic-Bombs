@@ -18,6 +18,7 @@ var adapt_log := 0.0          # log2 of the luminance the eye is adapted to (rel
 var flash_lum := 0.0          # current relative luminance of the explosion at the observer
 var white_out := 0.0          # extra glare (0..1), drives post white-out
 var exposure_override := -1.0
+var max_comp := 6.5           # max stops of compensation (raised when the fireball fills the view)
 
 var tod_params := {}
 
@@ -41,15 +42,15 @@ func _ready() -> void:
 	if Args.get_str("tonemap", "") == "aces":
 		env.tonemap_mode = Environment.TONE_MAPPER_ACES
 		env.tonemap_white = 8.0
-	env.glow_enabled = true
+	env.glow_enabled = not Args.has("noglow")
 	env.glow_normalized = false
 	env.glow_intensity = 0.3
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.0
 	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
-	env.glow_hdr_threshold = 1.6
-	env.glow_hdr_scale = 1.5
-	env.glow_hdr_luminance_cap = 30.0
+	env.glow_hdr_threshold = 1.8
+	env.glow_hdr_scale = 1.2
+	env.glow_hdr_luminance_cap = 6.0
 	for i in 7:
 		env.set_glow_level(i, [0.0, 1.0, 0.7, 0.35, 0.12, 0.05, 0.02][i])
 	env.fog_enabled = true
@@ -111,19 +112,19 @@ func apply_tod(t: int) -> void:
 	match t:
 		Game.TimeOfDay.DAWN:
 			p = {"az": 68.0, "el": 1.6, "sun_col": Color(1.0, 0.62, 0.38), "sun_e": 1.6, "sky_i": 20.0,
-				"exposure": 1.5, "fog": 0.000035, "turb": 1.6, "night": 0.0, "amb": 1.0,
+				"exposure": 1.5, "fog": 0.000028, "turb": 1.6, "night": 0.0, "amb": 1.0,
 				"amb_col": Color(0.22, 0.24, 0.32), "amb_scale": 1.0, "fog_col": Color(0.42, 0.38, 0.40), "fog_sun": Color(1.0, 0.55, 0.28), "fog_bright": 0.9}
 		Game.TimeOfDay.NOON:
 			p = {"az": 100.0, "el": 46.0, "sun_col": Color(1.0, 0.96, 0.9), "sun_e": 3.2, "sky_i": 22.0,
-				"exposure": 0.42, "fog": 0.000026, "turb": 1.0, "night": 0.0, "amb": 1.0,
+				"exposure": 0.42, "fog": 0.000018, "turb": 1.0, "night": 0.0, "amb": 1.0,
 				"amb_col": Color(0.30, 0.38, 0.52), "amb_scale": 1.0, "fog_col": Color(0.50, 0.58, 0.70), "fog_sun": Color(0.6, 0.55, 0.45), "fog_bright": 0.85}
 		Game.TimeOfDay.DUSK:
 			p = {"az": 292.0, "el": 2.2, "sun_col": Color(1.0, 0.55, 0.3), "sun_e": 1.5, "sky_i": 20.0,
-				"exposure": 1.6, "fog": 0.000038, "turb": 1.8, "night": 0.0, "amb": 1.0,
+				"exposure": 1.6, "fog": 0.00003, "turb": 1.8, "night": 0.0, "amb": 1.0,
 				"amb_col": Color(0.25, 0.22, 0.30), "amb_scale": 1.0, "fog_col": Color(0.42, 0.36, 0.38), "fog_sun": Color(1.0, 0.5, 0.25), "fog_bright": 0.9}
 		_:
 			p = {"az": 0.0, "el": -28.0, "sun_col": Color(1.0, 0.8, 0.6), "sun_e": 0.0, "sky_i": 20.0,
-				"exposure": 2.2, "fog": 0.00002, "turb": 1.0, "night": 1.0, "amb": 0.3,
+				"exposure": 2.2, "fog": 0.000015, "turb": 1.0, "night": 1.0, "amb": 0.3,
 				"amb_col": Color(0.010, 0.013, 0.022), "amb_scale": 1.0, "fog_col": Color(0.008, 0.010, 0.016), "fog_sun": Color(0.02, 0.025, 0.04), "fog_bright": 1.0}
 	tod_params = p
 	var sd := dir_from_az_el(p["az"], p["el"])
@@ -173,7 +174,7 @@ func set_humidity(h: float) -> void:
 
 func _apply_fog_density() -> void:
 	var base: float = tod_params.get("fog", 0.00003)
-	var k := lerpf(0.7, 1.7, Game.humidity)
+	var k := lerpf(0.6, 1.5, Game.humidity)
 	env.fog_density = 0.0000005
 	RenderingServer.global_shader_parameter_set("g_fog", Vector4(base * k, lerpf(2200.0, 1400.0, Game.humidity), 5e-6, 0.0))
 
@@ -185,27 +186,32 @@ func step_adaptation(lum: float, dt: float) -> void:
 	var target := log(1.0 + lum) / log(2.0)
 	if target > adapt_log:
 		# fast adaptation to bright light (pupil + bleaching): ~0.15-0.4 s
-		adapt_log = lerpf(adapt_log, target, 1.0 - exp(-dt / 0.1))
+		adapt_log = lerpf(adapt_log, target, 1.0 - exp(-dt / 0.05))
 	else:
 		# slow recovery: ~8 s time constant
-		adapt_log = lerpf(adapt_log, target, 1.0 - exp(-dt / 4.5))
+		adapt_log = lerpf(adapt_log, target, 1.0 - exp(-dt / 2.2))
 	# glare: how far the stimulus exceeds what the eye is adapted to
 	white_out = clampf((target - adapt_log) / 4.0, 0.0, 1.0)
 
 
 func reset_adaptation() -> void:
+	max_comp = 6.5
 	adapt_log = 0.0
 	flash_lum = 0.0
 	white_out = 0.0
 
 
 func current_exposure() -> float:
+	if Args.has("expo"):
+		return Args.get_float("expo", 1.0)
 	if exposure_override > 0.0:
 		return exposure_override
 	# the eye compensates at most ~8 stops
-	var comp := clampf(adapt_log, 0.0, 7.5)
+	var comp := clampf(adapt_log, 0.0, max_comp)
 	return base_exposure * pow(2.0, -comp)
 
 
 func _process(_delta: float) -> void:
-	cam_attr.exposure_multiplier = current_exposure()
+	var e := current_exposure()
+	cam_attr.exposure_multiplier = e
+	RenderingServer.global_shader_parameter_set("g_exposure", e)

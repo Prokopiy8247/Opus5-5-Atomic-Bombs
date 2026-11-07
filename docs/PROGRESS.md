@@ -8,14 +8,14 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 | # | Stage | Status | Notes |
 |---|---|---|---|
 | 0 | Timelog, prompt copy, progress, read refs | done | |
-| 1 | Research (section 3), refs download, RESEARCH_NOTES | in progress | background workflow |
-| 2 | Skeleton: import, driver, screenshot rig, git | not started | |
-| 3 | World: terrain, sky, bunker, window, camera | not started | |
-| 4 | blast_physics + bombs.json + selftest | not started | |
-| 5 | Reference explosion at full quality | not started | |
-| 6 | Remaining 19 bombs, special types, destruction | not started | |
-| 7 | Menu, slider, previews, HUD, cine mode, keys, l10n | not started | |
-| 8 | Sound | not started | |
+| 1 | Research (section 3), refs download, RESEARCH_NOTES | done | 10-agent workflow; refs for all 20 in docs/refs; RESEARCH_NOTES.md; 01 reference corrected |
+| 2 | Skeleton: import, driver, screenshot rig, git | done | d3d12 chosen (808 vs 743 fps); shot rig + contact sheets; git |
+| 3 | World: terrain, sky, bunker, window, camera | done | clipmap + GZ patch, Nishita sky, aerial perspective, bunker, TOD |
+| 4 | blast_physics + bombs.json + selftest | done | research-corrected formulas; selftest 112/112 READY |
+| 5 | Reference explosion at full quality | in progress | volume shader v2, shock/dust/wilson/debris layers |
+| 6 | Remaining 19 bombs, special types, destruction | in progress | all 20 profiles render; column/surge/dome/rings/ice caps |
+| 7 | Menu, slider, previews, HUD, cine mode, keys, l10n | in progress | modules workflow (UI/audio/models/range) |
+| 8 | Sound | in progress | modules workflow |
 | 9 | Polish, optimization, auto-quality | not started | |
 | 10 | QA matrix, independent review, fixes, final frames | not started | |
 | 11 | Docs (README, CREDITS, QA_REPORT), cleanup | not started | |

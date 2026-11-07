@@ -279,8 +279,8 @@ static func make_roar() -> AudioStreamWAV:
 	var ch: Array[PackedFloat32Array] = []
 	var ks := 1.0 - exp(-TAU * 2.0 / rate)
 	var kf := 1.0 - exp(-TAU * 9.0 / rate)
-	var f1 := 2.0 * sin(PI * 190.0 / rate)
-	var f2 := 2.0 * sin(PI * 1000.0 / rate)
+	var f1 := 2.0 * sin(PI * 330.0 / rate)
+	var f2 := 2.0 * sin(PI * 850.0 / rate)
 	# crackle band-pass (RBJ BP 1700 Hz, Q 1.4; b1 = 0, b2 = -b0)
 	var w0 := TAU * 1700.0 / rate
 	var al := sin(w0) / 2.8
@@ -347,12 +347,14 @@ static func make_roar() -> AudioStreamWAV:
 			s4 = (s4 * 1103515245 + 12345) & 0x7FFFFFFF
 			var x := float(s4) * INV_2_30 - 1.0
 			lo1 += f1 * bd1
-			bd1 += f1 * (x - lo1 - 1.1 * bd1)
+			bd1 += f1 * (x - lo1 - 1.2 * bd1)
 			lo2 += f2 * bd2
-			var hi2 := x - lo2 - 1.3 * bd2
+			var hi2 := x - lo2 - 1.6 * bd2
 			bd2 += f2 * hi2
 			var mf := 0.75 + gf * fast[i]
-			out[i] = lo1 * 2.2 * (0.6 + gs * slow[i]) + (bd2 * 0.7 + crk[i] * gc) * mf + hi2 * 0.12
+			# -bd2: the 330 Hz low-pass lags ~-135 deg where the 850 Hz band-pass leads ~+45 deg;
+			# flipping the band keeps the two in phase (no notch around 500 Hz)
+			out[i] = lo1 * 1.6 * (0.6 + gs * slow[i]) + (crk[i] * gc - bd2 * 0.8) * mf + hi2 * 0.1
 		ch.append(loopify(out, xn))
 	return _stereo_norm(ch[0], ch[1], 0.9, int(rate), true)
 

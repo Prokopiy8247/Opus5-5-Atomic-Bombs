@@ -223,7 +223,7 @@ func _update_volume(t: float) -> void:
 	var fr: float = fs["radius"]
 	vol_mat.set_shader_parameter("fb", Vector4(0.0, fs["center_y"], 0.0, fr if float(fs["opacity"]) > 0.001 else 0.0))
 	vol_mat.set_shader_parameter("fb_look", Vector4(fs["temp"], fs["emis"], float(prof.a("fireball_noise", 0.22)), fs["opacity"]))
-	vol_mat.set_shader_parameter("fb_shape", Vector4(fs["squash"], fs["mottle"], float(prof.a("fireball_noise_scale", 6.0)), fs["skin"]))
+	vol_mat.set_shader_parameter("fb_shape", Vector4(fs["squash"], fs["mottle"], float(prof.a("fireball_noise_scale", 10.0)), fs["skin"]))
 	var tint: Array = prof.a("fireball_tint", [1.0, 1.0, 1.0, 0.0])
 	if float(tint[3]) > 0.0:
 		var tw := float(tint[3]) * clampf(1.0 - t / float(prof.a("tint_time", 5.0)), 0.0, 1.0)
@@ -372,9 +372,12 @@ func metered_luminance(ti: float, amb: float) -> float:
 		var ang_r := atan(float(fs["radius"]) / maxf(d, 1.0))
 		if ang < half_fov + ang_r:
 			var cov := clampf(pow(ang_r / half_fov, 2.0) * 6.0, 0.0, 1.0)
+			# a camera / binocular stopped down on a fireball that fills the view (rapatronic look)
+			env_ctl.max_comp = lerpf(6.5, 9.0, cov)
 			var tt: float = fs["temp"]
 			var x := tt / 8000.0
-			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / (1.5 * amb)
+			# metering aims the fireball ~2 stops above middle grey (bright, but with visible structure)
+			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / (6.0 * amb)
 			lum = maxf(lum, (1.0 - cov) * (1.0 + lum) + cov * l_fb - 1.0)
 	return lum
 

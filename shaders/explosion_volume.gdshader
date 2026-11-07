@@ -175,7 +175,7 @@ float sdf_rings(vec3 p) {
 	float r = length(p.xz);
 	for (int i = 0; i < 4; i++) {
 		if (rings[i].w > 0.0) {
-			float dr = length(vec2((r - rings[i].y) * 0.5, (p.y - rings[i].x) * 2.0)) - rings[i].z;
+			float dr = length(vec2((r - rings[i].y) * 0.35, (p.y - rings[i].x) * 1.2)) - rings[i].z;
 			d = min(d, dr);
 		}
 	}
@@ -334,7 +334,7 @@ float fireball_density(vec3 p, out float lq_out, out float patch_out, out float 
 	}
 	float dd = lq - 1.0 - disp;
 	lq_out = lq;
-	patch_out = nbl(nq * 1.3 + 7.7);
+	patch_out = nbl(nq * 1.3 + 7.7) * 0.6 + nbl(nq * 3.7 + 1.9) * 0.4;
 	mott_out = mott;
 	return smoothstep(0.02, -0.06, dd);
 }
@@ -414,10 +414,10 @@ void fragment() {
 		// rings / shells
 		float dr = 0.0;
 		float rdd = sdf_rings(p);
-		if (rdd < 600.0) {
-			float n = nlf(p * 0.0002 + seed);
+		if (rdd < 900.0) {
+			float n = nlf(p * 0.00035 + seed) * 0.6 + nbl(p * 0.0011 + seed) * 0.4;
 			float op = max(max(rings[0].w, rings[1].w), max(rings[2].w, rings[3].w));
-			dr = smoothstep(120.0, -220.0, rdd - (n - 0.5) * 600.0) * op * 0.5;
+			dr = smoothstep(200.0, -400.0, rdd - (n - 0.5) * 900.0) * op * 0.22 * smoothstep(0.3, 0.6, n);
 		}
 		float di = 0.0;
 		for (int k = 0; k < 2; k++) {
@@ -524,6 +524,10 @@ void fragment() {
 			if (debug_mode == 3) { src = vec3(t_sun) * 0.25; }
 			if (debug_mode == 5) { src = vec3(macro, micro, far_s) * 0.3; }
 			if (debug_mode == 6) { src = light * 0.1; }
+			if (debug_mode == 12) { src = vec3(length(sun_c * sunlit), length(amb * ao), length(blackbody(fb_look.x) * bb_lum(fb_look.x) * fb_look.y * fb_look.w * 0.03)) * 0.01; }
+			if (debug_mode == 13) { src = vec3(length(emit), length(albedo), fbo) * 0.01; }
+			if (debug_mode == 10) { src = vec3(fb_look.x / 10000.0, fb_look.y / 4000.0, fbo) * 0.02; }
+			if (debug_mode == 11) { src = emit * 0.0001; }
 			if (debug_mode == 7) { src = vec3(macro, 0.0, 1.0 - macro) * 0.3; }
 			if (debug_mode == 8) { src = vec3(micro, 0.0, 1.0 - micro) * 0.3; }
 			if (debug_mode == 9) { src = vec3(far_s, 0.0, 1.0 - far_s) * 0.3; }
@@ -539,7 +543,7 @@ void fragment() {
 	}
 	float th = first_hit > 0.0 ? first_hit : (t_enter + t_exit) * 0.5;
 	vec4 fog = atm_fog(cam, cam + rd * th);
-	vec3 col = mix(acc, fog.rgb * alpha, debug_mode > 0 ? 0.0 : fog.a);
+	vec3 col = mix(acc * g_exposure, fog.rgb * alpha, debug_mode > 0 ? 0.0 : fog.a);
 	ALBEDO = col;
 	ALPHA = alpha;
 }

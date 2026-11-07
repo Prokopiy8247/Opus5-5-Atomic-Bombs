@@ -72,6 +72,7 @@ const int P_METAL = 26;
 uniform int kind = 0;
 uniform vec3 burst_pos = vec3(0.0, -10000.0, 0.0);
 uniform float t2 = 0.1;               // time of the second thermal maximum (s)
+uniform float th_cdf[32];             // cumulative thermal pulse, see th_frac()
 uniform float imp = 1.0;              // blast impulse factor (positive phase relative to 15 kt)
 uniform vec3 terrain_focus = vec3(0.0);
 uniform float terrain_match = 1.0;    // 1: sit on the clipmap's LOD triangles, 0: exact height
@@ -133,15 +134,21 @@ float dyn_q(float p) {
 	return 2.5 * p * p / (7.0 * 14.7 + p);
 }
 
-// Fraction of the thermal energy radiated by x = t / t2 (same closed form as BlastPhysics).
+// Fraction of the thermal energy radiated by x = t / t2: table of BlastPhysics.thermal_fraction
+// sampled at log10(x) = -2 .. 2 (32 entries, set by range_objects.gd).
 float th_frac(float x) {
 	if (x <= 0.0) {
 		return 0.0;
 	}
-	float s2 = 1.41421356;
-	float a = log((x * x - s2 * x + 1.0) / (x * x + s2 * x + 1.0)) / (2.0 * s2);
-	float b = (atan(s2 * x + 1.0) + atan(s2 * x - 1.0)) / s2;
-	return clamp((a + b) / (PI / s2), 0.0, 1.0);
+	float u = (log(x) * 0.4342945 + 2.0) * 0.25 * 31.0;
+	if (u <= 0.0) {
+		return th_cdf[0] * clamp(x * 100.0, 0.0, 1.0);
+	}
+	if (u >= 31.0) {
+		return th_cdf[31];
+	}
+	int i = int(u);
+	return mix(th_cdf[i], th_cdf[i + 1], u - float(i));
 }
 
 mat3 rot_axis(vec3 u, float a) {
@@ -564,8 +571,8 @@ void vertex() {
 		if (hit && psi > 50.0) {
 			// a pole went down: the line snaps and drops to the ground
 			float f = sat(tau / 1.1);
-			float yg = 0.04 - xb.y * u;     // ground along the chord (local), wires lie on it
-			v.y = mix(v.y, yg + 0.04 * v.z, f * f);
+			// local y is measured from the chord between the pole feet, i.e. from the ground
+			v.y = mix(v.y, 0.05 + 0.02 * v.z, f * f);
 		}
 		v.y += corr;
 		absolute = true;

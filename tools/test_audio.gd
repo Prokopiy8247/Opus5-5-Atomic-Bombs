@@ -643,3 +643,9 @@ func _analyze(path: String) -> void:
 	if line != "":
 		print("ENV ", line)
 	_spectrogram(mono, float(rate), out_dir.path_join("mix_spec.png"))
+	# zoomed slices of the scripted --movie timeline
+	var dur := float(frames) / rate
+	for sl: Array in [["flight", 3.0, 17.0], ["near", 21.0, 37.0], ["far", 50.0, 72.0], ["small", 92.0, 101.0]]:
+		if float(sl[2]) <= dur:
+			var part := mono.slice(int(float(sl[1]) * rate), int(float(sl[2]) * rate))
+			_spectrogram(part, float(rate), out_dir.path_join("mix_spec_%s.png" % sl[0]))

@@ -116,7 +116,7 @@ func _derive() -> void:
 	wilson_r = BlastPhysics.wilson_radius(w_kt)
 	wilson_t = BlastPhysics.wilson_duration(w_kt)
 	wilson_t0 = BlastPhysics.wilson_time(w_kt)
-	emission_scale = float(a("emission", 3000.0 if nuclear else 160.0))
+	emission_scale = float(a("emission", 1600.0 if nuclear else 160.0))
 
 
 # ------------------------------------------------------------------ fireball

@@ -7,6 +7,9 @@ global uniform vec4 g_fog_sun;    // rgb: colour toward the sun (forward scatter
 global uniform vec3 g_sun_dir;
 global uniform vec4 g_fireball;        // xyz world pos, w radius
 global uniform vec4 g_fireball_color;  // rgb colour, w luminous intensity
+// Camera exposure multiplier. Godot folds the exposure into lit shading but NOT into unshaded
+// output or custom FOG colours, so those must be multiplied explicitly.
+global uniform float g_exposure;
 
 const float ATM_GROUND_Y = -22.0;
 
@@ -38,5 +41,5 @@ vec4 atm_fog(vec3 cam, vec3 p) {
 		float c = max(dot(v, fd), 0.0);
 		col += g_fireball_color.rgb * g_fireball_color.w * (0.01 + 0.05 * pow(c, 8.0)) * 0.05;
 	}
-	return vec4(col, amount);
+	return vec4(col * g_exposure, amount);
 }

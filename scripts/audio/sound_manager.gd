@@ -20,11 +20,11 @@ const AudioSynth = preload("res://scripts/audio/audio_synth.gd")
 
 const SOUND_SPEED := 343.0
 const LN10 := 2.302585092994046
-const VENT_DB := -17.0
-const HUM_DB := -26.0
-const ROCKET_DB := 6.0
+const VENT_DB := -19.0
+const HUM_DB := -28.0
+const ROCKET_DB := 10.0
 const WHISTLE_DB := -9.0
-const UI_DB := -6.0
+const UI_DB := -10.0
 const UI_KINDS := ["click", "select", "launch", "warn", "error"]
 const BLAST_IDS := ["crack", "crack2", "thump", "infra", "rumble", "thunder0", "thunder1",
 		"thunder2", "thunder3", "roar", "wind"]
@@ -62,6 +62,7 @@ var _tinnitus: AudioStreamPlayer
 var _rocket_ign: AudioStreamPlayer3D
 var _rocket_loop: AudioStreamPlayer3D
 
+var _own_limiter := false
 var _gen_names: Array = []
 var _gen_out: Dictionary = {}
 var _gen_mutex: Mutex
@@ -222,15 +223,18 @@ func on_detonation(p: Dictionary) -> void:
 	if tdb > -40.0:
 		_add_ev(t_seis, "tremor", "tremor", minf(tdb, 0.0), clampf(pow(_w / 15.0, -0.04), 0.7, 1.3))
 	# the air blast
-	_add_ev(_t_shock, "crack", "crack", _lvl + float(mods["crack"]), pc)
+	# (a layer pitched down by p lasts 1/p longer: 10*log10(p) keeps its energy comparable)
+	_add_ev(_t_shock, "crack", "crack", _lvl + float(mods["crack"]) + _e_comp(pc), pc)
 	if hob >= 1000.0 or _kind == "NUCLEAR_HIGH_AIR":
 		_add_ev(_t_shock + 0.35 + maxf(hob, 1500.0) / 4000.0, "crack2", "crack",
-				_lvl + float(mods["crack"]) - 5.0, pc * 0.92)
-	_add_ev(_t_shock + 0.004, "thump", "thump", _lvl + float(mods["thump"]) + (0.0 if nuclear else -2.0), pt)
+				_lvl + float(mods["crack"]) - 5.0 + _e_comp(pc), pc * 0.92)
+	_add_ev(_t_shock + 0.004, "thump", "thump",
+			_lvl + float(mods["thump"]) + (0.0 if nuclear else -2.0) + _e_comp(pt), pt)
 	if mega or _w >= 500.0:
-		_add_ev(_t_shock + 0.01, "infra", "infra", _lvl + (3.0 if mega else 1.0),
-				clampf(pow(_w / 1000.0, -0.05), 0.75, 1.1))
-	_add_ev(_t_shock + 0.03, "rumble", "rumble", _lvl + clampf(-2.0 + 1.5 * lw, -9.0, 2.0) + float(mods["rumble"]), pr)
+		var pi := clampf(pow(_w / 1000.0, -0.05), 0.75, 1.1)
+		_add_ev(_t_shock + 0.01, "infra", "infra", _lvl - (1.0 if mega else 3.0) + _e_comp(pi), pi)
+	_add_ev(_t_shock + 0.03, "rumble", "rumble",
+			_lvl + clampf(-2.0 + 1.5 * lw, -9.0, 2.0) + float(mods["rumble"]) + _e_comp(pr), pr)
 	# bunker reaction
 	if _psi >= 0.15:
 		_add_ev(_t_shock + 0.04, "debris", "debris", clampf(-18.0 + 9.0 * _log10(_psi / 0.15), -24.0, 0.0), 1.0)
@@ -343,6 +347,36 @@ func stop_all() -> void:
 
 # =============================================================================== setup
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		_release_effects()
+
+
+func _exit_tree() -> void:
+	# stop every voice so the AudioServer drops its playbacks before the engine shuts down
+	if not is_setup:
+		return
+	stop_all()
+	for c in get_children():
+		if c is AudioStreamPlayer:
+			(c as AudioStreamPlayer).stop()
+		elif c is AudioStreamPlayer3D:
+			(c as AudioStreamPlayer3D).stop()
+
+
+## Takes our effects off the AudioServer buses (they would otherwise outlive the scene tree
+## and be reported as leaked ObjectDB instances at exit).
+func _release_effects() -> void:
+	for fx: AudioEffect in [limiter, lp_ears, lp_blast, reverb_blast]:
+		if fx == null or (fx == limiter and not _own_limiter):
+			continue
+		for b in AudioServer.bus_count:
+			for i in range(AudioServer.get_bus_effect_count(b) - 1, -1, -1):
+				if AudioServer.get_bus_effect(b, i) == fx:
+					AudioServer.remove_bus_effect(b, i)
+	bus_ears = -1
+
+
 func _setup_buses() -> void:
 	limiter = null
 	for i in AudioServer.get_bus_effect_count(0):
@@ -352,6 +386,7 @@ func _setup_buses() -> void:
 	if limiter == null:
 		limiter = AudioEffectHardLimiter.new()
 		AudioServer.add_bus_effect(0, limiter)
+		_own_limiter = true
 	limiter.ceiling_db = -0.3
 	limiter.pre_gain_db = 0.0
 	limiter.release = 0.15
@@ -467,9 +502,10 @@ func _player3d(pname: String, st: AudioStream) -> AudioStreamPlayer3D:
 	p.name = pname
 	p.stream = st
 	p.bus = "World"
-	p.attenuation_model = AudioStreamPlayer3D.ATTENUATION_LOGARITHMIC
+	# physical 1/r spreading (Godot's ATTENUATION_LOGARITHMIC is -20*ln(d/u), far too steep for km)
+	p.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
 	p.unit_size = 60.0
-	p.max_db = 6.0
+	p.max_db = 10.0
 	p.max_distance = 0.0
 	p.volume_db = ROCKET_DB
 	p.attenuation_filter_cutoff_hz = 7000.0
@@ -771,6 +807,11 @@ func _listener_pos() -> Vector3:
 
 func _log10(x: float) -> float:
 	return log(x) / LN10
+
+
+## Energy compensation for a pitched layer (it lasts 1/pitch longer).
+func _e_comp(pitch: float) -> float:
+	return 10.0 * _log10(pitch)
 
 
 ## Debug summary of the scheduled soundtrack (for tests and the lead's logs).

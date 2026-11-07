@@ -129,6 +129,29 @@ func _preview_sheet() -> void:
 	print("SHOT ", p, " err=", sheet.save_png(p))
 
 
+## Only the RU + EN menu screenshots (used for checking other resolutions / aspect ratios).
+func _menu_only() -> void:
+	UiRoot = load("res://scripts/ui/ui_root.gd")
+	_backdrop()
+	ui = UiRoot.new()
+	ui.manage_mouse = false
+	root.add_child(ui)
+	ui.setup(G.bombs)
+	var tag := "%dx%d" % [root.get_visible_rect().size.x, root.get_visible_rect().size.y]
+	print("MENU ONLY window=", DisplayServer.window_get_size(), " canvas=", tag)
+	ui.menu.select_bomb(13)
+	ui.menu.set_distance(8.0)
+	await wait_sec(1.0)
+	await shot("res_%s_ru.png" % tag)
+	G.set_language("en")
+	ui.menu.select_bomb(6)
+	await wait_sec(1.0)
+	await shot("res_%s_en.png" % tag)
+	G.set_language("ru")
+	print("READY")
+	quit()
+
+
 func _run() -> void:
 	await process_frame
 	G = root.get_node_or_null("Game")
@@ -143,6 +166,9 @@ func _run() -> void:
 			out_dir = a[i + 1]
 	if shots:
 		DirAccess.make_dir_recursive_absolute(out_dir)
+	if a.has("--menu-only"):
+		await _menu_only()
+		return
 	print("UI TEST display=", DisplayServer.get_name(), " bombs=", G.bombs.size(), " out=", out_dir)
 	G.set_language("ru")
 
@@ -261,6 +287,10 @@ func _run() -> void:
 	menu._rec_btn.pressed.emit()
 	await wait_sec(0.9)
 	await shot("menu_ru.png")
+	menu.select_bomb(5)    # longest blurb
+	await wait_sec(0.9)
+	await shot("menu_ru_longest_blurb.png")
+	menu.select_bomb(10)
 	menu._lang_btns[1].pressed.emit()
 	check(G.lang == "en" and menu._launch_btn.text == "LAUNCH", "RU->EN: launch '%s'" % menu._launch_btn.text)
 	check(menu._name_l.text == G.bomb_text(G.bombs[10], "name"), "dossier name re-localized")

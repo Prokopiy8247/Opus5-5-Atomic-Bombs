@@ -47,12 +47,28 @@ func run() -> void:
 		_setup_view_dynamic(view, ex)
 		for i in 3:
 			await get_tree().process_frame
+		if Args.has("fps_hold"):
+			# real-time cost at this age: render N frames and time them (vsync is off)
+			var n := Args.get_int("fps_hold", 120)
+			var t0 := Time.get_ticks_usec()
+			var worst := 0.0
+			var last := t0
+			for i in n:
+				await RenderingServer.frame_post_draw
+				var now := Time.get_ticks_usec()
+				worst = maxf(worst, (now - last) / 1000.0)
+				last = now
+			var avg_ms := (Time.get_ticks_usec() - t0) / 1000.0 / n
+			print("FPS bomb=%d age=%s avg_fps=%.1f avg_ms=%.2f worst_ms=%.2f" % [bomb_n, _fmt(t), 1000.0 / avg_ms, avg_ms, worst])
 		await RenderingServer.frame_post_draw
 		var img := get_viewport().get_texture().get_image()
 		var path := out.path_join("%s_t%s.png" % [prefix, _fmt(t)])
 		var err := img.save_png(path)
 		files.append(path)
-		print("SHOT ", path, " err=", err)
+		if Args.has("dbgstate"):
+			print("MAT fb=", ex.vol_mat.get_shader_parameter("fb"), " fb_look=", ex.vol_mat.get_shader_parameter("fb_look"), " head=", ex.vol_mat.get_shader_parameter("head"), " head_heat=", ex.vol_mat.get_shader_parameter("head_heat"), " stem=", ex.vol_mat.get_shader_parameter("stem"), " skirt=", ex.vol_mat.get_shader_parameter("skirt"))
+			print("STATE t=", t, " fb=", ex.prof.fireball_state(t), " head=", ex.prof.head_state(t), " glob_fc=", RenderingServer.global_shader_parameter_get("g_fireball_color"), " sun=", RenderingServer.global_shader_parameter_get("g_sun_light"), " amb=", RenderingServer.global_shader_parameter_get("g_ambient"))
+		print("SHOT ", path, " err=", err, " exp=%.5f adapt=%.2f maxc=%.1f flash=%.1f" % [main.env_ctl.current_exposure(), main.env_ctl.adapt_log, main.env_ctl.max_comp, main.env_ctl.flash_lum])
 	if Args.has("sheet"):
 		_contact_sheet(files, shots, out.path_join("%s_sheet.png" % prefix))
 	print("READY")
@@ -117,9 +133,11 @@ func _setup_view_dynamic(view: String, ex: Explosion) -> void:
 		var size := maxf(top, w * 0.6) * 1.35
 		var vfov := 2.0 * atan(size * 0.5 / maxf(d, 1.0))
 		var ang := rad_to_deg(2.0 * atan(tan(vfov * 0.5) * 16.0 / 9.0))
-		cam.fov = clampf(ang, 3.0, 80.0)
+		cam.fov = clampf(ang, 3.0, 58.0)
 		cam.target_fov = cam.fov
 		var aim := ex.gz + Vector3(0, top * 0.45, 0)
+		if ang > 58.0:
+			aim = ex.gz + Vector3(0, top * 0.55, 0)
 		var dir := aim.normalized()
 		cam.set_look(atan2(-dir.x, -dir.z), asin(clampf(dir.y, -1.0, 1.0)))
 

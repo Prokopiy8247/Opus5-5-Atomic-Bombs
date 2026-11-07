@@ -169,7 +169,14 @@ func _set_badge(text: String) -> void:
 	_badge.visible = text != ""
 	if _badge_l.text != text:
 		_badge_l.text = text
-		_badge.reset_size()
+		_center_badge.call_deferred()
+
+
+func _center_badge() -> void:
+	var ms := _badge.get_combined_minimum_size()
+	_badge.offset_left = -ms.x * 0.5
+	_badge.offset_right = ms.x * 0.5
+	_badge.offset_bottom = _badge.offset_top + ms.y
 
 
 ## info keys: phase ("flight","explosion","idle"), t_plus, dist_km, stage, eta_light, eta_heat,

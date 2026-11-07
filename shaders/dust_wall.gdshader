@@ -62,7 +62,7 @@ void fragment() {
 	vec3 col = dust_col * (g_sun_light.rgb * lit * 0.9 + g_ambient.rgb * g_ambient.w * 0.8);
 	col += g_fireball_color.rgb * g_fireball_color.w * 0.002 * dust_col;
 	vec4 fog = atm_fog(CAMERA_POSITION_WORLD, v_world);
-	col = mix(col, fog.rgb, fog.a);
+	col = mix(col * g_exposure, fog.rgb, fog.a);
 	ALBEDO = col;
 	ALPHA = clamp(a, 0.0, 1.0);
 }

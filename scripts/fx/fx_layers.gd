@@ -145,7 +145,11 @@ class WilsonLayer extends Node3D:
 		add_child(shell)
 		# appears when the rarefaction behind the front cools humid air (~RH > 0.55)
 		var hum := Game.humidity
-		amount = clampf((hum - 0.45) / 0.35, 0.0, 1.0) * float(ex.prof.a("wilson", 1.0))
+		# a spherical Wilson shell is a kiloton phenomenon; megaton clouds show rings/skirts instead
+		var default_w := 1.0 if ex.prof.w_kt <= 150.0 else 0.0
+		amount = clampf((hum - 0.45) / 0.35, 0.0, 1.0) * float(ex.prof.a("wilson", default_w))
+		if ex.prof.w_kt > 150.0 and not ex.prof.art.has("wilson_force"):
+			amount = 0.0
 		dur = maxf(ex.prof.wilson_t, 0.25) * float(ex.prof.a("wilson_duration", 1.0))
 		t0 = float(ex.prof.a("wilson_start", 0.0))
 		if t0 <= 0.0:

@@ -144,3 +144,7 @@ g_patch={
 "type": "vec4",
 "value": Vector4(0, 0, 0, 0)
 }
+g_exposure={
+"type": "float",
+"value": 1.0
+}

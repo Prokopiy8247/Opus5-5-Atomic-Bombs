@@ -351,12 +351,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			env_ctl.apply_tod(Game.tod)
 			bunker.set_night(Game.tod == Game.TimeOfDay.NIGHT)
 			if ui and ui.has_method("show_toast"):
-				ui.show_toast(Game.tr_key("tod_" + Game.TOD_NAMES[Game.tod]))
+				ui.show_toast(Game.tr_key("tod." + Game.TOD_NAMES[Game.tod]))
 		KEY_H:
 			var h := fposmod(Game.humidity + 0.25, 1.25)
 			env_ctl.set_humidity(h)
 			if ui and ui.has_method("show_toast"):
-				ui.show_toast("%s %d%%" % [Game.tr_key("humidity"), int(h * 100.0)])
+				ui.show_toast("%s %d%%" % [Game.tr_key("set.humidity"), int(h * 100.0)])
 		KEY_F1:
 			Game.hud_visible = not Game.hud_visible
 			if ui:
