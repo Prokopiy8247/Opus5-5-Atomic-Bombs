@@ -1,0 +1,1288 @@
+{
+ "bombs": [
+  {
+   "number": 1,
+   "id": "mk82",
+   "score": 2,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "1-60 s cloud shape",
+     "problem": "From 1 s to 60 s this renders as a nuclear-style mushroom: a flat lens cap on a long, straight, constant-width pencil stem (about 4:1 cap aspect at 30-60 s, a 'UFO on a pole'). The dossier says 'No cap or stem'. The Saber Strike 18 refs (a, c) show a ragged black-grey crown of radial soil jets, about 35x25 m at 0.3-1 s, which then detaches into a lumpy drifting puff. The Mk 82 signature is not recognizable at all.",
+     "fix": "In bomb_profiles.py mk82, set stem_density=0.0, torus=0.0, roll=0.0, cap_radius_m about 18, cap_half_m about 16 (a round puff, not a lens), head_noise_amp 0.45->0.8, head_noise_scale 0.7->0.45 (bigger lumps), late_spread 0. Add a short-lived soil crown by letting CONVENTIONAL_SURFACE use the column path when a 'col_height' key is present (ExplosionProfile.is_column_kind(), or a separate crown term), with col_height about 28, col_radius about 4, col_cone about 4, col_rise about 0.35, col_fall about 0.8, col_fall_time about 1.5, col_density 1.3, colours SOOT/DIRT, plus azimuthal jet modulation (see the Tallboy fix)."
+    },
+    {
+     "severity": 3,
+     "stage": "0.06-0.4 s shock/Wilson",
+     "problem": "A huge milky translucent glass hemisphere (the WilsonLayer, wilson=0.4) dominates the 0.06-0.15 s frames, fogs the fireball behind it, and whitens sky and ground. Physically it is wrong for a 0.1 t HE burst in a dry desert at noon. Ref b shows only a thin refraction arc at about 2-2.5 fireball radii.",
+     "fix": "Set wilson=0.0 for mk82. In WilsonLayer.setup, gate amount on yield as well (kt-class only) and treat the desert range as about 0.2 humidity. Keep only ShockLayer's thin rim; strength can rise slightly at 0-60 ms so the arc reads."
+    },
+    {
+     "severity": 3,
+     "stage": "0.005 s-60 s ground skirt",
+     "problem": "The dust skirt is a flat, bright-white 'cake' disc with a flat top and vertical outer wall. It appears in the first frame, is 80 m wide (twice the crown), lasts the whole 60 s, and grows into 40-50 m tall puffs because height += t*0.8 is unbounded. At 0.005-0.02 s the skirt sheet is lit white-hot by the fireball's 0.03*bb_lum term and reads as a flat-bottomed white rectangle with vertical sides under the flash.",
+     "fix": "Set skirt_max_r 40->18. In skirt_state, start the skirt at max(t_hit, t_fb_max) and cap the growth (t*0.8 -> min(t,4)*0.8), with density fading out by about 8 s. In sdf_skirt, replace the hard wall max(inner-r, r-(R-h)) with a soft radial density falloff and a noisy front. Set skirt_color about [0.36,0.29,0.21]. Clamp the fireball-scatter 'light +=' term for skirt density."
+    },
+    {
+     "severity": 3,
+     "stage": "0-0.6 s fireball",
+     "problem": "The fireball is white-hot (5200 K aluminized peak) and over too fast: conventional_fireball_duration = 0.04*W^(1/3) = 0.18 s, so at 0.15 s it is already a grey pom-pom sprinkled with orange glitter. The dossier and ref b have a yellow-orange ball edged with black soot that stays bright to about 0.25 s, with a residual base flame to about 0.6 s.",
+     "fix": "Add a profile key fb_duration_s (mk82 about 0.5) read in _derive() instead of the formula. Lower t_peak for 'aluminized' from 5200 to about 3300 K and keep temp >= 2200 K until about 0.25 s. Make the soot skin asymmetric (one side, from life about 0.15). Keep a small low flame at the base (vent-style glow) to 0.6 s."
+    },
+    {
+     "severity": 2,
+     "stage": "0.15-8 s debris",
+     "problem": "1800 emissive cubes (debris_hot 0.8, glow 30*exp(-t/2.5)) fill the whole sky like stars or snow and are still visible at 8 s. They are all the same size and read as sparks or glitter. Real: dark clods near the crown, invisible fragments, and dust puffs on the ground out to about 150 m.",
+     "fix": "Set debris_hot 0.8->0 (or in debris.gdshader v_glow = hot*exp(-t/0.05)). Set debris_color about [0.12,0.10,0.08], debris_count 1800->400, debris_speed 90->45, debris_cone 75->55, and a wide size spread (0.1-0.6 m). Add ground-impact dust puffs for the fragment fan instead of airborne sparks."
+    },
+    {
+     "severity": 2,
+     "stage": "8-60 s rise",
+     "problem": "The cloud stops rising at about 25 s (tanh with rise_tau = t_stab/3 = 8.3 s, cloud_top_m 90). Head noise has no age term, so the cap is a frozen rigid lens from 15 to 60 s. The dossier has continuous slow thermal rise: 60 m at 5 s, 130 m at 30 s, 200 m at 60 s, 290 m at 120 s (about 27*sqrt(t)).",
+     "fix": "Add a sqrt rise law for conventional heads in head_center_y (start + k*sqrt(t), with k about 27 for mk82), or at least cloud_top_m=290, t_stab_s=120, rise_tau_s=45. Advect head noise with age (np += vec3(wind*age, -age*0.02, 0)), drift head.xz with wind at about 3-5 m/s, and dissipate from about 30 s (dissipate_at)."
+    },
+    {
+     "severity": 2,
+     "stage": "30-60 s raymarch artifacts",
+     "problem": "The stem breaks into stacked coins or vertebrae and the cap shows horizontal terraces. Horizontal smear lines also appear across the cloud. Cause: the SDF skip `t += max(sd - margin*0.9, dt)` resets every ray to the same distance from the surface, which erases the per-pixel dither. dt is also about 6 m because the proxy box is inflated to ±200 m by the ever-growing skirt, while the stem radius is 9 m.",
+     "fix": "In explosion_volume.gdshader, re-snap to a jittered grid after a skip: t = t_enter + (ceil((t - t_enter)/dt) + dither)*dt. Clamp dt to <= 0.25x the smallest active feature (stem.z, head_shape.x). Stop the skirt height and radius growth so the box stays tight. Set steps 96-128 for small bombs."
+    },
+    {
+     "severity": 2,
+     "stage": "2-15 s lighting",
+     "problem": "The stem is two-tone with a hard horizontal seam (dark top, pale bottom), and a sharp black diagonal head shadow falls on it. The cap underside is near-black with a crisp terminator, which looks CG. Cause: the `dh > ds` branches for macro shading and od_far (kh vs ks), SOOT head colour against DIRT stem colour, and the hard cheap_density clamp /(H*0.10).",
+     "fix": "Blend macro and od_far by density weights (dh*kh vs ds*ks) instead of branching. Soften cheap_density: /(head_shape.x*0.10) -> /(head_shape.x*0.35). Raise the multiple-scattering floor 0.05 -> 0.15 for dark smoke."
+    },
+    {
+     "severity": 1,
+     "stage": "4-60 s ground",
+     "problem": "The cloud shadow is a crisp, nearly black ellipse on the ground, like a hole, for a 20-40 m semi-transparent puff.",
+     "fix": "Cap g_cloud_pos opacity at about 0.4 for small clouds (scale with head density*size) and add penumbra softness in the terrain shader."
+    }
+   ]
+  },
+  {
+   "number": 2,
+   "id": "mk84",
+   "score": 2,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "1-60 s cloud shape",
+     "problem": "This is the same nuclear mushroom as Mk 82 (cap, torus, straight stem, white cake skirt): a scaled copy that breaks section 6.3. The dossier says 'lumpy wind-sheared dirty thermal (no mushroom)'. The USMC 2007 refs show a black cauliflower smoke mass beside a grey-tan drifting dust cloud and a narrow dark ejecta jet, with no stem.",
+     "fix": "Profile mk84: stem_density 0, torus 0, roll 0, cap_half_m about cap_radius_m about 40 (lumpy puff), head_noise_amp 0.8. Add a crown through the column path: col_height about 50, col_radius about 8, col_cone about 3.5, col_rise about 0.6, col_fall about 1.2. Rise law about 42*sqrt(t) (100 m at 5 s, 230 m at 30 s, 440 m at 120 s). Add wind shear so the plume leans and drifts, with a separate grey-tan dust lobe downwind."
+    },
+    {
+     "severity": 3,
+     "stage": "0-1 s fireball",
+     "problem": "The 'orange ball + black-brown column' signature is missing. At 0.06 s the ball is white-hot. At 0.15 s it is a pale peach cotton ball seen through the Wilson dome, and at 0.4 s it is a grey ball. There is never a saturated orange ball with a black cauliflower soot cap boiling off its top (USMC 2007a, Vietnam 1972). The ball is also oversized: fireball_scale 2.4 gives R about 18 m against the dossier's 13 m.",
+     "fix": "Set fireball_scale 2.4->1.72, fb_duration_s about 0.9 (bright to 0.4 s, gone by 1.0 s), t_peak about 3300 K. head_color_early SOOT [0.05,0.045,0.04], with the head starting above the ball (centre = fireball centre + r) from about 0.1 s so soot visibly rolls off the top. dark_base 0.4->0.2. heat_glow inside the soot until about 0.6 s."
+    },
+    {
+     "severity": 3,
+     "stage": "0.06-0.4 s shock/Wilson",
+     "problem": "The milky glass dome (wilson=0.5) covers the frame and washes out the fireball. Real dry-ground Mk 84 shows a dust ring and refraction, not a condensation hemisphere.",
+     "fix": "Set wilson=0.0. Make the 'visible shock ring on dry ground' a thin, low, tan dust ripple at the ground front plus the ShockLayer rim."
+    },
+    {
+     "severity": 3,
+     "stage": "0.4-2 s dust wall / skirt",
+     "problem": "DustWallLayer renders as a continuous, opaque, bright-white surf or sea-foam curtain across the whole frame that hides the base. From 4 s on, the skirt becomes a 220 m flat white cake with vertical end walls. The dossier gives a tan dust skirt to about 70 m and a low dust ring racing out.",
+     "fix": "dust_wall 1.0->0.35, dust_color about [0.50,0.42,0.32]. In DustWallLayer.update, use h = clamp(r*0.015, 2, 6) for conventional bursts and op *= exp(-r/150) so the ring thins as it travels. skirt_max_r 110->65, skirt colour darker, fade by 10 s, and the same soft-edge sdf_skirt fix as Mk 82."
+    },
+    {
+     "severity": 2,
+     "stage": "0.4-8 s debris",
+     "problem": "2600 glowing cubes (debris_hot 0.7) make a star field around and above the cloud.",
+     "fix": "debris_hot -> 0, dark clods, count about 600, plus ground dust puffs in a fan to 250 m (the dense fragment fan is the signature in the USMC refs)."
+    },
+    {
+     "severity": 2,
+     "stage": "1-60 s artifacts",
+     "problem": "There are horizontal smear and streak lines across the lower cloud at 1 s, a stacked-coin stem at 30-60 s, a two-tone stem with a hard seam, and a sharp diagonal head shadow at 4-8 s. The cap is frozen from 15 to 60 s.",
+     "fix": "Use the same shader fixes as Mk 82: re-jitter after the SDF skip, a tight box, density-weighted shading blend, a softer cheap_density, age-advected noise and wind drift."
+    },
+    {
+     "severity": 1,
+     "stage": "0.005-0.02 s flash",
+     "problem": "A flat-bottomed rectangle with vertical sides appears under the flash (the skirt sheet lit by the fireball).",
+     "fix": "Delay the skirt to t_fb_max and remove the vertical sheet wall (see Mk 82)."
+    }
+   ]
+  },
+  {
+   "number": 3,
+   "id": "tallboy",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0-0.4 s heave",
+     "problem": "The camouflet phase is missing. There is no visible spall-dust ring and no ground dome at 0.05 s, and because col_delay defaults to 0.05 s, by 0.15 s there is already a 43 m tall, 100 m wide bowl of dust. The dossier has a spall ring to 40-60 m at 10-20 ms, a 30-40 m dome 3-6 m high at 0.05-0.4 s, and venting at 0.3-1 s. The dramatic 'ground jumps, then erupts' beat is lost.",
+     "fix": "Profile: col_delay 0.32, dome_r 28->18 (36 m wide), dome_time 0.12->0.25, dome_burst 0.25->0.35, debris_delay 0.32. Add a spall ring for column kinds in ExplosionProfile._base_surge/skirt_state before surge_start: radius 0->50 m over 0.02-0.15 s, height 2-4 m, density 0.6, fading by 1.5 s (new keys spall_r and spall_h). Add cracks with dust spurts on the dome (small stem pulses or a debris burst at dome_burst)."
+    },
+    {
+     "severity": 3,
+     "stage": "0.15-5 s geyser shape",
+     "problem": "The geyser is a smooth, symmetric vase, flower pot or tornado with a flat lighter 'lid' on top (it reads as a beer glass with foam). There are no spiky radial soil jets, no clods on ballistic arcs, and no dark brown-black soil vs grey-white smoke contrast. Refs (IWM C4775 shore burst, Arnsberg) show a spiky crown of dark radial jets.",
+     "fix": "Add azimuthal jet modulation to the column: in stem_radius_at/stem_density when stem_cone>0, r *= 1 + col_jets_amp*pow(max(0, nbl(vec3(atan(p.z,p.x)*col_jets/6.283, h01*0.6, seed)) - 0.4), 1.5)*h01 (col_jets about 10, amp about 0.8), with per-jet outward tilt. col_cone 3.2->1.6, col_flare 2.2->1.3. Head cap_aspect 0.6->0.9 and head_noise_amp about 0.7 for a cauliflower top, not a lid. Larger dark clods: debris_size 0.45->0.8, debris_color [0.15,0.12,0.09], with dust trails."
+    },
+    {
+     "severity": 3,
+     "stage": "0.15-8 s seam",
+     "problem": "A straight, full-width horizontal dark slab (a shadow band) separates the light cap from the dark column in every frame. It is the most visible CG artifact on this bomb.",
+     "fix": "In explosion_volume.gdshader, replace the `dh > ds` branches (macro normal and od_far kh vs ks) with density-weighted blends. Smooth-union the head into the column (smin in scene_sdf and a density cross-fade over about 0.2*H). Use the same colour for head and column early (head_color_early = stem_color)."
+    },
+    {
+     "severity": 3,
+     "stage": "8-60 s late cloud",
+     "problem": "The late cloud is a giant white bun squatting on the ground, and it is completely frozen: the 15/30/60 s silhouettes are identical. Cause: _column_head sets center_y = h*0.92, which follows the collapsing column down to 25% while radius grows x2.6 (cap_late_grow 1.6), so a 260 m dome sits on the ground. Noise has no age term and every parameter saturates by about 11 s. The dossier has a dirty brown-grey cloud at about 180 m at 30 s and about 300 m at 2 min, drifting and thinning.",
+     "fix": "In _column_head, use the peak height (max over time, i.e. hmax) for center_y, not the collapsing h. Add cap_rise about 120 with cap_grow_time about 60, cap_late_grow 1.6->0.6, cap_fade about 45. Add wind drift of head.xz and age-advected noise in head_density. head_color_late [0.33,0.29,0.25], whiten_s 40->120."
+    },
+    {
+     "severity": 2,
+     "stage": "2-60 s base surge",
+     "problem": "At 5 s the base surge is a white inflatable donut (the sdf_skirt torus). From 8 s on it is an opaque white stratus or fog bank about 30 m tall that fills the bottom half of the frame.",
+     "fix": "skirt_color [0.34,0.28,0.21], surge_h0 12->5, surge_h1 28->14, surge_density 0.9->0.55, surge_inner 0->0.5. Raise the skirt noise displacement (lf factor 1.4->2.5, lower frequency) to break the torus. Fade density over about 30 s."
+    },
+    {
+     "severity": 2,
+     "stage": "1-5 s scale",
+     "problem": "col_height 210 m is about 2x the dossier's 60-120 m, and the top flares to about 190 m wide, so Tallboy is as big as Grand Slam.",
+     "fix": "col_height 210->110, col_cap_r 50->35, col_radius 14->10 (Grand Slam then reads as clearly bigger)."
+    },
+    {
+     "severity": 2,
+     "stage": "0.15-60 s colour/lighting",
+     "problem": "The shadow side is a cool blue-grey (sky ambient) and the sunlit side is cream-white, so it reads as steam or light dust, not dark soil plus grey smoke. Everything is soft, blurry and low-detail, with no crisp edges.",
+     "fix": "Darker colours (head_color_early/stem_color about [0.16,0.12,0.09]). Shading: amb*ao*0.6 -> amb*ao*0.35 plus a warm ground bounce in dense dust. Calibrate volume sun brightness against the terrain (see systemic). Add a higher-frequency octave to stem_density (nbl(np*4.0)) at about 0.15 weight."
+    },
+    {
+     "severity": 2,
+     "stage": "8-60 s artifacts",
+     "problem": "Vertical comb streaks or shower-glass texture appear over the cloud and fallback, along with wavy contour ripples on the silhouette top edge.",
+     "fix": "stem_stretch 1.6->1.0 for column kinds, re-jitter after the SDF skip, steps 128, and soften the head edge (edge = H*0.03 -> H*0.08)."
+    },
+    {
+     "severity": 1,
+     "stage": "3-10 s fallback",
+     "problem": "The column only shrinks in height. There is no visible curtain of falling soil and no slumping crater (the crater is never visible in the zoom shot).",
+     "fix": "During col_fall, raise col_wall (hollow) to about 0.4 and widen the base, and let the clods land visibly. Verify the crater (30x10 m with a lip) in a low/near shot."
+    }
+   ]
+  },
+  {
+   "number": 4,
+   "id": "grand_slam",
+   "score": 2,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "all",
+     "problem": "It is visually indistinguishable from Tallboy: the same vase-and-lid silhouette, the same timing, the same palette and the same late white bun on the ground. Only the absolute scale differs, and the auto-framed binocular view hides that. Section 6.3 asks for 'deeper and wider, volcano-like venting, moderate orange flash'.",
+     "fix": "Give Grand Slam its own grammar: a wider, squatter crown with big dark radial jets (col_radius 20->28, col_cone 3.0, jets amp about 1.0, about 10 jets), a column of 150-250 m (col_height 320->220), and a light-grey billowing cauliflower top about 130 m wide (col_cap_r 75->65, cap_aspect 0.9, head_noise_amp 0.8). Make Tallboy narrower and lower (see Tallboy). Add late venting puffs (below)."
+    },
+    {
+     "severity": 3,
+     "stage": "0.15-1 s vent flash",
+     "problem": "vent_glow=1.0 (vent_time 0.18, 0.8 s) never shows. The column starts at 0.05 s and fully envelops the vent before it lights, so no frame has any orange. The signature flash is absent.",
+     "fix": "col_delay 0.38, dome_burst 0.35, vent_time 0.30, vent_duration 0.35, vent_radius 22->12, vent_height 25->8, a dull 2400->1300 K ramp in _hidden_fireball, emission 220->350. Result: 2-5 frames of dull orange glimmer through the cracking dome before the soil jets hide it. Raise the head_heat glow factor 0.3->0.6 for the column base during the vent."
+    },
+    {
+     "severity": 3,
+     "stage": "0-0.4 s heave",
+     "problem": "There is no ground jolt or ripple ring and no dome. A 120 m wide bowl already stands at 0.15 s.",
+     "fix": "dome_r 38->20 (40 m wide), dome_h 8, dome_time 0.15->0.3, a spall ring as for Tallboy (spall_r about 60), and debris_delay 0.38."
+    },
+    {
+     "severity": 3,
+     "stage": "8-60 s late cloud",
+     "problem": "The late cloud is a frozen white dome about 390 m wide sitting at about 50 m: the head follows the collapsing column while col_cap_r 75*(1+1.6) inflates it, plus an opaque white fog bank from the 230 m surge. The dossier has a tan dust cloud 300-400 m high drifting away.",
+     "fix": "Use the peak column height for head center_y, cap_rise about 200, cap_late_grow 1.6->0.5, cap_fade about 60, wind drift and age-advected noise, head_color_late [0.36,0.31,0.26], whiten_s 60->150. Surge: surge_h0 16->6, surge_h1 40->18, surge_density 0.55, surge_inner 0.5, colour [0.36,0.30,0.22]."
+    },
+    {
+     "severity": 2,
+     "stage": "20-60 s venting",
+     "problem": "The 'volcano-like gas venting from the crater' (puffs minutes later, per the eyewitness) is not implemented at all.",
+     "fix": "Add a late_vent key: after about 15 s, a small grey stem (radius about 6 m, height 20-40 m) with pulsed density 0.25*pow(max(0, sin(t*0.5 + noise)), 4) rising from the crater, drawn through the existing stem uniforms or a second volume slot."
+    },
+    {
+     "severity": 2,
+     "stage": "0.15-60 s artifacts/colour",
+     "problem": "It shares Tallboy's hard horizontal cap/column seam, blue-grey shadow and cream highlights, blur, vertical comb streaks and contour ripples on the dome top edge (t15/t60).",
+     "fix": "Use the same shader fixes as Tallboy (weighted shading, smin union, re-jittered steps, darker earth colours, ambient calibration)."
+    }
+   ]
+  },
+  {
+   "number": 5,
+   "id": "moab",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0.005-2.5 s flame",
+     "problem": "The flame phase is wrong in both colour and timing. From 0.005 to 0.15 s the fireball is a fully clipped pure-white blob with a big bloom halo, which reads as a nuclear flash with no yellow or orange in it. At 0.4 s the flame is a pale peach (RGB ~217,186,164). By 1.0 s the flames are completely gone, leaving a cold grey-blue ball. Reference (moab_2003_fireball_t0.4s) and the dossier show a yellow-white dome with a white core and orange rim at 0.45 s, then orange to orange-red with brown-grey smoke blotches until 1.5 s, and the last flames at 2-2.5 s. The cause is conventional_fireball_duration = 0.04*m^(1/3) = 0.82 s, combined with aluminized t_peak = 5200 K and emission 260, which give bb_lum*emis of about 46 and clip to white.",
+     "fix": "In explosion_profile._conventional_fireball, add per-bomb overrides a('fb_duration_s') and a('fb_temp_peak'), and for MOAB set fb_duration_s=2.4, t_fb_max of about 0.45 s, fb_temp_peak of about 3800 K cooling to about 1600 K at the end of life, and emission 260 -> ~110-130 so the core clips warm yellow and the rim stays orange. Start skin at life of about 0.2 instead of 0.25 so brown-grey soot blotches show over 0.5-1.5 s, and raise the shader's tloc spread mix(0.82,1.12,fpatch) to about mix(0.65,1.2) for a hot white core with orange lobes."
+    },
+    {
+     "severity": 3,
+     "stage": "0.06-0.5 s",
+     "problem": "The fireball has the wrong shape. MOAB's signature is a broad, low pancake of flame hugging the ground, about 140 m x 40 m at 0.45 s (aspect 3.5-4:1). The render is a raised, near-round ball with aspect ~1.2:1. _conventional_fireball hard-codes squash to 0.85, ignores the profile's fireball_squash (only the nuclear branch reads it), and lifts the centre to r*0.55*(0.4+0.6*grow).",
+     "fix": "Make _conventional_fireball multiply squash by a('fireball_squash',1) and take the lift factor from a('fireball_lift',0.55). For MOAB set fireball_scale 2.6 -> ~3.4 (R about 70 m), fireball_squash ~0.45 (with the 0.85 base, H/R of about 0.38), fireball_lift ~0.05 so the dome sits on the ground, and fireball_noise 0.4 -> 0.6 with fireball_noise_scale 3.5 -> ~6 for the lumpy, turbulent surface."
+    },
+    {
+     "severity": 3,
+     "stage": "0.15-0.6 s",
+     "problem": "A giant grey frosted-glass hemisphere about three times the fireball's width, filled with grey mottling, encloses the flame at 0.4 s. It makes the explosion look as if it sits under a glass dome. This is the Wilson layer: wilson.gdshader is cull_disabled with a base alpha of 0.18 on every pixel, so front and back faces stack into a filled disc.",
+     "fix": "Rework wilson.gdshader to render front faces only (cull_back) with a limb-only alpha of about pow(1-facing,3)*opacity and no 0.18 floor, so the interior stays clear and the colour is bright sunlit white. For MOAB (humid Eglin), cut wilson 1.0 -> ~0.5 and set wilson_duration so it lasts at most about 0.3 s, as a quick condensation flash on the shock front."
+    },
+    {
+     "severity": 3,
+     "stage": "0.15-15 s exposure",
+     "problem": "At noon the sky turns pitch black (RGB ~10,12,15) from 0.15 s to 4 s, and stays dusk-teal until about 15 s. For an 11-t conventional blast seen from 8 km this is wrong: the USAF footage keeps normal daylight exposure and the fireball simply clips yellow. The cause is the cov branch of explosion.metered_luminance, which stops down to l_fb = emis*(T/8000)^4/1.5 (about 5 stops) when the fireball fills the zoom view, followed by a 4.5 s recovery tau in environment_ctl.step_adaptation.",
+     "fix": "For prof.conventional, skip the cov boost and clamp max_comp to about 1 stop, with recovery tau of about 1 s. Keep the stop-down only for nuclear bursts during t < ~3*t2."
+    },
+    {
+     "severity": 2,
+     "stage": "1-30 s cloud",
+     "problem": "The cloud is a flat-lit mid/dark grey-blue fuzzy sphere (~95,100,110 at 8 s) with no bright sunlit top against a shaded underside, and no cauliflower lobes. Reference moab_2003_cloud_t8s shows a bright white/light-grey cauliflower with a darker grey lower lobe (aluminium oxide plus dust, not black). head_color_early is soot [0.06,0.05,0.05], and col_mix only reaches about 0.03 at 8 s because whitening runs over 0.5*t_stab = 75 s.",
+     "fix": "Set head_color_early to about [0.55,0.52,0.48] and head_color_late to about [0.70,0.68,0.65], and raise dark_base 0.5 -> 0.7 for the grey-brown lower lobe. Keep the black smoke only as the fireball skin during 0.5-2.5 s. Raise head_noise_amp 0.4 -> 0.55, set billow_sharp ~1.0 and head_noise_scale ~0.35 so the lobes are cauliflower-sized."
+    },
+    {
+     "severity": 2,
+     "stage": "4-60 s size and rise",
+     "problem": "Scale and timing are off. At 8 s the cloud is about 330 m wide and 230 m tall, centred about 270 m up, with a stem already rising. The dossier gives about 120 m tall at 8 s, base on the ground, stemless, as tall as wide; a final top of about 1.5 km and a cap of about 0.5 km. At 30-60 s the result is a textbook nuclear mushroom on a tall stem, which contradicts 'no true stem'.",
+     "fix": "In bomb_profiles: cloud_top_m 1800 -> 1500, cap_radius_m 420 -> ~250, cap_half_m 260 -> ~150, add rise_tau_s ~90 for a slower early rise, stem_delay 0.4 -> ~12, stem_density ~0.3 and stem_radius_m 120 -> ~90. The result should be a broad, dusty, ragged pedestal rather than a pipe. Keep the mini-mushroom only as a late (>40 s), short, wide stalk."
+    },
+    {
+     "severity": 2,
+     "stage": "0.4-60 s ground",
+     "problem": "The dust skirt is a white, flat-topped snow bank (~205,200,195), brighter and greyer than the tan desert it was raised from (182,173,159). It is 30-80 m tall, fills the bottom of the frame from 1 to 8 s, and from 15 to 60 s becomes a puck with rounded vertical ends. In skirt_state, height grows by +t*0.8 forever and radius by +2 m/s forever. The reference shows a low, tan, ragged skirt about 1/6 of the cloud height.",
+     "fix": "Set skirt_color to about [0.36,0.31,0.25], skirt_height ~0.5 and skirt_max_r 500 -> ~250 (dossier: about 250 m wide at 3 s). In skirt_state, replace t*0.8 with 0.8*min(t,20) and saturate the +2 m/s spread. In sdf_skirt, taper the sheet toward the front (hh mix 0.9 -> 0.2) and add plume noise at the rim so the ends are not cylindrical."
+    },
+    {
+     "severity": 2,
+     "stage": "1-60 s artifacts",
+     "problem": "Raymarch slicing artifacts appear throughout. There are horizontal streak lines across the ball at 1-4 s, horizontally brushed 'hairy' fringes at its edges, and stacked horizontal slice lines in the stem at 30-60 s.",
+     "fix": "See the systemic raymarch fix: re-jitter after the empty-space skip, and use a per-component step clamp."
+    },
+    {
+     "severity": 1,
+     "stage": "0.05-1.5 s",
+     "problem": "The required 'visible wave ring' is never readable. No dust ring or condensation ring races outward along the ground, and the refraction-only shock shell does not show in stills.",
+     "fix": "For conventional bursts, lower the DustWallLayer threshold (op from p > 1 psi), make the dust a thin, low, tan, ragged ring that sweeps to about 300-400 m during 0.1-1.5 s and fades, and add 2-3 frames of white condensation on the front in humid air."
+    }
+   ]
+  },
+  {
+   "number": 6,
+   "id": "davy_crockett",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0.5-25 s",
+     "problem": "The fireball and cap glow orange-salmon for about 20 s: a bright glowing ball at 1-2 s, an orange cap at 5 and 10 s, still pink-orange at 20 s. For 18 t the dossier gives yellow to orange-red only until about 0.6 s, followed by a white/grey boiling bell cloud by 0.6-1.5 s. The cause is in head_state: core_t lerps 2300 -> 950 K over core_cool*t_stab = 0.14*200 = 28 s, so heat_glow stays on for 25 s.",
+     "fix": "Short term: davy_crockett core_cool 0.14 -> ~0.005 (about 1 s) and core_glow -> 0.3. Proper fix: make core cooling absolute (core_cool_s of about 1.2*W_kt^0.35 s) instead of a fraction of t_stab."
+    },
+    {
+     "severity": 3,
+     "stage": "5-360 s cloud shape",
+     "problem": "The cloud has the wrong morphology: a fat, symmetric textbook mushroom with the cap about 3.5x the stem width and a stubby stem, almost identical to B61. The references (Ivy Flats film at 22 s, DNA 6027F fig 8-1 at 20 s) show a narrow, tall column: a balled head only slightly wider than a thin, wavy, dusty stem, leaning and drifting NNW. The signature of the smallest nuke is lost.",
+     "fix": "Set cap_radius_m 420 -> ~180, cap_half_m 300 -> ~160, stem_radius_m 110 -> ~35, torus -> 0.3, stem_waist ~0.1 and stem_color dustier [0.42,0.36,0.28]. Add a wind-drift key (for example wind_drift_mps=7 along NNW) that offsets head x/z by drift*t and shears the stem linearly with height, so the column leans and waves."
+    },
+    {
+     "severity": 3,
+     "stage": "0.1-0.6 s",
+     "problem": "A large grey translucent Wilson dome appears: a thin hairline arc at 0.1 s, then a frame-filling semi-transparent hemisphere at 0.5 s. This was a 1,578 m dry-desert morning shot, so there should be no Wilson cloud. It reads as a glass bubble.",
+     "fix": "Set wilson 0.3 -> 0. The systemic Wilson shader fix also applies."
+    },
+    {
+     "severity": 2,
+     "stage": "0.1-2 s fireball",
+     "problem": "The fireball is a smooth, plasticine-like peach sphere sitting on the ground with a thin orange bloom rim, plus two dark smudges either side at 0.5 s. Reference lf1_ivyflats_film_t1s shows a brilliant white, bell-shaped boiling cloud on the desert floor with a bright dust band along the ground.",
+     "fix": "Raise fireball_noise to about 0.45 and fireball_noise_scale to about 5, and extend the mottle duration. Set head_color_early to about [0.62,0.58,0.54] (white/grey above), dark_base 0.6 (tan dust below) and whiten_time small (~0.05), so the bell turns white once it cools. Squash the early head to a bell (head_half > radius during the first 2 s)."
+    },
+    {
+     "severity": 2,
+     "stage": "0-20 s exposure and flash",
+     "problem": "There is no white-out flash. At 0.002-0.02 s the scene is already darkened, with a featureless blurred white disc on a grey sky. From 0.1 s to about 20 s the noon sky stays dark slate (~50,60,70). The film shows a full white-out for about 0.15 s, then normal daylight.",
+     "fix": "Drive a full-frame white-out (env white_out or a post overlay) for t < ~0.15 s. Shorten adaptation recovery for sub-kt yields (tau 4.5 s -> about 1 s, scaled by W^0.3), and cap max_comp when the fireball is far and small."
+    },
+    {
+     "severity": 2,
+     "stage": "0.1-360 s skirt",
+     "problem": "The ground skirt is a white puck with flat, rounded vertical ends from 0.5 to 40 s. Late, it balloons into a big puffy white cloud bank (180-360 s) because skirt height grows by +t*0.8 m and radius by +2 m/s without bound. The reference shows a thin, bright horizontal dust line along the ground.",
+     "fix": "Saturate the growth terms in skirt_state (0.8*min(t,20) and a capped spread), fade density to 0 by about 1.5*t_stab, set skirt_height ~0.4 and use a tan skirt_color."
+    },
+    {
+     "severity": 2,
+     "stage": "20-360 s artifacts",
+     "problem": "The upper dome of the cap shows concentric horizontal 'spun-sugar / meringue' striations at 40-360 s, and the stem shows stacked horizontal slices at 180-360 s. These are raymarch slicing artifacts.",
+     "fix": "Apply the systemic raymarch fix (re-jitter after the skip, plus a local step clamp)."
+    },
+    {
+     "severity": 1,
+     "stage": "180-360 s framing",
+     "problem": "A black bar (~28 px) intrudes across the top of the frame at 180 and 360 s. The bunker slit edge enters the view when the zoom tilts up to frame the 1.8 km cloud.",
+     "fix": "Limit auto-frame pitch or FOV so the slit edge stays out of frame, or crop."
+    },
+    {
+     "severity": 1,
+     "stage": "10-40 s colour",
+     "problem": "The cap is a uniform pink-brown (131,113,108). The dossier describes a white top with tan dust underneath, and a dirty lower stem.",
+     "fix": "Use the white-grey head_color_early plus a stronger dark_base (tan underside), and make stem_color dustier than the head."
+    }
+   ]
+  },
+  {
+   "number": 7,
+   "id": "foab",
+   "score": 2,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0.05-7 s flame",
+     "problem": "The flame looks like a matte, pastel-peach paper cut-out (RGB ~239,206,175). It is flat, with no hot core, no emission gradient and no bloom, and has hard jagged edges with horizontal streaks. The FAE references (USS McNulty 1972, BLU-82) show a saturated yellow-orange rolling flame with a brilliant core and dark soot. The cause: thermobaric t_peak = 2600 K gives bb_lum of about 0.011, times emission 200, which is about 2.2. That lands in the mid-tones and gets desaturated by the tonemapper. fireball_density's smoothstep(0.02,-0.06) is effectively a hard surface.",
+     "fix": "Raise foab emission 200 -> ~1500-2500, or add an fb_temp_peak key of about 3000 K for the core with emission ~1200. Widen the shader's tloc variation from mix(0.82,1.12,fpatch) to about mix(0.6,1.2). Soften the flame edge to smoothstep(0.15,-0.25,dd) with an extra noise octave. Raise fireball_noise_scale 2.4 -> ~5 so the surface rolls in many lobes, and make sure g_fireball_color/glow is active so the flame blooms."
+    },
+    {
+     "severity": 3,
+     "stage": "2-60 s structure",
+     "problem": "The flame and smoke split into a 'snowman'. From 2 s a larger, soft grey-pink smoke ball rises and separates above the flame ball, which stays on the ground. At 5-7 s a pink flame blob hangs under the grey cap. From 7 to 60 s a white pipe with a flat, cut-off top stands under a floating, detached cap with a gap between them. The causes: head_center_y starts rising at t_fb_max*0.5 (~30 m/s), while the flame centre only lerps with smoothstep(life*0.8). The stem top is limited by (t-stem_delay)*avg_speed*0.75, which is slower than the head. And sdf_stem's top is a hard max(d,dv) clip.",
+     "fix": "For THERMOBARIC, lock the head centre to the fireball centre until about 0.7*fb_duration, so flame and smoke are one rolling body with the soot inside the flame, and only then let it rise. In stem_state, once the stem exists, always set top = head_bottom + 0.3*half (no lag). In stem_density, fade density over the top ~2 radii (multiply by smoothstep(stem.y, stem.y - 2r, p.y)) so a stem never ends in a flat disc."
+    },
+    {
+     "severity": 3,
+     "stage": "2-60 s colour",
+     "problem": "The smoke palette is wrong. The signature is a dark grey-black soot ball (#2A2522). The render gives a grey-pink head at 2-9 s, a light grey/white head at 30-60 s (165,161,160) and a pure white stem. head_color_late 0.32 is whitened in by col_mix over 0.5*t_stab, head heat_glow (emission*0.5*fb opacity) tints it pink, and the volume lighting brightens dark albedos.",
+     "fix": "Set head_color_early [0.05,0.045,0.04], head_color_late [0.12,0.11,0.10], whiten_time 0.5 -> 5 (stays dark) and stem_color [0.14,0.12,0.10]. Zero the head heat_glow outside the flame volume, and apply the systemic lighting fix so low-albedo smoke actually reads near-black in sunlight (~40-60 sRGB)."
+    },
+    {
+     "severity": 3,
+     "stage": "0.05-0.6 s",
+     "problem": "A giant grey frosted Wilson hemisphere, 4-5x the flame's width, appears at 0.2-0.5 s. This is not a thing for a 44 t FAE over a desert, and it makes the shot look like a snow globe.",
+     "fix": "Set wilson 0.6 -> 0. The systemic Wilson shader fix also applies."
+    },
+    {
+     "severity": 2,
+     "stage": "0-0.3 s",
+     "problem": "The documented FAE phases are missing: no grey aerosol pancake (about 100 m wide, 10-15 m thick) at 0-0.15 s, and no whole-cloud yellow-white flash at 0.15-0.25 s. At 0.05 s there is already a peach blob.",
+     "fix": "Add an aerosol-disc phase for t < 0.15 s, either a skirt-like sheet (r of about 50 m, h of about 12 m, grey [0.55,0.55,0.52], no emission) or a new 'aerosol' key in fireball_state. Then add an emission spike (temp about 3300 K, emission x3) over 0.15-0.3 s that fills the whole disc before the rolling dome grows."
+    },
+    {
+     "severity": 2,
+     "stage": "0.5-5 s",
+     "problem": "There is no rolling-dome or torus behaviour. The flame should grow into a flattened dome about 120 m across and 70 m tall that rolls into a short mushroom with a torus by about 5 s. Instead it is a static noisy blob that fades in place.",
+     "fix": "Once flame and head are one body (see the snowman fix), use the head torus (0.9) and roll at about 0.5*fb_duration, and advect the fireball noise upward along the torus (rotate fb noise lookups like head_density's roll). Keep squash at about 0.6 early."
+    },
+    {
+     "severity": 2,
+     "stage": "15-60 s",
+     "problem": "The late cloud is an absurd 'lollipop': a pencil-thin white stem, about 8x taller than the cap is wide, running from the ground to a small white puff. A 44 t FAE leaves a dark smoke ball that detaches and drifts, with at most a faint short dust stalk. The dossier gives a top of about 2 km at 3 min, while the profile has cloud_top_m 1300.",
+     "fix": "Set stem_density 0.4 -> ~0.1, fade the stem out after about 20 s (a col_fade-like key for non-column kinds), cloud_top_m 1300 -> ~2000, cap_radius_m ~300 and cap_half_m ~180."
+    },
+    {
+     "severity": 2,
+     "stage": "0.5-60 s dust",
+     "problem": "The signature says little dust, but at 1-5 s there is a white slab about 1.3 km wide, with a translucent blue-grey lens-like disc under it at 1 s, and later a white puck.",
+     "fix": "Set skirt 0.4 -> 0.15, dust_wall 0.6 -> 0.25, a tan skirt_color/dust_color, and apply the systemic skirt growth cap."
+    },
+    {
+     "severity": 1,
+     "stage": "0.5-3 s",
+     "problem": "The flame edges show horizontal streaking from raymarch slicing.",
+     "fix": "Apply the systemic raymarch fix."
+    }
+   ]
+  },
+  {
+   "number": 8,
+   "id": "b61_12",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0.5-20 s",
+     "problem": "The ball glows peach/orange-white for 10 s: bright at 1-5 s, salmon at 10 s, pink at 20 s. The dossier says it goes yellow -> orange -> dull red within about 1 s and has faded by about 1 s, followed by a compact lumpy reddish-brown NO2 ball. The cause is heat_glow held by core_cool 0.14*t_stab (about 220 s), roughly 31 s, plus the fireball opacity fade.",
+     "fix": "Set b61_12 core_cool ~0.004 (about 1 s), core_glow 0.3 and skin 1.0. Apply the systemic yield-scaled core cooling."
+    },
+    {
+     "severity": 3,
+     "stage": "0.3-1.2 s",
+     "problem": "The Wilson dome at 0.5 s is a frame-filling, murky grey frosted sphere, flat-cut at the ground, with horizontal striations on its right limb. At 1 s a dark smoky haze fills the whole background. It reads as a soap bubble or fog, not a thin sunlit condensation veil.",
+     "fix": "Use the Wilson shader with front faces only, limb-only alpha and bright white forward-scattered colour, no base alpha. Set wilson 1.3 -> ~0.8 and wilson_duration 1.2 -> ~0.6, and let it fade from the inside out (alpha falls as radius grows)."
+    },
+    {
+     "severity": 3,
+     "stage": "5-90 s colour",
+     "problem": "There is no NO2 red-brown at any stage. The cloud is pinkish-white (168,151,146) at 10-40 s, then pure white. Reference Tumbler-Snapper Able (a 1 kt airburst) shows a dark reddish-brown lumpy ball. The profile palette is cloud #7A3B22 -> #C9C4BC.",
+     "fix": "Set head_color_early to about [0.48,0.23,0.13], head_color_late to about [0.70,0.68,0.65], whiten_time 0.5 -> ~1.5 (brown persists for 1-2 min) and dark_base 0.5. Raise head_noise_amp to 0.5 and billow_sharp to about 1.0 for the lumpy Able look."
+    },
+    {
+     "severity": 3,
+     "stage": "10-360 s stem",
+     "problem": "The dust column joins the cap and becomes a thick white mushroom stem. The signature (Teapot Wasp; dossier 'thin separate dust column that does not join it') requires a detached cap above a thin dust column. As rendered, late B61 is indistinguishable from Davy Crockett.",
+     "fix": "Add a 'stem_detached' key in stem_state that caps the stem top at about 0.4*head_bottom (for example a max of about 500 m), with a soft fading top, stem_radius_m ~40 and stem_color dusty tan [0.50,0.42,0.32]. The cap then floats free, compact, with torus ~0.5."
+    },
+    {
+     "severity": 2,
+     "stage": "0.002-20 s exposure",
+     "problem": "The noon sky is black at 0.1-2 s, very dark at 5 s and dark teal until about 20 s, for a 0.3 kt burst seen from 12 km. The early ball (0.002-0.1 s) is a featureless blown-white disc with an enormous bloom, showing no rapatronic bumps or limb structure, even though the zoom view is stopped down by up to 11 stops.",
+     "fix": "Limit the zoom metering stop-down to t < ~3*t2, shorten recovery for small yields, and reduce glow intensity/threshold on the fireball in zoom so the mottled surface reads (fb_shape.y mottle amplitude 0.10 -> ~0.25 for the first ~10*t2)."
+    },
+    {
+     "severity": 2,
+     "stage": "1-10 s dust",
+     "problem": "The rising dust is a hollow 'splash crown' with vertical streaks, like a water splash, under the ball. Able and Wasp show a lumpy, darker, opaque dust column or puff.",
+     "fix": "Set stem_stretch (stem_col.w) 1.6 -> 1.0, raise the low-frequency stem noise (lf weight 0.7 -> 1.1), reduce stem_flare to ~1.2 and darken the dust (stem_color tan)."
+    },
+    {
+     "severity": 2,
+     "stage": "1-360 s skirt",
+     "problem": "A white band more than 2 km wide crosses the frame at 1-10 s, then becomes a white puck. At 360 s it balloons into a large puffy cloud (unbounded skirt growth). A 150 m airburst should leave only a low, faint tan precursor skirt.",
+     "fix": "Set dust_wall 0.5 -> 0.25, a tan skirt_color, and apply the systemic skirt growth cap and fade."
+    },
+    {
+     "severity": 2,
+     "stage": "40-360 s artifacts",
+     "problem": "The cap is covered in horizontal 'spun-sugar' striations from raymarch slicing.",
+     "fix": "Apply the systemic raymarch fix."
+    },
+    {
+     "severity": 1,
+     "stage": "1-5 s",
+     "problem": "A thin, bright orange rim outlines the white-pink ball, like a CG rim light. The fireball sphere peeks out beyond the head silhouette (two concentric volumes at different temperatures) and is then bloomed.",
+     "fix": "Once head density exceeds 0.3, clamp fb radius to ≤ 0.9*head radius, or fade the fireball opacity by t of about 1 s for this yield."
+    }
+   ]
+  },
+  {
+   "number": 9,
+   "id": "grable",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0.1-20 s (all phases)",
+     "problem": "Auto-exposure crushes the noon scene. From 0.1 s to 5 s the sky and range are pitch black, and at 10-20 s the sky is still a dark teal. The dust, Wilson veil and cap lose all sunlit form, and the shot reads as a night test. Explosion.metered_luminance sets env_ctl.max_comp = lerp(7.5, 11.0, cov), which exceeds the task spec of 3-8 stops. Recovery is tau = 4.5 s in step_adaptation, and the meter keeps reading the cooling fireball's emission, so the scene stays dark for about 20 s.",
+     "fix": "In metered_luminance, cap max_comp at about 5-6 stops for the bunker/zoom eye and keep the 11-stop rapatronic look only for a dedicated camera mode. Weight l_fb by smoothstep(2500, 4000, temp) so a cooling ball no longer holds the exposure down. Shorten the recovery tau from 4.5 s to about 2 s once temp < 3000 K. Target: the sky is visibly blue again by about 3-4 s at noon."
+    },
+    {
+     "severity": 3,
+     "stage": "2-40 s cap",
+     "problem": "The cap is a uniformly self-lit peach, then salmon-pink, egg (taller than wide) with a fuzzy cotton edge. It has none of Grable's signature: no orange-brown NOx cap, no bright glowing orange toroidal ring at the equator, and no sunlit or shadow side. Causes: (1) The head_heat glow covers the whole head because core_radius lerps 1.1 to 0.5, and it lasts until x = core_cool 0.14 * t_stab (about 45 s at 15 kt), with core_glow 1.4. Emission is about 4-10x the sun term until about 25 s. (2) The torus ramp clamp((x-0.01)/0.12) only reaches full at about 42 s. (3) The fireball centre rises at 0.92 x the head rise, so two offset spheres union into an egg. (4) cap_half = 0.2*cloud_top = 1.94 km against cap_r 1.75 km makes the cap taller than wide all through the rise.",
+     "fix": "grable profile: core_glow 1.4 -> 0.5, core_radius -> 0.22 (glow confined to the torus core, seen through gaps), core_cool 0.14 -> 0.04 (glow gone by about 13 s). Torus ramp complete by about 0.03 t_stab (about 10 s): add a 'torus_time' key and use it in head_state instead of the hard 0.12. In fireball_state, use rise*1.0 (not 0.92) so the ball stays concentric with the head. Make cap half-thickness grow slower than radius (h uses grow^1.8) or set cap_half_m about 1200 for the rise, so the cap is about 2:1 flattened at 10-60 s. head_color_early -> [0.36,0.19,0.09], dark_base 0.6 -> 0.85."
+    },
+    {
+     "severity": 3,
+     "stage": "20-360 s stem",
+     "problem": "The stem renders as a translucent blue-grey gauze with vertical 'waterfall' streaks. Both reference colour photos show a thick, opaque, near-black-brown dust stem. The profile asks for stem_color [0.20,0.15,0.11], stem_density 1.2, but the colour is lost to: the soft edge falloff in stem_density (smoothstep(r*0.04, -r*0.3)), sky ambient (amb*ao*0.6), stem 'macro' shading that is nearly flat at noon, and aerial fog blended at first_hit. The streaks come from stem_stretch 1.6 plus the age*rise noise scroll.",
+     "fix": "stem_density 1.2 -> 2.5. Stem albedo about [0.13,0.10,0.07]. In the shader, raise ks from 7/stem.z to about 12/stem.z and cut ambient on the stem by about 50%. stem_stretch 1.6 -> 1.0, and add a domain warp plus a slight helical twist (rotate np.xz by p.y/stem.z*0.6) so the column looks lumpy and boiling instead of striped."
+    },
+    {
+     "severity": 2,
+     "stage": "0.05-0.2 s",
+     "problem": "The low-burst signature is missing. The fireball is a perfect blown-out disc. There is no pale ground-reflected shock dome rising under it, no flattened bottom at 0.07-0.10 s, and no visible Mach stem band. The 'grable_reflected_shock' reference is exactly this frame.",
+     "fix": "For NUCLEAR_LOW_AIR in fireball_state, add a clip plane that rises from hob-R to hob-0.55R between 0.07 and 0.10 s. Pass it as a new uniform (fb_flat) and use max(length(q)-R, -(q.y+flat)) in sdf_fireball and fireball_density. Add a thin pale translucent dome below the ball (sdf_shell centred at ground, radius about hob*1.1, opacity 0.25, 0.06-0.25 s). In shockwave.gdshader, raise the stem band alpha from 0.6 to 1.0 with a brightening for t < 0.4 s."
+    },
+    {
+     "severity": 2,
+     "stage": "0.5-360 s ground",
+     "problem": "The precursor dust wall and the skirt read as a clean white fog bank and later a white marshmallow 'puck' with a flat top and vertical walls. The puck is perfectly symmetric and unchanged from 20 s to 360 s. At 0.5 s the DustWall open cylinder ends in hard vertical cut-offs at both frame sides. The real precursor is a ragged, jetting, dark tan wall 30-100 m high. The skirt is lumpy white-grey billows mixed with black smoke, and it dissipates and drifts.",
+     "fix": "dust_color [0.66,0.60,0.52] -> [0.46,0.39,0.31]. skirt_color -> [0.60,0.56,0.52], and add dark smoke patches by mixing toward SOOT where kn < 0.35. dust_wall.gdshader: alpha *= smoothstep(0.03, 0.3, abs(dot(N,V))) to kill the silhouette cut, and multiply the 'top' by a low-frequency azimuth noise (amplitude 0.5). sdf_skirt: modulate height by (0.5+nlf(angle, r)) and drop the flat sheet top. skirt_state: start fading the density at t_hit+40 s instead of t_stab*0.5, and add wind drift."
+    },
+    {
+     "severity": 2,
+     "stage": "1-3.5 s",
+     "problem": "The Wilson shell (wilson 0.6) fills the whole background at 1-2 s with a dark, mottled charcoal veil with vertical streaks, because exposure is stopped down. Neither the dossier nor the photos show a condensation cloud for Grable (dry Nevada morning at 1,578 m).",
+     "fix": "Set wilson = 0.0 in the grable profile."
+    },
+    {
+     "severity": 2,
+     "stage": "2-5 s",
+     "problem": "Hard axis-aligned rectangular brightness blocks appear inside the dust band. They have a vertical step exactly at frame centre (x=800 of 1600) and horizontal steps at y of about 655 and 685, and look like a screen-space seam.",
+     "fix": "Re-render with --noglass and -vdebug to isolate the source. The likely culprit is the soft-particle depth fade (dust_wall.gdshader and explosion_volume both read depth_tex) picking up bunker glass or frame geometry, or the volume proxy-box face. Exclude the bunker layer from the depth used for the fade, or render the bunker in its own pass."
+    },
+    {
+     "severity": 2,
+     "stage": "20-360 s",
+     "problem": "There is no wind shear. Grable's cloud was violently sheared NE (wind of 90-140 mph aloft), but the column stays perfectly vertical and axisymmetric for 6 minutes. The three successive ice caps forming an 'ice skirt' on the column are not implemented (no ice_cap or tier2 keys).",
+     "fix": "Add a per-bomb wind profile: head centre x += wind(z)*t with about 30-50 m/s at cap altitude, and lean the stem by lerping its axis offset with height. Add ice_cap {t_on:0.2, dur:0.5, opacity:0.55} plus a tier2 shell at height_rel 0.6 for the ice skirt."
+    },
+    {
+     "severity": 2,
+     "stage": "90-360 s",
+     "problem": "The zoom view's late frames are framed through the bunker slit. The roof beam cuts off the cap at 90 s and completely hides it at 180 s and 360 s, leaving only the stem and the white puck. The late cloud cannot be judged or shown.",
+     "fix": "See systemic: aim the zoom camera from the slit's outer plane, or let the binocular pitch beyond the slit, or switch to the 'low' or 'cine' director angle when the required pitch exceeds the slit's upper edge."
+    },
+    {
+     "severity": 1,
+     "stage": "0.1-2 s",
+     "problem": "There are white 'firefly' speckles along the fireball limb (0.1-1 s) and horizontal smear streaks on top of the 2 s ball. The fireball also cools too slowly: it is still white at 1 s and peach-white at 5-10 s, while the dossier says it is 'not as colorful', with yellow then orange in 1-5 s.",
+     "fix": "In fireball_density, soften the edge to smoothstep(0.06,-0.10,dd), scale emission by smoothstep(0,0.3,df), and remove the hard 'dens<0.04 -> 0' cut in head_density. For Grable, fade fireball opacity and emission earlier (fireball_brightness about 0.6 after t2, skin 1.5) so the 2-5 s frames are orange, not peach-white."
+    }
+   ]
+  },
+  {
+   "number": 10,
+   "id": "little_boy",
+   "score": 2,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0.9-3.9 s",
+     "problem": "The Wilson condensation shell renders as a giant, perfect, grey glass ball. It has a hard limb and visible latitude-band faceting (horizontal stripes on the 2 s frame, top right), encloses the fireball and touches the ground. This is the CG dome the task warns about, and it ruins the 1-3 s shots. A real condensation cloud is a thin, bright, ragged, short-lived veil or bell, mostly the upper and outer part, that does not hide the ball.",
+     "fix": "Render the condensation as an analytic shell in the volume raymarch (sdf_shell already exists) instead of the 32x64 SphereMesh. If you keep the mesh: compute the limb from normalize(v_local), not the interpolated NORMAL, go to 128x256 segments, keep only the upper part (a *= smoothstep(-0.1, 0.4, v_local.y)), punch large noise holes (a *= smoothstep(0.35, 0.6, nz)), cap opacity at about 0.35, and set wilson_duration about 0.6. Fix the exposure first so the veil reads white, not charcoal."
+    },
+    {
+     "severity": 3,
+     "stage": "5-360 s",
+     "problem": "The signature is lost. The cloud is visually identical to Grable and Trinity: a pink cotton egg cap over a white puck. The task and dossier ask for a dark boiling cloud: white outside, purplish-black inside with a fiery red core, a grey lumpy stem, and a low black-brown boiling dust and smoke layer about 3 km wide over the city with fires starting. What renders is a thin white dust band and a white flat 'puck'.",
+     "fix": "little_boy profile: skirt_color [0.16,0.13,0.11], dust_color [0.24,0.20,0.17], skirt 1.5, skirt_height 2.5, skirt_max_r 3000. stem_color [0.30,0.28,0.27]. head_color_early [0.20,0.11,0.13] (purplish-black), head_color_late [0.84,0.82,0.80] with whiten_time about 0.25 so the outer surface goes white while the interior stays dark (raise dark_base to 0.9). core_glow 1.2 -> 0.7, core_radius 0.25, core_cool 0.05. Add ground fire emitters (small emissive points or billboards in the skirt region from about 5 s)."
+    },
+    {
+     "severity": 3,
+     "stage": "0.1-20 s",
+     "problem": "Same exposure crush as the other bombs: black sky from 0.1 s to 5 s, and a dark teal sky at 10 s at noon.",
+     "fix": "See systemic exposure fix (max_comp of 5-6 stops or less, faster recovery once the ball cools)."
+    },
+    {
+     "severity": 2,
+     "stage": "5-20 s stem",
+     "problem": "At 5 s the dust stem appears as a wide, flat-topped white 'crown' or curtain, about 0.8x the fireball width, hovering under the detached fireball, with vertical streaks. For a 600 m airburst, the dust column should be a narrow, dark inflow column sucked up from the ground that reaches the cap only at about 20-40 s. Causes: stem_state starts at radius max(r_fb_max*0.35, stem_r*0.35), about 400 m, and sdf_stem cuts the top flat (dv).",
+     "fix": "For non-dusty air bursts, start the stem radius at about 0.08*stem_r and grow it with sqrt(rx). Replace the flat top cut with a density fade over the top 25% (or a cone tip). stem_flare 1.3 -> 2.0 (wide dusty base, narrow top). stem_stretch 1.6 -> 1.0 to remove the waterfall streaks."
+    },
+    {
+     "severity": 2,
+     "stage": "0.002-1 s",
+     "problem": "The fireball is a blown-out white disc with a soft lightbulb halo. The 'brief dim orange shell' at the thermal minimum (8.5 ms) is not visible, and there is no readable double pulse. The ground shock ring that Caron described ('like dropping a pebble in a still pond') is not visible. The only shock cue is a 1 px dark circle (the shock-shell rim).",
+     "fix": "Let the exposure track the double pulse so the ball at t_min to 3 t_min renders dim orange (the temperature is already about 3300 K; the 11-stop clamp hides it). Strengthen the g_shock ring in the terrain shader into a bright dust ring sweeping out at 1.3-12 s. Replace the thin rim line in shockwave.gdshader with a soft refraction band (rim pow 10 -> 4, offset 0.006 -> 0.003, alpha x0.4)."
+    },
+    {
+     "severity": 2,
+     "stage": "20-90 s cap",
+     "problem": "The cap is a tall onion or egg: cap_half defaults to 0.2*12.5 km = 2.5 km, more than cap_r 2.25 km. Its surface is soft, low-contrast cotton. There is no rolled torus underside and no deep-shadowed, sharply defined cauliflower lobes like those in the Caron photo.",
+     "fix": "Set cap_half_m to about 1400 (or lag its growth). head_noise_amp 0.30 -> 0.45, billow_sharp 0.6 -> 1.2. Strengthen macro shading in the volume shader (see systemic lighting)."
+    },
+    {
+     "severity": 2,
+     "stage": "90-360 s",
+     "problem": "The bunker roof hides the cap from about 90 s, so the 9-12 km cap and any black-rain or firestorm phase cannot be seen in the zoom view.",
+     "fix": "See systemic framing fix."
+    },
+    {
+     "severity": 1,
+     "stage": "1-10 s",
+     "problem": "There is no heat haze or 'smoking ground' for about 3 s after the heat pulse, and the optional firestorm and black rain are absent.",
+     "fix": "Use the g_scorch glow to drive a short-lived ground smoke and haze sheet. Optionally add pyrocumulus later."
+    }
+   ]
+  },
+  {
+   "number": 11,
+   "id": "trinity",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0-0.1 s",
+     "problem": "There is a geometry bug in the early fireball. For NUCLEAR_TOWER, fireball_state sets center_y = max(hob*0.5,0) + (head_center_y(t) - hob)*0.92. head_center_y starts at r_fb_max*0.5 (about 150 m) for surface kinds, so the centre is about 125 m at t=0. At 2 ms the ball (R about 49 m) hovers about 75 m above the ground with a separate white blob underneath (two objects). At 0.1 s it becomes a tall 'tombstone' about 350 m high instead of the documented flattened hemisphere (about 430 m wide, 215 m high), which should touch the ground at 0.65 ms.",
+     "fix": "Compute rise relative to the head's own start (rise = head_center_y(t) - head_center_y(0)), so the centre starts at hob*0.5 (about 15 m). Keep the ground-clipped hemisphere until the top starts rising at about 2 s (dossier)."
+    },
+    {
+     "severity": 3,
+     "stage": "0.5 ms-0.1 s",
+     "problem": "The iconic Trinity rapatronic stage is entirely missing. There is no blistered bubble with short spikes, no smooth mottled dome on a bright lumpy 'popcorn' skirt with a Mach belt, no curtain line, and no dark NOx front. The frames show only white bloom. The 16 ms reference photo is the most recognisable image of this bomb.",
+     "fix": "For t < 0.1 s, keep the dome luminance about 1-2 stops above the adapted exposure so its texture reads. Raise mottle and let it persist to about 6*t2 (fb_shape.y). Add a ground skirt ring from 2 ms to 100 ms: a torus at r about 0.95R, height about 0.12R, using high-frequency nbl (np*4) for lumps and emission about 0.6x the fireball's. Add a smooth bright Mach belt band (shockwave stem_h) until 100 ms. Optionally add a few thin 'rope trick' spikes below the equator for 0.1-2 ms."
+    },
+    {
+     "severity": 3,
+     "stage": "0.1-20 s",
+     "problem": "Exposure crush: black sky from 0.1 s to 5 s, dark sky at 10 s. On top of that, the review was rendered at noon, so the dawn signature cannot be judged: blue-violet twilight, an overhead cloud deck lit red with a hole punched through it, and pink sunrise on the cloud top at about 20 min.",
+     "fix": "Apply the systemic exposure fix, then re-render Trinity at tod=dawn as its canonical view."
+    },
+    {
+     "severity": 3,
+     "stage": "0-40 s colour",
+     "problem": "The colour signature is absent. fireball_tint [0.85,0.75,1.15] at strength 0.45 is multiplicative on a clipped-white ball and fades by tint_time 6 s, so no purple or violet ever shows. The cloud goes peach, then salmon-pink, then beige. The documented sequence is: yellow-orange-white boiling (Aeby photo), then orange, then dull red by about 30 s with a violet radioluminescent glow for about 5 s, and a red-brown cloud that whitens slowly.",
+     "fix": "Make the tint additive. Use a violet air glow via g_fireball_color for 0-2 s, and add a new 'violet_glow' emission key on the head (colour about [0.55,0.35,0.95], from t=25 s to 35 s, strength about 0.3 of the sun term). head_color_early [0.40,0.18,0.09] -> [0.42,0.17,0.07], dark_base 0.8, core_cool 0.09 (dull red at 30 s), core_radius 0.3."
+    },
+    {
+     "severity": 2,
+     "stage": "3.5-360 s",
+     "problem": "The cloud shape is the same generic cotton egg-mushroom as Grable and Little Boy. Missing: the neck and vortex ring at 3.5 s, the left-handed twist of the stem, two fog rings above the column, and the three-layer structure (low dust sheet drifting NE, a mid inversion layer at about 3.8 km, a 4.5 km cap drifting NW).",
+     "fix": "Add a tier2 shell for the inversion layer (t_on about 0.25, dur 2.0, opacity 0.5, radius_m 3000, height_rel 0.36, half_m 400), tinted brown. Set rings=2 with short life at 5-15 s for the fog rings. Add a stem twist (rotate the noise domain with height). Drift the skirt NE and the cap NW with a wind vector."
+    },
+    {
+     "severity": 2,
+     "stage": "0.5-360 s ground",
+     "problem": "The ground skirt and dust band are a pure white flat puck. The skirt volume and the DustWall cylinder overlap and produce a doubled, offset edge (t=20 s: a second blue-grey lobe at the left end, x of about 360-420). The colour should be tan desert dust, since dust 'eats in from below' the dome.",
+     "fix": "skirt_color [0.55,0.47,0.38], dust_color [0.50,0.43,0.35]. Fade the DustWall once the volume skirt has formed (op *= 1 - smoothstep(t_hit+3, t_hit+10, t)). Apply the same limb fade and height noise as in the Grable fix."
+    },
+    {
+     "severity": 2,
+     "stage": "1-3 s",
+     "problem": "With wilson 0.2, a dark grey mottled veil appears behind the ball at about 2 s. The dossier documents fog rings, not a spherical Wilson shell.",
+     "fix": "Set wilson = 0.0 and use rings for the documented fog rings."
+    },
+    {
+     "severity": 1,
+     "stage": "1-5 s",
+     "problem": "There are white firefly speckles along the ball edge at 1 s and a detached grey wisp floating at the left of the ball at 5 s.",
+     "fix": "Soften the fireball and head density thresholds (see the Grable speckle fix) and clamp per-sample emission. Find out which layer produces the wisp (skirt torus or DustWall) with -vdebug."
+    }
+   ]
+  },
+  {
+   "number": 12,
+   "id": "baker",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "all",
+     "problem": "There is no lagoon in view. From the 25 km bunker the whole foreground is beige desert sand, and the 4.2 km pond around ground zero is a sliver hidden at the horizon. The spray dome, column, Wilson dome and base surge all appear to stand on sand. There are no ships for scale, no glitter path, no slick or crack ring, and no visible waves. This destroys the bomb's identity.",
+     "fix": "For NUCLEAR_UNDERWATER, extend the water to the observer: pond_radius at least observer distance + 3 km, or switch the scene to an ocean or lagoon plane with the bunker on a beach. Use turquoise/navy water shading with a sun glitter path. Place silhouettes of the target fleet (10-20 ships at 0.3-3 km) and drive the ring-wave and ship heave from the existing wave physics."
+    },
+    {
+     "severity": 3,
+     "stage": "0.2-4 s",
+     "problem": "The Wilson condensation renders as a smooth, transparent glass hemisphere. It has a crisp limb, horizontal faceting stripes on its right side (1.2 s and 2 s), and thin dark pen-line arcs from the shock-shell refraction rim crossing the cloud. It also stays a full dome at 4 s. The dossier and reference 04 show a milky, nearly opaque, soft-edged hemisphere at 1.2-1.5 s with the ragged crown poking through. It should clear from the water up (dome, then disk, then ring) by about 3-3.5 s, leaving a flat remnant sheet at cumulus base until about 15 s (reference 01).",
+     "fix": "Render the Wilson cloud for Baker volumetrically (a thick sdf_shell in explosion_volume with a soft noisy outer edge), not as a mesh. Raise its bottom clip with time from 2 s to 3.5 s (ground_y -> 0.8*radius) for the bottom-up clearing. wilson_duration 1.6 -> 0.9. Add the remnant sheet as an ice2 shell (height about 700 m, half about 80 m, radius 1.5-2 km, fading out by 15 s). In shockwave.gdshader for underwater kinds, use rim pow 10 -> 4, refraction offset 0.006 -> 0.002 and alpha x0.25, so no CG circles cross the cloud."
+    },
+    {
+     "severity": 2,
+     "stage": "0.02-0.75 s",
+     "problem": "The first second is wrong. There is no blue-white glow under the water (under 20 ms), no dark slick ring racing out at about 1.5 km/s, and no white crack disk. At 0.2-0.6 s the 'spray dome' is a billowy cotton cumulus blob, when it should be a smooth white dome with a bright fireball glint on top, followed by a hollow column with a sharp, spiky, ragged crown of jets. The column also reaches about 510 m at 0.75 s instead of 640 m.",
+     "fix": "Add water decals driven by age: a dark slick ring (r = 1500*t, width about 60 m) and a white crack disk following it. For column kinds, reduce the stem noise amplitude (amp r*0.6 -> 0.2) and raise its frequency so the walls stay straight and streaky. Add a crown: above 0.85 h, threshold a high-frequency noise into vertical spikes. Set a fireball-glint emission on the dome top for the first 50 ms. col_rise 7 -> 5.5."
+    },
+    {
+     "severity": 2,
+     "stage": "0.6-30 s",
+     "problem": "The cap forms far too early and has the wrong form. A smooth lens-shaped cotton cap about 0.8 km wide already exists at 0.6 s, but the cauliflower should only form at about 3-5 s (1.5 km wide at 5 s). By 8-30 s the silhouette is a cartoon mushroom: a waisted cotton stem under a puffy lens. The real Baker is a broad, straight-walled, flat-topped, streaky column with a dark rain shadow and a lumpy, broad cauliflower top.",
+     "fix": "Delay cap growth: in _column_head, start the radius at about 0.1*cap and ramp from about 1 s to 5 s. cap_aspect 0.55 -> 0.42. head_noise_amp 0.4 -> 0.55, billow_sharp 1.2. col_waist -0.1 -> 0.0, col_flare 1.2 -> 1.05. Give the column a grey sediment tint ([0.78,0.78,0.76], with streak noise)."
+    },
+    {
+     "severity": 2,
+     "stage": "10-240 s",
+     "problem": "Column collapse and rain-out are missing. At 10-60 s there are no dark slate-grey hanging lobes or rain curtains. The base surge only becomes visible at about 30 s; it should burst out as a brilliant white rolling ring from R of about 350 m at 10-12 s (130 m high at 10 s). It is never doughnut-shaped with a clear centre. The head survives as a floating cotton egg at 60, 120 and 240 s, though it should have rained out by 2.5 min.",
+     "fix": "Set cap_fade about 80 s and add vertical rain-curtain streak density below the head after col_fall. Darken the collapsing column albedo to about [0.45,0.48,0.50]. In _base_surge, ramp density over x/1.5 instead of x/3, set surge_h0 270 -> 130, and have surge_inner reach 0.55 by about 60 s. Lift the surge off the water after about 210 s into a grey deck."
+    },
+    {
+     "severity": 2,
+     "stage": "0.2-240 s",
+     "problem": "Everything is pure white with almost no shading. The references show strong contrast: sunlit crown and dome against dark grey undersides, the column shadow, and the dark Arkansas rain-shadow streak.",
+     "fix": "Apply the systemic lighting fix: cut ambient by about 50%, steepen the macro term, and strengthen the long shadow (od_far x2)."
+    },
+    {
+     "severity": 2,
+     "stage": "120-240 s",
+     "problem": "Raymarch slicing shows as horizontal bands across the lower half of the floating cap at 240 s (and faintly at 120 s). The proxy box is stretched by the 2.5 km surge, so dt = seg/steps becomes tens of metres.",
+     "fix": "Split the march into per-component ray intervals (head ellipsoid bound and surge bound) or clamp dt to about 0.04*head half-thickness while inside the head bound. Set steps to 128 for baker."
+    },
+    {
+     "severity": 1,
+     "stage": "9-300 s",
+     "problem": "The ring wave (about 29 m crest-to-trough at 300 m) and the train of concentric waves are never visible, and there are no swell rings on the lagoon.",
+     "fix": "Once water is visible, drive the water shader with the wave R(t) table already in the dossier."
+    }
+   ]
+  },
+  {
+   "number": 13,
+   "id": "sedan",
+   "score": 2,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0-3.6 s (dome, vent)",
+     "problem": "The Sedan signature stages (spall haze, 90 m dome, cracking, salmon vent glow) are invisible. At rec_km 35 km, Earth curvature (R_eff 8.5e6) hides about 72 m at GZ, so the 90 m dome shows only as a few-pixel bump at 2.5 s. The t0.5/1.5/2.5 frames are empty desert. shot_rig._setup_view_dynamic frames only head/fireball, which are zero before col_delay 3.0 s, so the FOV clamps to 3 deg on nothing.",
+     "fix": "data/bombs.json sedan rec_km 35 -> 8-10 km (air_coupling 0.08 gives only ~8 kt equivalent of air blast, which is safe there). In shot_rig zoom framing, include prof.dome_state(age) (size >= 3*dome_r and dome_h) and stem_state top/radius in top/w."
+    },
+    {
+     "severity": 3,
+     "stage": "5-240 s (column, surge)",
+     "problem": "Palette is completely wrong. Everything renders white/pale blue-grey: column centre (165,169,175), surge white. The result reads as Baker's water column, not dust. The reference (01) shows a dark slate grey-brown lumpy column, cream streamers and a beige-grey surge clearly darker than the tan ground. Profile albedos (0.30,0.25,0.20) are overridden by the lighting/haze pipeline (see systemic).",
+     "fix": "After the systemic fog/ambient fix, also darken the Sedan albedos: stem_color/head_color_early -> [0.17,0.14,0.11], head_color_late -> [0.30,0.27,0.23], skirt_color -> [0.40,0.35,0.29]. Check that the column reads darker than the ground at 35 km and at 10 km."
+    },
+    {
+     "severity": 3,
+     "stage": "15-240 s (main cloud)",
+     "problem": "Shape is a classic lollipop mushroom: a near-spherical 3 km cotton ball (col_cap_r 950, cap_aspect 0.9, cap_late_grow 0.6 gives r ~1.5 km) on a necked stem (col_waist -0.2). Task 6.3 explicitly requires 'a dust column without a true cap'. Dossier: 2 km wide grey-brown cauliflower tower, flattening under an inversion.",
+     "fix": "col_cap_r 950 -> ~450, cap_aspect 0.9 -> 0.5, cap_late_grow 0.6 -> 0.35, col_waist -0.2 -> 0.05 (no neck), col_radius 320 -> ~420 so the head merges into the column. Raise head_noise_amp to ~0.5 with a larger head_noise_scale (~0.9) for big lumps. Late (>180 s), widen the top slightly (anvil-like) rather than make a ball."
+    },
+    {
+     "severity": 2,
+     "stage": "3.0-8 s (column onset)",
+     "problem": "The column pops in at 3.0 s at full scale. At 3.2 s there is a ~700 m wide white puff (cap starts at 0.35*col_cap_r = 330 m radius) on a 1.3 km flange (col_radius 320 x col_flare 2.0). Measured at 3 s: dome 90 m high, 200 m wide. At 5-8 s col_cone 1.2 makes a smooth flared vase/flowerpot (top radius 2.2x base), wider than its own cap, instead of a spiky dark bush ~300 m wide (ref 02).",
+     "fix": "Ramp the column radius with time: multiply col_radius by smoothstep from ~0.3 at t=col_delay to 1.0 at ~15 s, and start the cap at the dome radius (~115 m) instead of 0.35*col_cap_r. col_flare 2.0 -> 1.3, col_cone 1.2 -> 0.3. Add spiky high-frequency upward lobes for the 3-6 s 'bush'."
+    },
+    {
+     "severity": 2,
+     "stage": "5-300 s (rise timing)",
+     "problem": "Rise is ~10x too fast. col_rise 28 s gives ~750 m at 5 s, ~2.8 km at 15 s and the full 3.7 km by ~30 s. Dossier: ejecta apex ~610 m at 12-15 s, dust cloud top 3.7 km only at ~5-6 min.",
+     "fix": "col_rise 28 -> ~120 s (or split into two phases: ballistic ejecta to 600 m by 12 s, then a buoyant dust tower with tau ~100 s reaching 3.7 km at ~300 s). cap_grow_time 60 -> 200 s."
+    },
+    {
+     "severity": 2,
+     "stage": "3-4.5 s (venting)",
+     "problem": "No visible incandescent vent glow. _hidden_fireball places a 35-70 m sphere at y = 27-90 m, completely inside the dense column/cap that spawns at the same instant, and below the curvature horizon. Its 3200 K start would also read yellow-white rather than the documented dull salmon-peach.",
+     "fix": "vent_time 3.1 -> 3.0 and delay the column until ~3.4 s (col_delay 3.0 -> 3.4), so the glow shows through the cracking dome first. vent_height ~= dome_h, temperature lerp 2200 -> 1300 K, vent_radius 70 -> 50. Scale column density with smoothstep(col_delay, col_delay+1.0) so the glow leaks through gaps."
+    },
+    {
+     "severity": 2,
+     "stage": "4-20 s (ejecta)",
+     "problem": "The defining Sedan visual (ref 01) is missing: dozens of cream-white ballistic streamers arcing out and down like a palm crown. The DebrisLayer draws 3 m solid boxes with no dust trails, sub-pixel at this range.",
+     "fix": "Add a streamer mode to DebrisLayer/debris.gdshader: ~60-120 large clods (debris_size 3 -> 15-25 m) stretched along velocity, each leaving a fading cream dust trail (colour ~[0.80,0.75,0.65], width growing with age, lifetime ~15 s). Alternatively, add N parabolic tube SDFs to the volume shader. Use debris_cone 35 -> 55 and speed ~100-140 m/s so arcs reach ~600 m and land at up to 1.7 km."
+    },
+    {
+     "severity": 2,
+     "stage": "4-240 s (base surge)",
+     "problem": "The base surge is a uniform white flat-topped pancake with a perfect rounded torus rim (a 'tyre' at 8 s, a 'hockey puck' later). It starts at 4 s (should be 10-20 s, after fallback) and expands far too fast early: surge_tau 45 gives ~2.85 km radius at 60 s vs ~1 km in the dossier.",
+     "fix": "surge_start 4 -> 12, surge_tau 45 -> 150, surge_h0 150 -> 100. In skirt_density, raise the low-frequency lf amplitude (1.4 -> 2.5) and lower its frequency so the front is lobed and of varying height. Reduce the torus term in sdf_skirt (h*0.7 -> h*0.45) so the edge is a billowing toe, not a tyre. Colour per the palette fix."
+    },
+    {
+     "severity": 2,
+     "stage": "5 s, 240 s (artifacts)",
+     "problem": "At 5 s a hard horizontal seam (brightness step) crosses the whole column at ~650 m: the flat top plane of the cone-shaped stem (sdf_stem dv cut) sits inside the head. At 240 s the cap underside has hard-edged flat cut-out holes (the dens<0.04 -> 0 threshold plus erosion), and the stem shows horizontal scanline streaks.",
+     "fix": "In explosion_volume stem_density, fade density with smoothstep(stem.y, stem.y - stem.z, p.y) and add noise to the top cut. In head_density, replace 'dens = dens < 0.04 ? 0.0 : dens' with dens *= smoothstep(0.02, 0.08, dens), and use erosion ~0.5 for column heads. Use blue-noise per-pixel dither plus more steps (base_steps 64 -> 128 for column kinds) to kill the streaks."
+    },
+    {
+     "severity": 1,
+     "stage": "3-5 s (exposure)",
+     "problem": "The sky and ground dim by ~0.5 stop during the vent (sky (110,122,136) -> (84,99,105)) although nothing bright is visible. light_power for NUCLEAR_BURIED (0.03*opacity*50) drives eye adaptation.",
+     "fix": "In explosion_profile.light_power, change NUCLEAR_BURIED 0.03 -> 0.003, or skip step_adaptation for buried kinds."
+    }
+   ]
+  },
+  {
+   "number": 14,
+   "id": "ivy_king",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "8-240 s (cap growth)",
+     "problem": "Cap lateral growth is massively front-loaded (head_state: grow = 1-(1-min(1.25*tanh(t/154),1))^1.6). Widths: ~4.6 km at 10 s, 7.6 km at 20 s, 13 km at 40 s, ~22 km at 90 s, 27 km at 4 min. Dossier (measured): 3.4 km at 60 s, 12 km at 4 min, 27 km at 10 min. So it is 4-5x too wide in the first 2 minutes. A 1.3 km ball at 5 s pops into a 4.6 km pink ellipsoid at 10 s, and a stabilised-looking pancake exists by 20 s.",
+     "fix": "Replace the radius growth with a power law from breakaway: r = lerp(start_r, cap_r, clamp(pow(max(t - t_fb_max, 0) / (t_stab * 1.3), 0.9), 0, 1)). Or add a per-bomb key cap_d60_m (Ivy King 3400) with D(t) = D60*(t/60)^0.91 capped at 2*cap_r. Keep half-thickness at ~0.5-0.6 of the radius early so the rising head reads as a torus, not a disc."
+    },
+    {
+     "severity": 3,
+     "stage": "90-360 s (late cloud)",
+     "problem": "The zoom view is cut by the bunker roof/embrasure from ~90 s. At 180-360 s only the stem is visible and the cap is entirely above the slit. The embrasure allows only ~13 deg of elevation, while the 23 km top is at 24.7 deg from 50 km. The bomb's signature ('20+ km cloud piercing the tropopause') is never on screen.",
+     "fix": "For the binocular/zoom view, put the camera on the berm/roof parapet (outside the embrasure), or exclude the bunker layer from cam.cull_mask when zoomed. In gameplay, enlarge the embrasure to >= 30 deg or add a roof periscope view. Otherwise rec_km would need ~130 km, which hides the fireball base."
+    },
+    {
+     "severity": 3,
+     "stage": "10-240 s (colour)",
+     "problem": "No NOx phase. The cap is pastel pink-white at 10-20 s and neutral white-grey from 40 s (cap (160,158,162)). The reference at ~1 min shows a compact cap with a blazing orange-yellow lower torus, a dark red-brown top and a thin reddish-brown stem, turning brown -> white-grey only by ~4 min. At 10 s three separate glow blobs appear side by side inside the cotton ('light bulbs in wool') instead of a continuous glowing torus ring.",
+     "fix": "head_color_early [0.42,0.24,0.14] -> [0.30,0.13,0.06] and whiten_time 0.35 -> 0.5 (brown until ~4 min). Make heat_glow a continuous ring: in head_density/emission, use a torus-distance glow (length(rc)) without cauli modulation, at core temp 1800-1400 K for 10-60 s (core_cool 0.14 -> 0.2). Darken the top with dark_base ~0.8 inverted (top darker than glowing underside). Apply the systemic lighting/fog fix so albedo shows."
+    },
+    {
+     "severity": 2,
+     "stage": "0.1-5 s (fireball)",
+     "problem": "The fireball is a fully clipped flat white disc with a huge soft bloom halo, black sky, and no limb darkening, mottling or second-peak structure. A swarm of white 'firefly' sparkles floats along the limb at 0.5-5 s (tiny detached noise blobs at emission ~1600).",
+     "fix": "In explosion.gd metered_luminance, allow max_comp up to ~13-14 stops when cov > 0.3, or add a per-bomb fireball_brightness ~0.2 for the zoom view, so the ball peaks at ~2-4x white. Strengthen limb darkening (mix(1.1, 0.92, lq) -> mix(1.15, 0.55, lq)). In fireball_density, scale emission by smoothstep(0.3, 0.8, df) and clamp per-sample emission to kill the fireflies. Lower glow intensity in zoom."
+    },
+    {
+     "severity": 2,
+     "stage": "4-10 s (condensation)",
+     "problem": "At 5 s an opaque grey hemisphere ~5.5 km wide (Wilson shell) covers the scene. It has a hard silhouette and visible sphere-mesh latitude bands (32-ring SphereMesh), so it reads as a grey igloo. Code edited after this render disables Wilson for >150 kt, which instead deletes a documented King feature: a bright condensation dome and discs (R 1.2-2 km) flashing 0.5-5 s, lit yellow.",
+     "fix": "Set wilson_force for ivy_king with wilson_start ~0.5, wilson_duration such that it lives about 0.5-5 s, and wilson_flatten 0.5 (disc-like). In WilsonLayer use _sphere_mesh(96,192), reduce the base alpha (0.18 -> 0.05), cap alpha ~0.4, and raise the fireball-lit term (g_fireball_color*0.02 -> ~0.2) so it reads bright white-yellow, not grey. Better: render it in the volume shader as a noisy sdf_shell."
+    },
+    {
+     "severity": 2,
+     "stage": "40-360 s (rings, pileus)",
+     "problem": "A detached 'Saturn ring' torus floats around the stem at 90-180 s with a gap to the stem (rr = 2.2*stem r, half-width 0.34*rr), and a ghostly translucent outline ring hovers above the cap at 40 s (ice_cap r_rel 1.1, lasting 0.45*t_stab = 208 s). Neither is documented for King; both look CG.",
+     "fix": "rings 1 -> 0 for ivy_king. ice_cap dur 0.45 -> 0.06 (~30 s), r_rel 1.1 -> 1.03, lift 0.1 -> 0.02, opacity 0.7 -> 0.5, so the pileus hugs the rising dome briefly and is gone before ~60 s."
+    },
+    {
+     "severity": 2,
+     "stage": "20-360 s (stem)",
+     "problem": "The stem is a ~4 km wide white/blue-grey cylinder: the default stem_r = 0.22*13.5 km = 2.97 km radius. The reference shows a thin reddish-brown stem, much narrower than the cap.",
+     "fix": "stem_radius_m ~800, stem_color [0.72,0.70,0.68] -> [0.42,0.28,0.20], stem_density 0.35 -> 0.5, stem_flare ~1.8 so it fans into the dust skirt."
+    },
+    {
+     "severity": 2,
+     "stage": "10-25 s (exposure)",
+     "problem": "The sky is still pitch black at 20 s (sky (25,35,40)) although 90% of the thermal energy is out by ~8 s, so a white cloud floats in a night sky.",
+     "fix": "Base the metered luminance on visible fireball emission (zero once opacity fades), and shorten the post-flash recovery tau (4.5 s -> ~3 s once the target drops), so the sky is back to within ~1 stop by ~15 s."
+    },
+    {
+     "severity": 1,
+     "stage": "90-360 s (stem shading)",
+     "problem": "A hard, perfectly elliptical shadow line crosses the stem where the cap's analytic cheap_density shadow ends. Dithering speckle is visible at the cap-stem junction.",
+     "fix": "In cheap_density, soften the head term (-sdf/(H*0.10) -> -sdf/(H*0.35)) and add one low-frequency noise tap. Use blue-noise dither."
+    }
+   ]
+  },
+  {
+   "number": 15,
+   "id": "b83",
+   "score": 2,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0-10 s (fireball)",
+     "problem": "The surface burst renders as a floating sphere. At 0.002-0.02 s the ball hovers ~470 m above GZ, with a separate glowing blob on the ground. In fireball_state for surface bursts, center_y = rise*0.92 with head_center_y starting at r_fb_max*0.5 = 625 m at t=0. There is never a ground-hugging hemisphere, no flattened contact, no ground igniting and no dense dust skirt; at 10 s it is still a white-hot sphere.",
+     "fix": "In explosion_profile, for surface kinds start head_center_y at 0 and ease in to r*0.5 only after ~t_fb_max (start = r_fb_max*0.5*smoothstep(0, t_fb_max, t)). Keep the fireball centre at y=0 until breakaway, and clip/flatten fireball density below the ground in the shader so it is a true hemisphere. Bring the temperature/skin darkening earlier for surface bursts: skin ramp (t/t2-8)/32 -> (t/t2-3)/15, dirty orange by ~9 s."
+    },
+    {
+     "severity": 3,
+     "stage": "20-360 s (signature)",
+     "problem": "No signature: B83 is a near copy of Ivy King and RDS-37 (white-pink marshmallow pancake, pale stem, Saturn ring). The specified dark brown stem [0.24,0.18,0.13] renders blue-grey (161,170,180), the same as King's light stem (163,172,181), so albedo has almost no effect. No dark dirty stem, no brown cloud, no debris rain-back, no fallout curtain.",
+     "fix": "Apply the systemic fog/ambient fix first. Then set head_color_early [0.28,0.15,0.08], head_color_late [0.38,0.31,0.25] (dirty grey-brown, never white), stem_color [0.16,0.12,0.09], stem_density 1.3 -> 1.8, dark_base 0.8, and whiten_time 0.8 -> 2.0. Add a downwind fallout curtain (a skirt/column offset by wind) from ~5 min."
+    },
+    {
+     "severity": 3,
+     "stage": "20-360 s (cap growth)",
+     "problem": "Same front-loaded growth: the cap is ~16 km wide at 40 s and ~28 km at 90 s vs the estimate of 6 km at 60 s and 20 km at 4 min (35 km at 10 min). The stem (3.5 km wide, correct per dossier) therefore looks spindly.",
+     "fix": "Use the same head_state power-law growth as for King, with cap_d60_m 6000 for b83."
+    },
+    {
+     "severity": 3,
+     "stage": "90-360 s (late cloud)",
+     "problem": "The bunker roof cuts off the cap from 90 s (21 km top is at 20.9 deg from 55 km vs a ~13 deg embrasure); at 360 s only the stem is visible.",
+     "fix": "Same camera/embrasure fix as for King (roof/parapet binocular camera or cull the bunker layer in zoom)."
+    },
+    {
+     "severity": 2,
+     "stage": "0-60 s (ground interaction)",
+     "problem": "The surface-burst ground signature is absent or invisible: no dense dark dust skirt or bright dust line of the shock (the skirt is a thin white sliver at 1 s, then a flat white pancake with vertical cut edges), no visible debris, crater invisible. At 55 km, curvature hides ~178 m at GZ, which removes the hemisphere base, the crater (300 m wide at ground level) and the stem foot.",
+     "fix": "rec_km 55 -> ~30 km (1 psi is at ~19 km; curvature drop at 30 km is ~53 m). Set skirt_color [0.36,0.29,0.22], skirt_height 1.8, dust_color [0.45,0.37,0.28], dust_wall 1.3 -> 1.6. Make debris visible: debris_size 4 -> 20-30 m clods with dust trails falling back for 30-60 s. Soften the skirt's outer edge (no vertical cliff)."
+    },
+    {
+     "severity": 2,
+     "stage": "4-12 s (condensation)",
+     "problem": "A huge opaque grey banded hemisphere (Wilson shell, sphere-mesh latitude bands) covers the fireball at 5-10 s. A dry-desert surface burst should have at most a faint, brief dome. Code edited after this render already disables it for >150 kt; verify this in a re-render.",
+     "fix": "Keep wilson 0 for b83. If humidity is high, use a thin, short (<2 s), noise-broken shell as described for King."
+    },
+    {
+     "severity": 2,
+     "stage": "90-360 s (rings)",
+     "problem": "A detached 'Saturn ring' torus floats around the stem (rings=1), with a gap to the stem and a perfectly uniform ellipse. This is wrong for a dry desert dirty burst.",
+     "fix": "rings 1 -> 0 for b83 (or at most a faint collar attached to the stem; see systemic ring fix)."
+    },
+    {
+     "severity": 1,
+     "stage": "180-360 s (artifacts)",
+     "problem": "The stem shows stacked horizontal streak bands (raymarch slicing), a hard analytic cap-shadow line, and dithering speckle (360 s crop).",
+     "fix": "Use blue-noise dither, cap dt to ~stem.z*0.05 inside the stem, base_steps 64 -> 128 for megaton stems, and soften the cheap_density shadow."
+    },
+    {
+     "severity": 1,
+     "stage": "10-25 s (exposure)",
+     "problem": "Black sky persists to 20 s (the thermal pulse is ~90% complete at 11 s).",
+     "fix": "Same adaptation fix as for King."
+    }
+   ]
+  },
+  {
+   "number": 16,
+   "id": "rds37",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "10-180 s (cap growth, torus)",
+     "problem": "The ~2 km fireball at 10 s is replaced by a ~7.8 km wide featureless pink ellipsoid at 20 s. No rising orange-red torus is ever visible, and the 'pulling a thin dark twisting dust stem' phase is absent. The cap reaches ~28 km width by ~3 min vs the dossier's 28 km at 7-8 min (and ~14 km height at 3 min).",
+     "fix": "Use the same power-law head growth as for King, starting from the fireball radius after t_fb_max (~10 s). Keep torus=1 with a visible roll (roll 2.2) and the glowing core ring through 60 s. Set head_color_early [0.36,0.14,0.07] (red-brown with crimson glints) and whiten_time 0.4 -> 0.7, ending grey-blue."
+    },
+    {
+     "severity": 3,
+     "stage": "14+ km / 90-360 s (late cloud)",
+     "problem": "The bunker roof cuts off the cap from ~180 s (20 km top is at 18.4 deg from 60 km vs ~13.5 deg embrasure); at 360 s the cap is mostly hidden. The '14+ km cloud' signature is not shown.",
+     "fix": "Same camera/embrasure fix as for King."
+    },
+    {
+     "severity": 3,
+     "stage": "20-360 s (distinctness)",
+     "problem": "RDS-37 is visually the same cloud as Ivy King and B83 (same white-pink pancake, white stem, rings); only the extra ring differs.",
+     "fix": "Lean on the documented differences: a giant flattened white ball with stacked condensation discs (0.5-6 s, as in the Cherokee refs), a thin dark twisted stem, a bell skirt at mid-stem and a broad low dust skirt. Optionally use an overcast preset (see the overcast issue below)."
+    },
+    {
+     "severity": 2,
+     "stage": "50-490 s (bell skirt)",
+     "problem": "The tier2 'transparent bell skirt' renders as a flat speckled saucer directly under the cap at 360 s. It has a hard elliptical rim and grainy dither noise, and it is 18 km wide (radius_m 9000) at 9 km height. Dossier: a translucent bell around mid-stem, about half the cap's width, at ~30-120 s.",
+     "fix": "tier2 radius_m 9000 -> ~3000, height_rel 0.45 -> 0.3, t_on 0.10 -> 0.06, dur 0.6 -> 0.2, opacity 0.45 -> 0.3. Change the shape in sdf_shell for which=1 to an open-bottom bell (narrow at the stem at the top, flaring downward). Use lower-frequency noise and more steps in thin shells to remove the speckle."
+    },
+    {
+     "severity": 2,
+     "stage": "90-180 s (rings)",
+     "problem": "Two detached 'Saturn ring' tori float around the stem with a gap (inner edge at ~1.45 stem radii) and uniform thickness, so they look like CG hoops.",
+     "fix": "In sdf_rings, make the inner edge hug the stem (rr = stem r * (1.0-1.3), not 2.2+0.4i). Make them thin flat collars (vertical scale 1.2 -> 3, thickness 0.06*rr), erode the outer edge with noise, and fade them in and out in ~30-60 s each."
+    },
+    {
+     "severity": 2,
+     "stage": "20-90 s (stem)",
+     "problem": "At 20-40 s the stem is a short white flat-topped 'tin can' standing separately under the cap (a hard planar top from the sdf_stem dv cut). Later it is a uniform pale cylinder. The dossier calls for a thin dark twisting dust stem rising from the centre of the dust skirt into the cap.",
+     "fix": "stem_color [0.62,0.58,0.54] -> [0.28,0.22,0.17], stem_density 0.35 -> 0.6. Soften/noise the stem top (fade over 1 stem radius). Add a helical twist to the stem noise lookup (rotate xz by k*p.y). stem_speed_rel ~1.0 so it connects to the cap sooner."
+    },
+    {
+     "severity": 2,
+     "stage": "0.5-10 s (fireball, ground)",
+     "problem": "The fireball is a clipped featureless white disc with limb sparkles. The flattened underside (ground-reflected shock from ~2-4 s) is missing, and so are the dusty Mach ring and the broad low billowing dust skirt (only a thin white band at the horizon).",
+     "fix": "Apply the exposure/limb/firefly fixes from King. Flatten the fireball bottom after ~2 s (fireball_squash or a bottom clip at center_y - 0.6R). Set skirt 0.3 -> 0.9 with skirt_color [0.50,0.43,0.35] and skirt_height 1.5 so a brown dust skirt rises under the ball."
+    },
+    {
+     "severity": 2,
+     "stage": "0.5-10 s (Wilson discs)",
+     "problem": "At 5-10 s the condensation effect is the same opaque grey banded igloo (sphere-mesh bands). The dossier and the Cherokee refs call for a large, bright Wilson dome and stacked horizontal condensation discs (R 2-3 km) lit by the ball. Post-render code disables Wilson for >150 kt, which removes the feature entirely.",
+     "fix": "Set wilson_force with wilson_flatten ~0.35 and add 2-3 stacked thin disc shells (e.g. reuse the ice/ice2 SDF slots during 0.5-6 s). Make them bright, fireball-lit white-yellow, opacity <= 0.4, noise-broken edges, with no mesh banding."
+    },
+    {
+     "severity": 1,
+     "stage": "all (environment)",
+     "problem": "The scene is a clear noon desert. The RDS-37 signature environment (solid grey two-layer overcast to 10 km, flash lighting the overcast from below, the cap punching through within 1-2 min, lead-black storm cloud later) is absent.",
+     "fix": "Add an optional overcast/winter preset for bomb 16 (a cloud deck at 8.5-10 km that the head SDF punches through, lit by g_fireball_color), consistent with the 6.5 humidity/haze presets."
+    }
+   ]
+  },
+  {
+   "number": 17,
+   "id": "ivy_mike",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "90-360 s",
+     "problem": "The zoom shots are unusable late. At 90 s a black band of bunker ceiling clips the top of the cap. At 180 s and 360 s the ceiling beam and brown roof texture cover the top 30-40% of the frame, so only the stem and the cap underside are visible. The mature mushroom, the overshooting top and the anvil (the 'wide 100+ km cap' signature) are never seen.",
+     "fix": "In scripts/tools/shot_rig.gd _setup_view_dynamic, and in the in-game binocular mode in player_camera.gd, remove the bunker-interior render layer from cam.cull_mask in zoom view, or move the binocular eye to the outer face of the embrasure. Pitch must be free up to about 25 deg: Mike's 37 km top seen from 90 km sits at about 22 deg. Aim at top*0.5, not top*0.45. Re-check the framing after the cap-width fix below; the current size uses w*0.6, which is inflated by the oversized cap."
+    },
+    {
+     "severity": 3,
+     "stage": "40-180 s",
+     "problem": "The cap is far too wide. ExplosionProfile.head_state grows radius with grow=1-(1-1.25*tanh(t/tau))^1.6, so it reaches ~35% of cap_r (30.5 km) by 40 s. The cap is about 25 km wide at 40 s, ~33 km at 60 s and ~54 km at 90 s. The dossier gives 9 km at 60 s and 61 km at 10 min. The result is a 4:1 pale pancake hovering about 2 km over the ground on a stubby stem: no rising cauliflower ball, no torus, wrong stem-to-cap ratio. Heights are roughly right (about 14 km at 60 s, 18 km at 90 s); only the width is wrong.",
+     "fix": "Decouple cap radius from the rise. Add per-bomb keyframes read in head_state, interpolated in log time: cap_d_keys=[[30,7000],[60,9000],[156,20000],[342,40000],[600,61000],[1800,100000]] and optionally top_keys=[[60,13000],[90,17000],[156,31000],[210,33000],[342,36000],[600,37000]]. Interim: r = max(start_r, cap_r*clamp(t/(0.95*t_stab),0,1)), which spreads roughly linearly in time. Keep half-thickness at about 0.4*r while r < 10 km so the 40-90 s head is a tall boiling ball."
+    },
+    {
+     "severity": 3,
+     "stage": "0.1-20 s",
+     "problem": "The fireball is a uniformly clipped pure-white disc with a soft grey halo from 0.1 s to 20 s. The high-speed reference shows a mottled, patchy surface; the dossier calls for 'sun half-risen' white to yellow-white, then yellow-orange to orange-red with dark veins at 5-15 s. None of that colour progression or surface detail survives. The model is also too hot late: BlastPhysics.fireball_temperature gives about 4700 K at 10 s and 3400 K at 20 s for 10.4 Mt.",
+     "fix": "(a) Exposure, in explosion.gd metered_luminance: spot-meter the ball when it fills the binocular view. Raise the cov weight (pow(ang_r/half_fov,2)*6 -> *12) and meter to about 0.3*l_fb, so the ball sits about +1.5 EV, not +3-4 EV. AgX with agx_white 16 bleaches everything above ~4 to white. (b) Late cooling, in ExplosionProfile.fireball_state: add art key cool_k (Mike ~0.6), temp *= lerp(1, cool_k, smoothstep(2*t2, 8*t2, t)), aiming at ~4000 K at 5 s, ~2500 K at 12 s and <2000 K by 20 s. (c) Start the dark 'skin' at t/t2 = 2 instead of 8 (fireball_state skin)."
+    },
+    {
+     "severity": 2,
+     "stage": "10-34 s",
+     "problem": "A huge opaque, matte dark-grey smooth hemisphere (~13 km wide) sits over the fireball from 10 s to ~34 s like a smoked-glass bowl. It is the WilsonLayer: t0 = (W/20)^(1/3) = 8 s, visible to t0 + 2.2*1.5*t0. The dossier wants a brilliant white, translucent Wilson cloud that flashes at 1-5 s only.",
+     "fix": "fx_layers.gd now zeroes Wilson above 150 kt, so re-render to confirm the dome is gone. For Mike, set wilson_force=True, wilson_start=1.0 and wilson_duration=0.3 (about 1-5 s). In wilson.gdshader, light the veil by the fireball (replace col += g_fireball_color*w*0.02 with about 0.5*g_fireball_color.rgb*w*(R_fb/d)^2) and lower the opacity floor (0.18 -> 0.08) so it reads as a bright translucent veil, not a grey bowl."
+    },
+    {
+     "severity": 2,
+     "stage": "40-360 s",
+     "problem": "The stem is a clean pale blue-white cylinder, the same tone as the haze. The reference colour photo shows a dark red-brown dirty stem under a white cap, and the dossier gives a wide dirty grey-brown stem 3-4 km across. The stem/cap colour contrast, which is Mike's main read, is gone.",
+     "fix": "Darken stem_color [0.50,0.45,0.40] to about [0.30,0.22,0.16]. In explosion_volume.gdshader, scale the aerial-perspective blend for the volume (mix(acc, fog.rgb*alpha, fog.a*0.45)); at 90 km fog.a currently washes every albedo to sky-blue. Add a warm glow to the upper stem for the first ~90 s."
+    },
+    {
+     "severity": 2,
+     "stage": "90-360 s",
+     "problem": "rings=3 render as thick CG 'life-saver' tori. sdf_rings uses a radial factor of 0.35 and thickness 0.12*rr, giving bands about 1.7 km thick and 6 km wide with a sky-coloured hole between stem and ring. The lower ring has a specular-looking hot spot at its left end. Mike needs smooth, thin, laminar pileus sheets cutting across the stem at 2.5-6 min.",
+     "fix": "Replace the torus in sdf_rings with a flat disc: max(abs(p.y-y0)-th, r-rr), th 150-300 m, rr 2-3x the stem radius, no inner hole. Apply noise only on the outer edge, amplitude <=0.05*rr, at low frequency. Time them t_on ~150 s, life ~200 s (new ring_t_on/ring_life art keys). Use a gentler phase for rings (mix(1,phase,0.3))."
+    },
+    {
+     "severity": 2,
+     "stage": "0.002-0.1 s",
+     "problem": "A surface burst renders as a sphere floating about 1.2 km above the ground at 2-20 ms; a 150 m ball is hanging in mid-air. The cause is in fireball_state: center_y = rise*0.92 with rise = head_center_y(t) - hob, and head_center_y(0) = r_fb_max*0.5 for surface bursts. The reference shows a flat-based hemisphere sitting on the sea.",
+     "fix": "In fireball_state, use rise = head_center_y(t) - head_center_y(0). Keep center_y = 0 (hemisphere on the ground) until lift-off at ~10 s ('hover 5-15 s then lift'), then ease up with smoothstep. Note that at 90 km the first ~30 ms should sit below the horizon, about 380 m of curvature drop."
+    },
+    {
+     "severity": 2,
+     "stage": "10-90 s",
+     "problem": "The required water curtain at the base is missing. The skirt is a flat white slab 300-600 m high with vertical outer walls, which reads as a white cake.",
+     "fix": "For Mike, in skirt_state set st['inner'] to about 0.7 and add art keys curtain_h ~1500 m and curtain_t, so a ring wall rises by 20-30 s and collapses by 90 s. In sdf_skirt, drop the vertical sheet edge (keep only the rolling torus front with a thinning tail) so the front is rounded and ragged."
+    },
+    {
+     "severity": 1,
+     "stage": "40-180 s",
+     "problem": "The ice cap reads as a fluffy cotton 'hat brim' around the cap at mid-height. ice_state places y = top + 0.1*half - 0.25*r with r = 1.1*R_head, so on the over-wide head the shell equator wraps the side. It is also cumulus-noisy rather than a silky veil.",
+     "fix": "In ice_state, cap r at 1.05*R_head and only allow it while the head is <15 km wide (20-120 s). In the shell branch of the shader, use low-frequency noise with amplitude <=0.05*z and a sharper outer edge, so it is a smooth sunlit veil."
+    },
+    {
+     "severity": 1,
+     "stage": "40-360 s",
+     "problem": "The cap is a blurry low-detail blob. head_density sets the noise cell to max(R,H)*0.55, so on a 30-50 km cap the finest billows are about 5 km across. The edge softness H*0.03 smears ~1 km, giving an out-of-focus cotton look with weak self-shadowing. The reference shows crisp cauliflower turrets.",
+     "fix": "Base the cell size on H (cell = H*head_noise_scale, with head_noise_scale ~0.25), add a 4th billow octave, set billow_sharp 0.6 -> 1.3 and edge = min(H*0.01, 150 m). Strengthen micro self-shadow (od_local*0.6 -> *1.2, mix 0.65 -> 0.85) and cut ambient (amb*ao*0.6 -> 0.35)."
+    },
+    {
+     "severity": 1,
+     "stage": "0.005-0.08 s / all",
+     "problem": "Two signature details are missing: the five lightning channels rising from the sea about 1 km from ground zero, and the low trade-cumulus deck lit orange by the fireball (the main IvyMike2 look). The stem at 360 s also shows horizontal stacked banding.",
+     "fix": "Add 4-6 short-lived emissive jagged line meshes at about 1 km radius for 5-80 ms. Enable a scattered low cloud layer at 0.6-2 km for Pacific shots. Fix the banding with the raymarch-step item in the systemic list."
+    }
+   ]
+  },
+  {
+   "number": 18,
+   "id": "castle_bravo",
+   "score": 2,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "20-90 s",
+     "problem": "The Bravo signature is absent at its key moment. At 40 s, where the references show a glowing boiling fireball cut by several thin stacked condensation discs, there is only a pale 43 km pancake. rings_state switches rings on at t_stab*(0.05+0.025i) = 32/49/65/81 s with life 0.18*t_stab = 117 s, so ring 0 has opacity about 0.13 at 40 s and the rings stay to ~5 min. They show up at 180 s as thick donut tori with holes.",
+     "fix": "Add art keys to rings_state: ring_t_on=[15,18,22,60], ring_life=[40,40,45,90], ring_y=[3500,5000,8500,9700] (ring 4 dragged from 9 to 16 km over 60-150 s), ring_r=[5000,6000,7000,7000], half-thickness 120-200 m. Draw them as flat lens discs (no hole, sharp laminar top and bottom, albedo ~0.97, brightly lit by the fireball) so they read edge-on as glowing blades like in bravo_condensation_rings_red_sky.jpg."
+    },
+    {
+     "severity": 3,
+     "stage": "40-360 s",
+     "problem": "The cap is 43 km wide at 40 s and about 61 km at 90 s (head_state grow on cap_r = 56.5 km). The dossier gives 11.6 km at 60 s and 24 km at 120 s. Because of this, zoom framing hits the 58 deg clamp and from 90 s shows the bunker window frame, consoles and ceiling, with the cap cut by the window top.",
+     "fix": "cap_d_keys=[[45,9000],[60,11600],[120,24000],[240,44000],[522,100000],[600,113000]], i.e. D ~0.19 km/s * t. top_keys=[[60,14300],[120,25000],[180,31000],[240,34000],[300,34700],[420,39000]]. Fix the zoom view per the systemic framing item."
+    },
+    {
+     "severity": 3,
+     "stage": "0-180 s",
+     "problem": "There is no crimson sky. The crimson term (inten = crim*6*exp(-t/25)) only tints a halo around the ball and the 0.02 s sky mauve. By the time exposure recovers (90 s+) it has decayed to ~3%. In noon daylight it is also physically implausible; the references are pre-dawn, with the fireball dyeing the sky and cumulus red-orange for minutes.",
+     "fix": "Render and ship Bravo at its dossier time of day (pre-dawn, sun -8 deg). In explosion.gd _update_globals, change the crimson decay from exp(-t/25) to exp(-t/150). In sky.gdshader, tint the g_flash scatter term with g_fireball_color.rgb instead of the fixed bluish (0.9,0.93,1.0). Add a low cumulus deck lit by g_fireball_color."
+    },
+    {
+     "severity": 2,
+     "stage": "10-60 s",
+     "problem": "The fireball is a featureless white disc up to 20 s and then disappears inside the pancake by 40 s. The references show a yellow-white core with an orange boiling cauliflower top still very bright at 30-60 s, rising out of the 'clinging' hemisphere.",
+     "fix": "Let the head grow from the fireball: start_r equal to the fireball radius, density ramping from 15 s to 40 s while fireball opacity fades into the head heat glow. Use core_glow ~1.5 and core_cool so the glow stays orange until ~90 s and turns dull red by 150 s. Apply the exposure and AgX fix from the systemic list."
+    },
+    {
+     "severity": 2,
+     "stage": "9-39 s",
+     "problem": "An opaque grey Wilson hemisphere (wilson=0.8) hides the fireball from 9 s to 39 s. The dossier mentions pileus caps forming over the dome, not a Wilson shell.",
+     "fix": "Set wilson=0 (and re-render with the new >150 kt rule). Use ice_cap with t_on ~0.008 (about 5 s) as a smooth white pileus draped over the hemisphere, lit by the fireball."
+    },
+    {
+     "severity": 2,
+     "stage": "0.002-10 s",
+     "problem": "The hemisphere should 'cling to the earth' up to 8-10 s and then spring up. Instead the render shows a sphere floating ~1.6 km above ground from t=0, identical to Mike.",
+     "fix": "Apply the same fireball_state surface fix as Mike, with lift-off at about 10 s, and squash it to a flat-based dome."
+    },
+    {
+     "severity": 2,
+     "stage": "40-360 s",
+     "problem": "The 'dark 7 km stem' renders pale blue-white because the dark stem_color [0.30,0.25,0.21] is washed out by aerial fog. At 360 s the stem shows a stacked 'screw-thread' pagoda pattern, which is raymarch slicing in a ~100 km proxy box.",
+     "fix": "Reduce the fog blend on the volume, as for Mike. For the slicing, march only the stem's own cylinder interval, or clamp dt to ~0.05*stem radius when the sample is within 2 stem radii; see the systemic raymarch item."
+    },
+    {
+     "severity": 2,
+     "stage": "80-200 s",
+     "problem": "tier2 (radius_m 30000) renders as translucent glassy diagonal 'cone' smears at the cap edges, because sdf_shell is a hollow shell 7% of z thick. The 2 cone skirts and 3 bells around the stem from the dossier read as glass.",
+     "fix": "Render tier2 and the bells as solid, smooth, bell-shaped skirts: ellipsoid density with a laminar top and a soft lower edge, not a thin hollow shell. Place them around the stem at 5.5-8 km, growing 7 -> 15 km wide over 1.6-4.2 min."
+    },
+    {
+     "severity": 2,
+     "stage": "90-180 s",
+     "problem": "A small orange glowing speck sits in the middle of the cap underside at 180 s. It is the fireball remnant: the temperature model still gives ~1700 K and opacity ~0.5 at 3 min.",
+     "fix": "Fade fireball opacity over (t_fb_max .. 3*t_fb_max) regardless of temperature, and use the cool_k late-cooling factor."
+    },
+    {
+     "severity": 1,
+     "stage": "40-90 s",
+     "problem": "Hairline arcs from the shock-shell rim cross the cap and the sky at 40 s and 90 s, reading as a CG glass circle.",
+     "fix": "In ShockLayer.update, fade strength once p < ~1 psi or once slant > 3*r_fb (or draw the shell behind the volume)."
+    },
+    {
+     "severity": 1,
+     "stage": "0-60 s",
+     "problem": "The smoke-rocket trails beside the stem, a nice documentary signature, are missing.",
+     "fix": "Add 6-10 thin, slightly curved smoke trails launched at t ~ -2 s next to ground zero, as cheap ribbon meshes."
+    }
+   ]
+  },
+  {
+   "number": 19,
+   "id": "test219",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "40 s",
+     "problem": "The 40 s frame reads as a cartoon face. A hard-edged white fireball disc is pasted in front of a pale 28 km pancake, with two blurry peach glow lobes left and right (the head-heat glow placed on the torus ring at a = 0.62R) and a white stump below. The fireball and the cloud are two disconnected primitives. The dossier calls for an orange-red fireball rolling into a toroid with a thin pale stem.",
+     "fix": "Merge the primitives. The head should start at the fireball's radius and centre (start_r = r_fb), with a cap diameter of about 13-16 km at 40-60 s (cap_d_keys). As head density rises, fade fireball opacity into head_heat, so the glow lives in the torus and its crevices, not as a separate sphere."
+    },
+    {
+     "severity": 3,
+     "stage": "11-46 s",
+     "problem": "An opaque dark-grey Wilson dome reaching the ground surrounds the airburst (wilson=0.5). The dossier says a Wilson shell is unlikely in dry air at -20 to -30 C.",
+     "fix": "Set wilson=0, and re-render to confirm that the new w_kt>150 rule in fx_layers.gd removes it."
+    },
+    {
+     "severity": 3,
+     "stage": "90-360 s",
+     "problem": "The bunker ceiling hides the upper cap at 180 s and 360 s; only the stem and the cap underside are visible. The two-tier ~72/55 km cap that defines the late phase is never on screen.",
+     "fix": "Apply the systemic zoom-framing fix (hide the bunker layer in binocular view, free pitch to ~30 deg for a 53 km top at 120 km)."
+    },
+    {
+     "severity": 2,
+     "stage": "0.1-1 s",
+     "problem": "There is no visible thermal minimum: the 0.5 s frame is a white ball with an orange halo. The dossier calls for a dull orange-red ball with a dark core at ~0.4 s. BlastPhysics.t_min = 0.0035*W^0.4 gives 0.20 s, and t_second_max gives 3.5 s; the megaton scaling 0.0025*W^0.5 = 0.39 s and 0.032*W^0.5 = 5.0 s match the dossier.",
+     "fix": "Add art overrides t_min_s=0.4 and t2_s=4.5 in ExplosionProfile._derive (or switch above 1 Mt to the W^0.5 forms). Make sure exposure has not already stopped down so far that the dip is invisible; the dip should read as a visible dim orange ball."
+    },
+    {
+     "severity": 2,
+     "stage": "5-15 s",
+     "problem": "There is no reflected-shock flattening. The ball stays perfectly round. In the Bighorn reference the fireball has a flat, orange-lit underside, and the dossier says the bottom is flattened at 5-6 s with no ground contact.",
+     "fix": "In sdf_fireball and fireball_density, clip the bottom with a plane y_cut = (hob - R) + k*(t - t_reflect) once t > t_reflect (219: ~5 s, Tsar: ~6-7 s), with ragged noise on the cut. Add art keys flatten_t and flatten_rise_mps, and give the cut face a hotter orange rim."
+    },
+    {
+     "severity": 2,
+     "stage": "5-60 s",
+     "problem": "The colour stays white through 40 s. The dossier progression is white -> yellow (~10 s) -> yellow-orange (~20 s) -> orange-red (~45 s), with the glow gone by 50-90 s.",
+     "fix": "Apply the cool_k late-cooling factor (about 0.65) and the exposure spot-metering fix. Check the result against these targets: ~4500 K at 10 s, ~3200 K at 20 s, ~2000 K at 45 s."
+    },
+    {
+     "severity": 2,
+     "stage": "15-90 s",
+     "problem": "The rise is too slow. head_center_y with tanh(t/227 s) puts the fireball top at about 13 km at 40 s; the dossier gives 25 km at 40 s.",
+     "fix": "Use top_keys=[[15,9000],[40,25000],[90,35000],[300,50000],[540,53000]], or an accelerating early phase: f = tanh(t/tau)*(1-exp(-(t/25)^2)) with tau ~90 s."
+    },
+    {
+     "severity": 2,
+     "stage": "20-360 s",
+     "problem": "The ground skirt is a 1-2 km tall flat white 'cake' with vertical walls. The profile is flagged dusty because hob 3750 < 1.3*55*W^0.4 = 4054 m, which forces hk=1. For a 3.75 km airburst over snow, the dossier describes a low, fast snow-dust ring.",
+     "fix": "Force dusty=false for NUCLEAR_HIGH_AIR, or set skirt=0.25 and skirt_height=0.25, and fade density after ~120 s. Remove the vertical sheet edge in sdf_skirt."
+    },
+    {
+     "severity": 2,
+     "stage": "40-360 s",
+     "problem": "The stem is wrong. At 40 s it is a white rectangular stump with a flat cut top (max(d,dv) in sdf_stem). Later it is a thick white column with a sharp helical sun terminator, like a twisted rope, at 180-360 s. There are also donut rings (rings=2) that dry polar air does not support. The dossier calls for a thin pale stem.",
+     "fix": "Set rings=0. Soften the stem top with a density ramp over the top 30% plus noise displacement. Use wrap lighting for the stem (macro = dot*0.35+0.65) with noise on the terminator. Reduce stem radius by about 0.6x (stem_radius_m ~1500)."
+    },
+    {
+     "severity": 1,
+     "stage": "all",
+     "problem": "Shape, colour, rings, brim and skirt are a near-copy of Tsar's, and the noon lighting removes the polar-night signature: the unlit dark grey-blue silhouette against twilight and stars after 90 s.",
+     "fix": "Use tod night/twilight (sun -11.5 deg) as the default for this bomb. After the glow fades, cut the sun term so the cloud becomes a silhouette."
+    }
+   ]
+  },
+  {
+   "number": 20,
+   "id": "tsar",
+   "score": 3,
+   "issues": [
+    {
+     "severity": 3,
+     "stage": "0.5-20 s",
+     "problem": "The shape is wrong. fireball_squash=1.15 makes a tall egg with a round bottom. The real Tsar fireball (tsar_fireball_1961.jpg) is a dome with a flat-cut bottom from the reflected shock at 6-8 s, wider than tall.",
+     "fix": "Set fireball_squash to 0.95-1.0. Implement the bottom-cut plane described under Test 219 (t_reflect ~6.5 s), so the ball looks pushed up from below and never touches the ground."
+    },
+    {
+     "severity": 3,
+     "stage": "0.1-40 s",
+     "problem": "The colour is pure clipped white with a grey halo from 0.1 s to 40 s. The reference shows a yellow-white dome with an orange rim wrapped in orange-brown glow. The dossier expects a red-orange toroidal dome at 40 s, fading to dull red over 40-70 s.",
+     "fix": "Apply exposure spot-metering and cool_k (~0.6), targeting ~3500 K at 15 s, ~2400 K at 40 s and <1300 K by 70 s. Raise the glow wrap with a warm fireball_color halo instead of grey bloom."
+    },
+    {
+     "severity": 3,
+     "stage": "14-58 s",
+     "problem": "An opaque dark-grey Wilson bell jar (wilson=0.4) surrounds the ball. At 40 s ring 0 (t_on = 0.05*733 = 37 s, y ~10.8 km) also cuts straight through the white fireball like Saturn's ring, with a white stump of stem below. It looks like a lamp in a glass dome.",
+     "fix": "Set wilson=0 and rings=0; Tsar's signatures are the two-tier cap and the shock in the sky, not rings. Re-render after the >150 kt Wilson rule."
+    },
+    {
+     "severity": 3,
+     "stage": "90-360 s",
+     "problem": "The two-tier 95/70 km cap is never visible. The bunker ceiling occludes it at 180 s and 360 s, and tier2 only starts at 0.15*t_stab = 110 s and has grown to ~25 km radius by 360 s. tier2 is also a hollow 7%-thick shell, which reads as glass where visible.",
+     "fix": "Apply the zoom-framing fix. Make tier2 a solid flattened lens: upper ~95 km wide at ~41-45 km, lower main head ~70 km (set cap_radius_m 35000 and tier2 radius_m 47500). Time it to be clearly two-tiered by 6-8 min, and include a 10-min shot in the rig."
+    },
+    {
+     "severity": 2,
+     "stage": "20-180 s",
+     "problem": "Rise and proportions are wrong. The top is about 16-18 km at 40 s against ~30 km in the dossier. At 90 s the cloud is a 35+ km wide pancake only ~25 km tall with a peach glow band through the middle. The dossier gives 40-45 km tall with a ~40 km cap at 1-3 min, white-pink on the sunlit side and blue-grey on the shadow side.",
+     "fix": "Use top_keys=[[18,10500],[40,30000],[120,42000],[480,67000],[700,64000]] and cap_d_keys=[[50,18000],[150,40000],[600,95000]]. Remove the uniform heat band after ~70 s (core_cool so the glow is gone by 70-80 s)."
+    },
+    {
+     "severity": 2,
+     "stage": "0.5-10 s",
+     "problem": "There are artifacts on the fireball. Dark charred 'burnt-paper' blotches eat the lower limb (patch-noise temperature mix(0.82,1.12,fpatch) gives about 0.3x emission at the edge). A thin hairline circle (the shock-shell rim drawn over the volume) shows inside the disc at 0.5-1 s.",
+     "fix": "Near the limb (lq>0.85), narrow the patch range to mix(0.95,1.05) and use lower-frequency patches. In ShockLayer, hide the shell while slant < 1.3*fireball radius."
+    },
+    {
+     "severity": 2,
+     "stage": "0.2-1 s",
+     "problem": "No dull orange-red ball at the thermal minimum. The dossier gives ~0.55 s; the code's t_min is 0.27 s and t2 is 4.9 s, against 0.56 s and 5-7 s in the dossier.",
+     "fix": "Set t_min_s=0.56 and t2_s=6.0 overrides (or the W^0.5 scaling)."
+    },
+    {
+     "severity": 2,
+     "stage": "40-180 s",
+     "problem": "At 40 s the stem is a white rectangular block with a flat top hanging from the ground. At 180 s an orange glowing speck (fireball remnant, still ~1700 K with opacity ~0.5) sits in the cap underside.",
+     "fix": "Soften the stem top (density ramp plus noise). Fade fireball opacity over t_fb_max..3*t_fb_max independent of temperature."
+    },
+    {
+     "severity": 1,
+     "stage": "0.002-0.02 s",
+     "problem": "There is no 'flash to the horizon': at 2-20 ms the sky and snow look like an ordinary hazy day with a small sun. env_ctl.white_out only drives a UI overlay that is not in the captured frames.",
+     "fix": "Make the flash an in-world effect captured in movie mode: g_flash brightening the whole sky and snow, plus bloom, for the first 0.1-0.3 s."
+    },
+    {
+     "severity": 1,
+     "stage": "all",
+     "problem": "The Tsar look is lost: low arctic sun (2.3 deg, golden), an overcast deck with the fireball punching a widening hole, and the shock visible in the sky (currently only hairline arcs). Breakaway size is about 3 km at 0.5 s against 4.6-5.5 km in the dossier.",
+     "fix": "Use a low-sun time of day and an overcast layer below 4 km with a hole growing at the shock radius. Render a visible shock band (condensation flash on the cloud deck). Raise fireball_scale early, or blend toward fireball_r_m sooner."
+    }
+   ]
+  }
+ ],
+ "systemic": [
+  "The volume is over-lit relative to the terrain. Earth-tone albedos of 0.3-0.48 (DUST, skirt, column) render near-white cream, brighter than the tan ground they came from, so dust reads as snow, cotton, steam or sea foam in every ground burst. Suspect a missing 1/pi factor or a g_sun_light vs DirectionalLight energy mismatch in explosion_volume.gdshader 'light = sun_c*sunlit + amb*ao*0.6'. Calibrate by rendering a skirt with albedo = ground_col: it must match terrain brightness. Drop the 0.65 hack on c_skirt after calibration.",
+  "Raymarch banding: the SDF skip `t += max(sd - margin*0.9, dt)` lands every ray at the same distance from the surface, which erases the hash12 dither. The result is stacked-coin stems, terraced caps, horizontal smear lines and contour ripples. It gets worse when the proxy box inflates (skirt height += t*0.8 is unbounded; surge and dust radius). Re-snap to a jittered grid after each skip, clamp dt to about 0.25x the smallest active feature, and keep the box tight.",
+  "Hard seams wherever the head meets the stem or column: macro shading and od_far branch on `dh > ds` (kh vs ks), and head_col and stem_col differ. Use density-weighted blending and an smin union of head and stem. Soften the cheap_density clamp (/(H*0.10) is far too sharp and casts black knife-edge shadows).",
+  "Nothing evolves after about 10-25 s. rise_norm is a tanh that stabilizes, head noise has no age advection and there is no wind drift, so 15/30/60 s frames are near-identical stills (Tallboy and Grand Slam are pixel-identical in silhouette). For video this reads as a paused image. Add age-based noise advection, wind shear and drift, continued slow rise and dissipation.",
+  "Conventional fireball physics is too short and too hot: conventional_fireball_duration = 0.04*W^(1/3) and t_peak 4200-5200 K give a white flash that is grey smoke by 0.15 s. The references show yellow-orange balls with black soot lasting 0.25-0.4 s and flame to 0.6-1.0 s. Add an fb_duration_s override and use about 3000-3300 K peaks.",
+  "The Wilson layer is applied to HE bombs and drawn as a milky glass hemisphere (cull_disabled double faces, interior noise, default humidity 0.55 on a desert range). Restrict it to kt-class nuclear bursts in humid presets; the desert default should be dry.",
+  "The debris layer uses emissive cubes with a 2.5 s glow decay and uniform sizes, so every ground burst gets a star-field or glitter look. Use dark clods, incandescence of 0.05 s at most, a wide size distribution, dust trails, and ground-impact puffs for fragment fans.",
+  "The sdf_skirt 'sheet' has a flat top and a hard vertical outer wall, so all ground bursts get a 'cake' skirt. It also appears at t about 0 and is lit by the fireball scatter term, giving a white rectangle under the flash. DustWallLayer is a dense, light-coloured surf curtain. Both need soft radial falloff, darker ground-matched colour, lower height and fade-out.",
+  "Shape grammar is shared: Mk 82 and Mk 84 are scaled copies of one nuclear mushroom, and Tallboy and Grand Slam are scaled copies of one vase. This violates section 6.3. The 'zoom' auto-framing (shot_rig _setup_view_dynamic frames on the head only) also removes absolute scale, so a fixed per-bomb FOV in the video would help show the size progression. For column kinds the framing should use max(column top, surge radius) to avoid the t5->t8 framing jump.",
+  "Terrain in the zoom view: full-width bright horizontal stripes and bands (LOD or clipmap seams, or roads at a grazing angle), horizontally smeared ground texture (needs anisotropic filtering or more detail), and a hard tonal seam near the bottom of the frame. In 60 s frames a black bar from the bunker aperture enters the top of the frame. After exposure recovery the sky turns teal-cyan, not a pale desert blue. All of these cheapen every shot.",
+  "Craters (the 7 m Mk 82, 13 m Mk 84, 30 m Tallboy, 38 m Grand Slam) are never visible in the zoom renders at the recommended distance. Add a low or near director shot to the review and verify the crater size, lip and ejecta apron.",
+  "The raymarch sampling causes banding across all four bombs. In explosion_volume.gdshader the empty-space skip `t += max(sd - margin*0.9, dt)` puts every ray on the same SDF iso-distance, which throws away the per-pixel dither. dt = seg/steps is also set by the whole proxy box, so a skirt hundreds of metres wide forces 20-40 m steps against 30-120 m stems and caps. Together these produce concentric horizontal 'spun-sugar' striations on caps, stacked horizontal slices in stems, and horizontally brushed hairy edges. Fix: re-apply jitter after every skip, e.g. t = t_enter + (ceil((t - t_enter)/dt) + dither)*dt, using blue-noise or IGN dither that varies per frame in movie mode. Clamp the step locally inside each component (min(dt, 0.08*stem_r) in the stem, min(dt, 0.04*head_half) in the head). Raise base_steps for zoom renders.",
+  "Volumes are lit too brightly relative to the terrain. Dust skirts render lighter and more neutral than the sunlit desert they were raised from (skirt ~205,200,195 against ground 182,173,159). 'Soot' albedos of 0.06-0.32 render as mid or light grey, so no bomb can show black smoke. Fix: match the volume sun term to the terrain's Lambert response (scale sun_c*sunlit by about 1/π or about 0.5), and scale the 0.05 multiple-scattering floor and amb*ao*0.6 by albedo so dark media stay dark. Make the dust_wall.gdshader lighting (lit*0.9 + amb*0.8) consistent with the same normalization.",
+  "The Wilson shell looks like a grey frosted-glass dome. wilson.gdshader is cull_disabled with a base alpha of 0.18, so front and back faces fill the disc with grey mottling. It also shows up where it physically should not (desert sites, a thermobaric bomb, sub-kt surface bursts). Fix: render front faces only, use a limb-only alpha of about pow(1-facing,3), make it bright white with forward scattering, keep it short (≤0.3-0.6 s), and gate it by site humidity (desert presets -> 0).",
+  "Exposure behaves wrongly in the zoom view. The cov branch of metered_luminance stops down to the fireball's surface luminance (max_comp up to 11), which turns the noon sky black for seconds even for 11-44 t conventional blasts. A recovery tau of 4.5 s then keeps it dusk-like for 15-20 s. The flash white-out phase (t < ~0.15 s) is missing: the first frames are already darkened. Fix: no cov boost for conventional bursts, cov boost for nuclear bursts only at t < ~3*t2, recovery tau scaled by yield (about 1 s for sub-kt), and an explicit full-frame white-out for the first 0.1-0.15 s of nuclear bursts.",
+  "The cloud's internal glow lasts too long for small yields. head_state's core cooling is a fraction of t_stab (core_cool 0.14*t_stab), so sub-kiloton clouds (Davy Crockett, B61) glow orange for 20-30 s. Use an absolute cooling time instead, e.g. core_cool_s of about 1.2*W_kt^0.35 s.",
+  "The skirt grows without limit and has a puck-like shape. skirt_state adds +t*0.8 m of height and +2 m/s of radius forever, so skirts balloon into large puffy banks at 180-360 s. sdf_skirt is a uniform slab with rounded vertical ends (a 'hockey puck'), and the colour reads white. Fix: saturate the growth terms, taper the height toward the front, add ragged plumes, fade to 0 by about 1.5-2*t_stab, and use tan colours.",
+  "Stem tops are hard-edged and lag the head. sdf_stem's top is a hard max(d, dv) clip, and stem_state's top lags the rising head (speed_rel 0.75-0.8 with stem_delay), which produces flat-topped pipes and caps floating free with a gap. Fade stem density over the top ~2 radii. When a stem should connect, attach it to the head bottom once it forms. Add an explicit detached option for the bombs where the dust column must not join (B61, the Wasp-style shots).",
+  "Lack of distinctiveness: Davy Crockett and B61 end as the same symmetric white mushroom with the same cap:stem proportions, and all four bombs share the same white skirt puck. Every cloud is also perfectly axisymmetric and vertical for 6 minutes. Add per-bomb wind drift and shear with height (Little Feller leaned and drifted NNW at about 7 m/s), a narrow-column variant for Davy Crockett, and a detached compact red-brown ball for B61.",
+  "Conventional and thermobaric fireballs are handled by one generic hard-coded path. _conventional_fireball ignores fireball_squash and lift, its duration is 0.04*m^(1/3) (far too short for MOAB's 2.5 s of flame), its colour temperatures (5200 K aluminized, 2600 K thermobaric) give either clipped white or a dull mid-tone peach, and the smoke head detaches from the flame. Add per-bomb keys fb_duration_s, fb_temp_peak, fireball_squash, fireball_lift and soot_start, and keep head and flame as one body while the flame burns.",
+  "The environment undermines realism and scale in every zoom frame. The horizon is perfectly flat and empty, with no ridgelines (all the Nevada references have mountains behind), and parallel horizontal light stripes run across the whole playa (terrain texture banding at a grazing angle). Nothing in frame gives scale. Add a distant ridge silhouette, break up the stripe artifact, and place a few range objects or vegetation near ground zero.",
+  "Framing: in late zoom frames the auto-frame tilt lets the bunker slit edge appear as a black bar at the top of the image (Davy Crockett at 180 and 360 s).",
+  "EXPOSURE (worst systemic issue): Explosion.metered_luminance raises env_ctl.max_comp up to 11 stops (spec: 3-8), and step_adaptation recovers with tau 4.5 s while still metering the cooling fireball. Every noon nuke therefore has a pitch-black sky from 0.1 s to 5 s and a dark teal sky until about 20 s, and all sunlit dust and condensation turns charcoal. Fix: cap at 5-6 stops for the bunker/zoom eye, gate fireball metering on temp > 3000 K, and use a recovery tau of about 2 s after the second pulse.",
+  "FIREBALL LOOK: from 2 ms to about 1 s every fireball is a clipped white disc inside a huge soft lightbulb glow. It has no limb, no rapatronic mottling, no visible thermal-minimum dip, and white firefly speckles at the edge. After about 2 s it turns into a uniform peach cotton ball. Fix: restrain the glow/bloom (higher HDR threshold, smaller radius), keep the ball 1-2 stops above exposure so its texture reads, soften fireball_density edges, clamp per-sample emission, and remove the hard 'dens<0.04 -> 0' cut in head_density.",
+  "CAP INCANDESCENCE: head_heat glow uses core_radius lerp 1.1 -> 0.5 (it covers the whole head) and lasts until 0.14*t_stab (about 45 s for 15-21 kt), with core_glow 1.2-1.4. Every kiloton cap becomes a self-lit salmon-pink ball with no sun or shadow side and no glowing toroid ring. Fix: core_radius about 0.22-0.3, core_cool about 0.04-0.09, core_glow at most about 0.7, and attenuate the glow by optical depth so it only peeks through gaps.",
+  "SHAPE LANGUAGE IS IDENTICAL for Grable, Little Boy and Trinity: an egg-shaped cap, a blue-grey streaked stem and a white puck. The causes are generic: (1) the fireball centre rises at 0.92 x the head rise, so two stacked spheres union into an egg; (2) the torus only reaches full at 0.13*t_stab (about 40 s); (3) cap_half = 0.2*cloud_top makes caps taller than wide during the rise; (4) billow noise gives low-contrast cotton, not deep-shadowed cauliflower. Differentiate per bomb (torus timing, cap aspect, colour, wind shear) and raise head_noise_amp and billow_sharp.",
+  "LIGHTING TOO FLAT AND PASTEL: the macro term clamp(dot*0.55+0.45)^2, ambient amb*ao*0.6, sunlit*1.1*phase and aerial fog combine so that profile albedos (dark brown stems, rust NOx heads, tan dust) render white, pink or blue-grey. Cap undersides are not darker, stems are not shadowed by the cap, and there is no strong terminator. Calibrate so an albedo-0.2 surface in full sun reads mid-grey at base exposure. Cut ambient on volumes by about 50%, steepen macro (for example smoothstep(-0.2, 0.8, dot(n,L))), double od_far, and make the haze colour warmer and lighter near the ground.",
+  "STEMS everywhere have vertical waterfall/curtain streaks (stem_stretch 1.6 plus the age*rise scroll), are translucent at the edges and at the head junction (a glassy blue-grey band), and have flat-cut 'crown' tops before they reach the cap (dv cut in sdf_stem). Use stretch 1.0 with a domain warp and twist, a density fade or cone at the top, higher extinction, and darker albedo.",
+  "GROUND DUST: the volume skirt is a symmetric white marshmallow puck with vertical walls and a flat top that stays unchanged for minutes. The DustWall is an open cylinder with constant alpha, so its silhouette produces hard vertical edges at the frame sides, and dust_col about 0.66 lit by sun*0.9 + ambient*0.8 renders near white. Add a grazing-angle alpha fade, azimuthal height noise, darker desert albedo, and dissipation and drift from about t_hit+40 s.",
+  "MESH SHELLS LOOK CG: the Wilson and shock SphereMesh shells show hard limbs, latitude-band faceting (Little Boy 2 s, Baker 1.2-2 s) and thin pen-line circles from the refraction rim (Little Boy 0.5 s, Baker 0.2-2 s). Under stopped-down exposure the Wilson shell becomes a dark glass ball. Move condensation into the volume raymarch (sdf_shell with a noisy soft edge), compute any remaining limb terms from analytic normals, and turn the shock into a soft refraction band.",
+  "LATE-PHASE FRAMING: the zoom auto-framing in shot_rig._setup_view_dynamic aims at top*0.45 from the bunker eye. From about 40-90 s onward the bunker roof beam and slit frame cut off or hide the cap for every bomb (at 180 s and 360 s only the stem shows). Ice caps, three-layer clouds and rain-out can never be seen. Fix: put the zoom camera at the slit's outer face, or use a director angle when the required pitch exceeds the slit's upper edge, or let the binocular look out from above the slit.",
+  "RAYMARCH ARTEFACTS: dt = seg/steps over a proxy box stretched by a multi-km skirt or surge causes slicing and horizontal banding (Baker 240 s cap, Grable 2 s ball top). Screen-space rectangular brightness seams appear in the dust (Grable 2 s and 5 s, a vertical step at frame centre), probably from the soft-particle depth fade reading bunker glass or frame depth. Use per-component march intervals, a dt clamp near the head, and exclude the bunker from the fade depth.",
+  "NO WIND: every cloud stays perfectly vertical and axisymmetric for 4-6 minutes, although each dossier documents drift or shear (Grable: violent NE shear; Trinity: NE dust sheet and NW cap; Little Boy: NW drift). Add a per-bomb wind profile that offsets head and stem with height and time.",
+  "SCENE CONTEXT IN THE ZOOM VIEW: the foreground terrain is a smooth gradient with long horizontal streak bands near the horizon (terrain LOD or grazing-angle texture aliasing). No range objects, destruction, heat haze or cloud shadow are readable, and Baker shows desert sand instead of a lagoon. Per-bomb environments (dawn for Trinity, water for Baker) must be part of the canonical review render, or the signatures cannot be judged.",
+  "COLOUR PIPELINE (severity 3, all four bombs): volume albedo barely affects the final colour. B83's dark brown stem [0.24,0.18,0.13] renders (161,170,180), the same as Ivy King's light stem [0.72,0.70,0.68] at (163,172,181), and Sedan's dark dust column renders white. Distant volumes are much BRIGHTER than the horizon sky behind them (horizon ~(110,126,136) vs volumes 150-192). Cause: the aerial-perspective in-scatter colour (environment_ctl NOON fog_col 0.50/0.58/0.70 * fog_bright 0.85 + sun term) is brighter than the sky shader's horizon radiance. The fog amount at 35-60 km is also 0.55-0.7 (sigma 1.8e-5 near the ground + 5e-6 Rayleigh), and the volume adds a strong blue ambient term (amb*ao*0.6 with amb 0.30/0.38/0.52). Fix: derive g_fog_color from the sky model's horizon radiance in the view azimuth (or calibrate fog_bright ~0.45 so a 200 km path equals the horizon sky). Lower noon desert haze to ~0.8-1.0e-5 (Nevada visibility 200+ km). In explosion_volume, cut the ambient to ~0.3 and tint it toward ground bounce for dust. Increase sun/shade contrast (macro = dot*0.75+0.25). Then re-verify that NOx red-brown, dark dirt stems and tan surges read as such.",
+  "CAP LATERAL GROWTH (severity 3, Ivy King/B83/RDS-37, and probably every NUCLEAR_* bomb): explosion_profile.head_state grows the radius with 1-(1-min(1.25*tanh(t/tau),1))^1.6. This reaches ~25% of the final 10-min cap radius by 20 s and ~80% by 90 s. Result: 13-16 km wide pancakes at 40 s (measured King: 3.4 km at 60 s) and a visible pop from a 1-2 km fireball to a 5-8 km ellipsoid between 5 s and 20 s. Fix: power-law growth from breakaway, r = lerp(start_r, cap_r, pow(clamp((t - t_fb_max)/(1.2-1.3*t_stab), 0, 1), 0.9)), with an optional per-bomb cap_d60_m calibration.",
+  "BUNKER EMBRASURE CLIPS THE CLIMAX (severity 3): in the zoom/binocular view the bunker roof covers everything above ~13 deg elevation. The 20-23 km clouds of Ivy King (24.7 deg), B83 (20.9 deg) and RDS-37 (18.4 deg) are cut off from ~90 s, and the 180-360 s frames show only stems through the slit. The same will hit Mike/Bravo/219/Tsar. Fix: binocular camera on the roof/berm parapet, or cull the bunker layer when zoomed, plus a taller embrasure/periscope for gameplay.",
+  "EARTH CURVATURE vs RECOMMENDED DISTANCE (severity 2-3): with R_eff 8.5e6 the hidden height is ~72 m at 35 km, 147 m at 50 km, 178 m at 55 km and 212 m at 60 km. This erases ground-level signatures: the entire Sedan dome and vent; the B83 hemisphere base, crater and stem foot; the RDS-37/King dust skirts and Mach ring. Choose rec_km per bomb so the key ground feature is above the horizon (Sedan ~8-10 km, B83 ~30 km), or raise the observer eye on the berm. Also make shot_rig zoom framing account for dome_state/stem, not only head and fireball.",
+  "SIGNATURE DISTINCTNESS (severity 3, task 6.3): bombs 14, 15 and 16 produce the same sequence (clipped white ball -> grey banded igloo -> pink marshmallow pancake -> white stem with a Saturn ring). The per-bomb profile differences (colours, stem density) are swamped by the shared lighting, growth and condensation code. After the pipeline fixes, give each bomb a distinct silhouette and palette, and verify with side-by-side sheets at the same ages.",
+  "FIREBALL IN ZOOM (severity 2): from 0.1 s to 5-10 s every megaton ball is a fully clipped flat white disc with an oversized bloom. There is no limb darkening, no rapatronic mottling and no visible second-peak structure, which fails the 6.4 'not plasticine' check, and white 'firefly' sparkles float at the limb (tiny noise blobs at HDR emission). Fix: binocular metering headroom (max_comp up to ~13-14 stops when the ball fills the view), stronger limb darkening, emission gated by density (smoothstep(0.3,0.8,df)) plus a per-sample HDR clamp, and less glow during the flash in zoom.",
+  "CONDENSATION PRIMITIVES LOOK CG (severity 2): rings are detached constant-thickness tori with a gap to the stem; ice_cap is a ghost outline lasting 0.45*t_stab; tier2 is a flat speckled saucer. The Wilson shell (in these renders) is an opaque grey 32-ring SphereMesh with latitude banding. Fixes: rings hug the stem as thin noisy collars; pileus lives ~20-40 s and hugs the dome; tier2 becomes an open bell; Wilson uses a high-res mesh or the volume SDF, stays thin, bright and fireball-lit with alpha <= 0.4. Note: the post-render change that disables Wilson for >150 kt also deletes documented features (King and RDS-37 condensation domes/discs); use wilson_force with a proper look instead.",
+  "RAYMARCH ARTIFACTS (severity 2): hard planar seams where the stem's flat sdf_stem top cuts inside the head (Sedan 5 s; RDS-37 'tin can' stem), hard-edged cut-out holes from the dens<0.04 -> 0 threshold, horizontal streak banding in stems, grainy dither speckle in thin shells, and crisp analytic shadow lines from the noise-free cheap_density. Fix: smooth the top fade on stems, a soft density threshold, blue-noise per-pixel dither, dt capped relative to the local structure size, higher base_steps for the offline/movie render, and softened/noised shadow density.",
+  "NO TORUS OR CAULIFLOWER (severity 2): caps are smooth ellipsoids with uniform fine 'cotton wool' noise, flat undersides, no visible roll/torus and weak self-shadowing. Increase large-scale billow amplitude (head_noise_amp ~0.45-0.55, larger cells), keep torus visible with roll, add darker undersides and stronger sun/shade contrast.",
+  "EXPOSURE (severity 2): after megaton flashes the sky stays black until 20-40 s although 90% of the thermal energy is emitted by 8-11 s. Buried shots (Sedan) trigger a ~0.5-stop dip from an invisible vent glow. Meter only on the visible fireball emission and shorten the recovery once the target drops.",
+  "TERRAIN/SKY IN ZOOM (severity 1): the narrow-FOV view shows the desert as flat horizontal painted stripes (texture stretched at grazing angles, no micro-detail or scrub). The noon sky is a dull grey-teal rather than the deep desert blue of the Sedan colour reference.",
+  "NOTE: the r2 renders (07:18-07:19) predate edits to explosion_profile.gd (07:19), fx_layers.gd (07:22), explosion.gd (07:23) and the shaders (07:36). Some items (e.g. the Wilson igloo on megaton shots) may already be changed. Re-render bombs 13-16 before the next review cycle.",
+  "These renders are out of date. They were made at 07:19, but explosion.gd, explosion_profile.gd, fx_layers.gd, wilson.gdshader, explosion_volume.gdshader and shot_rig.gd were all changed between 07:19 and 07:32. The b19 and b20 logs also show parse errors in range_objects.gd (_ico_v and _ico_f not declared), so those two renders were made without range objects. Re-render all four after the fixes. The grey domes at 10-58 s match the WilsonLayer timing exactly (t0 = (W/20)^(1/3), lasting to t0 + 2.2*1.5*t0); the new w_kt>150 rule should remove them, so confirm it.",
+  "Zoom framing fails for every megaton after about 90 s. The bunker ceiling beam and roof cover the top 30-50% of the frame, and Bravo falls back to the 58 deg clamp, which shows the window frame and consoles. The caps, anvils, two-tier caps and overshooting tops are never seen. In binocular or zoom mode, exclude the bunker-interior layer from the camera's cull_mask (or put the eye at the embrasure's outer face) and allow pitch up to ~30 deg.",
+  "Cap lateral growth is front-loaded in ExplosionProfile.head_state. It uses grow = 1-(1-1.25*tanh(t/tau))^1.6, which gives 30-40% of the final cap radius by 40 s. All four caps come out 3-5x too wide in the first 1-2 minutes: flat 4:1 pancakes with stubby stems instead of rising cauliflower balls. Data-drive height and diameter from the dossier with top_keys and cap_d_keys (log-time interpolation). At minimum, spread the radius roughly linearly in time (cap_r*t/(0.9*t_stab)).",
+  "Fireball colour is lost to exposure and AgX. Every fireball is clipped pure white from 0.1 s to 20-40 s; there is no white -> yellow -> orange -> red progression, no thermal-minimum dip and no rapatronic mottling. Fix metered_luminance to spot-weight the fireball, aiming for about +1.5 EV rather than +3-4 EV. Add a per-bomb late-cooling factor, because fireball_temperature is still 2500-3500 K at 40 s for megatons. Use the megaton t_min and t2 scaling, 0.0025*W^0.5 and 0.032*W^0.5, or per-bomb overrides.",
+  "The fireball and the cloud head are separate primitives. A hard-edged hot sphere floats inside or in front of a pale cap with separate glow lobes ('face', 'Saturn', 'lamp in a bell jar'). The head must grow out of the fireball (start_r = fireball radius, same centre) while fireball opacity cross-fades into head_heat.",
+  "Fireball light on nearby media is far too weak. In explosion_volume.gdshader the term is light += blackbody*fl*0.03*..., and the Wilson and dust shaders use about 0.02*g_fireball_color. Clouds and shells next to a sun-bright ball therefore stay matte grey. Use a physically scaled inverse-square term (albedo * L_fb * (R/d)^2, a factor of ~0.5-1 instead of 0.03), so caps, pileus, rings and skirts glow yellow-orange as in every reference photo.",
+  "The four megatons are near-identical scaled copies: the same white ball, grey dome, pancake cap, fluffy brim, donut rings, white stem and white skirt slab. This violates section 6.3. Each needs its own lighting and time of day: Mike at sunrise with a cumulus deck, Bravo pre-dawn and crimson, 219 polar night silhouette, Tsar at low arctic sun with an overcast hole. Each also needs its own features: Mike's water curtain and dirty red-brown stem, Bravo's thin stacked discs and bells, 219 and Tsar with flat-bottomed fireballs, no Wilson and no rings, and Tsar's two-tier cap.",
+  "Condensation rings are drawn as thick hollow tori. sdf_rings uses radial factor 0.35 and thickness 0.12*rr, giving 1.5-2 km thick bands with a sky hole and a specular hot spot. Their timing is also off: they appear at 0.05*t_stab and live 0.36*t_stab, so they are absent at 30-60 s and present at 3-5 min. Make them flat laminar discs 100-300 m thick with per-bomb times and heights.",
+  "Aerial perspective washes out explosion albedo at 90-150 km (col = mix(acc, fog, fog.a) in the volume shader). Dark stems (Bravo 0.30) and dusty skirts render the same pale blue-white as the horizon haze. Scale fog.a for the volume by about 0.4-0.5, or derive it from a realistic visibility of 150-250 km.",
+  "The raymarch is too coarse when the proxy box grows to 60-110 km (tier2 and rings enlarge it). With base_steps 64, steps are about 1 km, which produces stacked, banded 'screw' and pagoda patterns and helical facets in stems at 180-360 s. March per-component intervals, or clamp dt near small structures (dt <= 0.05*stem radius), and raise steps to 128-192 for cine and megatons.",
+  "Head noise scales with max(R,H)*0.55, and the edge softness is H*0.03. On 30-50 km caps the finest billows are about 5 km and the edges blur by about 1 km, giving an out-of-focus cotton look with weak self-shadowing. Base the noise cell on H or an absolute scale, add an octave, sharpen the edges and strengthen micro self-shadow so the crevices go dark.",
+  "There are hard CG shapes. The skirt is a flat slab with a vertical outer wall (the sheet term in sdf_skirt). The stem has a flat cut top during growth (max(d,dv)). The stem's sun terminator is hard, which reads as a twisted rope. The ice-cap shell sits at y = top - 0.25r and becomes a fluffy brim at mid-height. Soften all of these.",
+  "The fireball remnant persists too long. Fireball opacity only fades below 2150 K, so orange specks remain inside the cap underside at 90-180 s. Fade opacity on a time basis (t_fb_max to 3*t_fb_max).",
+  "The shock-shell refraction rim draws hairline circles over the fireball (0.5-1 s) and across the cloud and sky at 40-90 s. Hide it inside 1.3x the fireball radius and fade it below about 1 psi.",
+  "Surface bursts (Mike, Bravo) float. fireball_state places the centre at 0.46*r_fb_max above the ground from t=0 because head_center_y(0) = r_fb_max*0.5. They should be flat-based hemispheres that hug the ground until lift-off at ~10 s.",
+  "The initial flash or white-out is not in the captured frames: the 2-20 ms frames look like a hazy sunny day. The white-out is only a UI overlay (ui.flash_white). Move it into the world (sky g_flash, terrain and bloom) so movie-mode renders get the blinding first frames."
+ ]
+}

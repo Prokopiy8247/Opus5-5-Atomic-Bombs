@@ -53,12 +53,14 @@ void vertex() {
 	vec3 ax = normalize(vec3(hash11(seed + 1.0) - 0.5, hash11(seed + 2.0) - 0.5, hash11(seed + 3.0) - 0.5) + 0.01);
 	float c = cos(ang);
 	float s = sin(ang);
-	vec3 vl = VERTEX * size_scale * (0.5 + hash11(seed * 3.3)) * v_alive;
+	float inst_scale = length(MODEL_MATRIX[0].xyz);
+	vec3 vl = VERTEX * size_scale * inst_scale * (0.5 + hash11(seed * 3.3)) * v_alive;
 	vl = vl * c + cross(ax, vl) * s + ax * dot(ax, vl) * (1.0 - c);
 	vec3 world = pw + vl;
 	v_world = world;
-	v_glow = hot * exp(-t / 2.5);
+	v_glow = hot * exp(-t / 0.08);
 	// write world-space position (MODEL_MATRIX contains only the instance translation)
+	mat4 tr_only = mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), MODEL_MATRIX[3]);
 	VERTEX = (inverse(MODEL_MATRIX) * vec4(world, 1.0)).xyz;
 	NORMAL = (vec4(NORMAL, 0.0)).xyz;
 }

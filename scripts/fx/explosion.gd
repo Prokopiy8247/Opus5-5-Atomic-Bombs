@@ -33,6 +33,7 @@ var volume: MeshInstance3D
 var vol_mat: ShaderMaterial
 var fire_light: OmniLight3D
 var layers: Array = []            # extra layer nodes with update(age) methods
+var wind_v := Vector3.ZERO        # cloud drift velocity (m/s) at mid-cloud height
 
 
 func setup(b: Dictionary, ground_zero: Vector3, p_env: EnvironmentCtl, p_bunker: Bunker, p_cam: Camera3D) -> void:
@@ -143,7 +144,7 @@ func _apply_art_static() -> void:
 	vol_mat.set_shader_parameter("head_col_a", Vector4(ca.x, ca.y, ca.z, 0.0))
 	vol_mat.set_shader_parameter("head_col_b", Vector4(cb.x, cb.y, cb.z, float(prof.a("dark_base", 0.6))))
 	var sc: Vector3 = c.call("stem_color", [0.27, 0.20, 0.14] if prof.dusty else [0.42, 0.36, 0.30])
-	vol_mat.set_shader_parameter("stem_col", Vector4(sc.x, sc.y, sc.z, float(prof.a("stem_stretch", 1.6))))
+	vol_mat.set_shader_parameter("stem_col", Vector4(sc.x, sc.y, sc.z, float(prof.a("stem_stretch", 1.1))))
 	var kc: Vector3 = c.call("skirt_color", [0.60, 0.55, 0.48] if (prof.surface or prof.dusty) else [0.52, 0.48, 0.43])
 	vol_mat.set_shader_parameter("skirt_col", Vector4(kc.x, kc.y, kc.z, 0.0))
 	var gcv: Vector3 = c.call("ground_color", [0.55, 0.47, 0.38])
@@ -151,7 +152,12 @@ func _apply_art_static() -> void:
 	var tint: Array = prof.a("fireball_tint", [1.0, 1.0, 1.0, 0.0])
 	vol_mat.set_shader_parameter("fb_tint", Vector4(tint[0], tint[1], tint[2], tint[3]))
 	vol_mat.set_shader_parameter("head_detail", Vector4(float(prof.a("head_noise_amp", 0.30)), float(prof.a("billow_sharp", 0.6)), float(prof.a("erosion", 0.8)), 0.0))
-	vol_mat.set_shader_parameter("base_steps", float(prof.a("steps", 64.0)))
+	vol_mat.set_shader_parameter("base_steps", float(prof.a("steps", 72.0)))
+	var wv: Array = prof.a("wind", [2.5, -1.5])
+	wind_v = Vector3(float(wv[0]), 0.0, float(wv[1]))
+	vol_mat.set_shader_parameter("wind", wind_v)
+	vol_mat.set_shader_parameter("wind_h", maxf(prof.cloud_top * 0.5, 50.0))
+	vol_mat.set_shader_parameter("churn", float(prof.a("churn", 1.2)) / maxf(prof.t_stab, 10.0))
 	vol_mat.set_shader_parameter("debug_mode", Args.get_int("vdebug", 0))
 	var empty: Array[Vector4] = [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
 	vol_mat.set_shader_parameter("rings", empty)
@@ -224,6 +230,7 @@ func _update_volume(t: float) -> void:
 	vol_mat.set_shader_parameter("fb", Vector4(0.0, fs["center_y"], 0.0, fr if float(fs["opacity"]) > 0.001 else 0.0))
 	vol_mat.set_shader_parameter("fb_look", Vector4(fs["temp"], fs["emis"], float(prof.a("fireball_noise", 0.22)), fs["opacity"]))
 	vol_mat.set_shader_parameter("fb_shape", Vector4(fs["squash"], fs["mottle"], float(prof.a("fireball_noise_scale", 10.0)), fs["skin"]))
+	vol_mat.set_shader_parameter("fb_cut_y", prof.fireball_cut_y(t))
 	var tint: Array = prof.a("fireball_tint", [1.0, 1.0, 1.0, 0.0])
 	if float(tint[3]) > 0.0:
 		var tw := float(tint[3]) * clampf(1.0 - t / float(prof.a("tint_time", 5.0)), 0.0, 1.0)
@@ -234,7 +241,7 @@ func _update_volume(t: float) -> void:
 	var ca: Vector4 = vol_mat.get_shader_parameter("head_col_a")
 	ca.w = hs["col_mix"]
 	vol_mat.set_shader_parameter("head_col_a", ca)
-	var core_r := lerpf(1.1, float(prof.a("core_radius", 0.5)), clampf(t / maxf(prof.t_stab * 0.12, 1.0), 0.0, 1.0))
+	var core_r := lerpf(0.6, float(prof.a("core_radius", 0.28)), clampf(t / maxf(prof.t_stab * 0.06, 1.0), 0.0, 1.0))
 	vol_mat.set_shader_parameter("head_heat", Vector4(hs["heat_temp"], hs["heat_glow"], core_r, float(prof.a("head_noise_scale", 0.55))))
 	var sr: float = ss["radius"] if float(ss["density"]) > 0.001 and float(ss["top"]) > 1.0 else 0.0
 	vol_mat.set_shader_parameter("stem", Vector4(ss["bottom"], ss["top"], sr, ss["density"]))
@@ -278,6 +285,10 @@ func _update_volume(t: float) -> void:
 			var e3: float = sh.y * 1.1
 			mn = mn.min(Vector3(-e3, sh.x - sh.z * 0.3, -e3))
 			mx = mx.max(Vector3(e3, sh.x + sh.z * 1.2, e3))
+	if mn.x < mx.x:
+		var drift := wind_v * t * 1.5
+		mn = mn.min(mn + Vector3(drift.x, 0.0, drift.z))
+		mx = mx.max(mx + Vector3(drift.x, 0.0, drift.z))
 	volume.visible = mn.x < mx.x
 	if volume.visible:
 		vol_mat.set_shader_parameter("box_min", mn)
@@ -373,7 +384,7 @@ func metered_luminance(ti: float, amb: float) -> float:
 		if ang < half_fov + ang_r:
 			var cov := clampf(pow(ang_r / half_fov, 2.0) * 6.0, 0.0, 1.0)
 			# a camera / binocular stopped down on a fireball that fills the view (rapatronic look)
-			env_ctl.max_comp = lerpf(6.5, 9.0, cov)
+			env_ctl.max_comp = lerpf(6.0, 8.5, cov) if prof.nuclear else 4.0
 			var tt: float = fs["temp"]
 			var x := tt / 8000.0
 			# metering aims the fireball ~2 stops above middle grey (bright, but with visible structure)
@@ -403,9 +414,9 @@ func _update_globals(t: float) -> void:
 	var inten := pw * pow(maxf(prof.w_kt, 0.0001), 0.33) * 40.0 * BlastPhysics.transmittance(obs_dist, Game.humidity)
 	var crim := float(prof.a("crimson", 0.0))
 	if crim > 0.0:
-		# Bravo: the flash dyed the sky and clouds crimson for many seconds
-		col = col.lerp(Color(1.0, 0.18, 0.12), crim * 0.7)
-		inten = maxf(inten, crim * 6.0 * exp(-t / 25.0) * clampf(t / 0.5, 0.0, 1.0))
+		# Bravo: the flash dyed the sky and clouds crimson for minutes
+		col = col.lerp(Color(1.0, 0.18, 0.12), crim * 0.75)
+		inten = maxf(inten, crim * 6.0 * exp(-t / 150.0) * clampf(t / 0.5, 0.0, 1.0))
 	RenderingServer.global_shader_parameter_set("g_fireball_color", Vector4(col.r, col.g, col.b, inten))
 	RenderingServer.global_shader_parameter_set("g_flash", clampf(pw * pow(maxf(prof.w_kt, 0.0001), 0.3) * BlastPhysics.transmittance(obs_dist, Game.humidity) * 0.3, 0.0, 20.0))
 	# cloud shadow on the ground

@@ -30,6 +30,8 @@ def schedule(b):
         return [0.5, 1.5, 2.5, 3.2, 3.6, 5, 8, 15, 30, 60, 120, 240]
     if b["id"] == "baker":
         return [0.02, 0.2, 0.6, 1.2, 2, 4, 8, 15, 30, 60, 120, 240]
+    if float(b["yield_kt"]) >= 1000.0:
+        return [0.002, 0.02, 0.1, 0.5, 2, 5, 10, 20, 40, 90, 180, 360, 600]
     return NUKE
 
 
@@ -52,7 +54,7 @@ def main():
     for n in nums:
         b = data[n - 1]
         for view in a.views.split(","):
-            for tod in a.tods.split(","):
+            for tod in (a.tods.split(",") if a.tods != "hist" else [b.get("profile", {}).get("tod_hist", "noon")]):
                 for dmode in a.dist.split(","):
                     rec = float(b["rec_km"])
                     dist = {"rec": rec, "near": rec / 3.0, "far": rec * 3.0}.get(dmode, rec)

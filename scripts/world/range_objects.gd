@@ -126,6 +126,7 @@ var _psi_lp := PackedFloat64Array()   # log overpressure at that radius
 var _ub := Vector2(0, 1)
 var _up := Vector2(1, 0)
 var _f32buf := PackedFloat32Array([0.0])
+var _imp := 1.0
 
 
 func _ready() -> void:
@@ -182,6 +183,7 @@ func setup(gz: Vector3, w_kt: float, hob: float, surface: bool, humidity: float,
 	_up = Vector2(-_ub.y, _ub.x)
 	_r_min = maxf(maxf(_fb_ground * 1.15, _crater_r * 1.6), 8.0)
 	_build_psi_table()
+	_imp = clampf(sqrt(pow(_w_blast, 1.0 / 3.0) / 2.466), 0.25, 2.0)
 	var r1psi := _ring_r(1.0)
 	_cell = clampf((r1psi if r1psi > 0.0 else 2000.0) / 3.0, 400.0, 15000.0)
 	_layout()
@@ -339,7 +341,7 @@ func _update_focus(force: bool) -> void:
 
 
 func _update_material_params() -> void:
-	var imp := clampf(sqrt(pow(_w_blast, 1.0 / 3.0) / 2.466), 0.25, 2.0)
+	var imp := _imp
 	var th := _th_table()
 	for m in _mats:
 		var sm := m as ShaderMaterial
@@ -552,7 +554,7 @@ func _add_instance(type: int, xf: Transform3D, sample: Vector3) -> int:
 		var delay := _rng.randf_range(0.3, 2.5)
 		var top := xf.origin + Vector3(0, CENTER_H[type] * 0.6, 0)
 		var cw := _f32(floorf(minf(psi, 500.0) * 10.0) + _rng.randf() * 0.99)
-		_smoke_list.append([top, Color(ign + delay, -sz if veg else sz, arr, cw)])
+		_smoke_list.append([top, Color(ign + delay, -sz if veg else sz, arr, cw), _move_offset(type, psi, seed_gpu, sample)])
 		_min_ign = minf(_min_ign, ign + delay)
 	# a dust cloud where something collapses, tumbles or crashes down
 	var ds: float = DUST[type]
@@ -561,9 +563,50 @@ func _add_instance(type: int, xf: Transform3D, sample: Vector3) -> int:
 		if state_for(type, psi, seed_gpu) >= need and _rng.randf() < float(DUST_P[type]):
 			var dsz := ds * xf.basis.get_scale().x * _rng.randf_range(0.85, 1.2)
 			var dcw := _f32(floorf(minf(psi, 500.0) * 10.0) + _rng.randf() * 0.99)
-			_smoke_list.append([xf.origin, Color(arr + float(DUST_DELAY[type]), dsz + 1000.0, arr, dcw)])
+			_smoke_list.append([xf.origin, Color(arr + float(DUST_DELAY[type]), dsz + 1000.0, arr, dcw), _move_offset(type, psi, seed_gpu, sample) * 0.5])
 			_min_ign = minf(_min_ign, arr)
 	return _objects.size() - 1
+
+
+## Approximate horizontal displacement of an object's burning / dusty core after the shock
+## (mirrors the shader's main motion so smoke rises from where the wreck comes to rest).
+func _move_offset(type: int, psi: float, seed: float, sample: Vector3) -> Vector2:
+	var wd := sample - _burst
+	var h := Vector2(wd.x, wd.z)
+	var hl := h.length()
+	if hl < 0.01 or psi >= 999.0:
+		return Vector2.ZERO
+	var hfs := smoothstep(0.15, 0.75, hl / maxf(wd.length(), 1.0))
+	var push := h / hl
+	var S := 0.0
+	match type:
+		T_CAR, T_TRUCK:
+			var tthr := 4.5 + 1.5 * rr(seed, 1.0) if type == T_CAR else 5.0 + 2.0 * rr(seed, 1.0)
+			if psi >= tthr:
+				var x := clampf((psi - tthr) / 25.0, 0.0, 1.0)
+				S = minf((2.0 + 2.2 * (psi - tthr) + 30.0 * x) * _imp * hfs, 150.0)
+		T_WOOD:
+			var blow := 4.8 + rr(seed, 3.0)
+			if psi >= blow:
+				S = 0.5 * (10.0 + 25.0 * clampf((psi - blow) / 5.0, 0.0, 1.0) + 90.0 * clampf((psi - 10.0) / 30.0, 0.0, 1.0)) * _imp * (0.15 + 0.85 * hfs)
+			elif psi >= 2.9 + 1.1 * rr(seed, 2.0):
+				S = 2.0 * hfs
+		T_RAILCAR:
+			if psi >= 9.0 + 1.5 * rr(seed, 3.0):
+				S = minf((5.0 + 2.0 * (psi - 9.0)) * _imp * hfs, 100.0)
+			elif psi >= 6.8 + 1.4 * rr(seed, 2.0):
+				S = 2.0 * _imp * hfs
+		T_AIRCRAFT:
+			var thr := 2.0 + rr(seed, 1.0)
+			if psi >= thr:
+				S = minf((8.0 + 25.0 * (psi - thr)) * _imp * hfs, 250.0)
+		T_TREE:
+			if psi >= 2.35 + 2.3 * rr(seed, 1.0):
+				S = 6.0 * hfs
+		T_JUNIPER:
+			if psi >= 5.0 + 4.0 * rr(seed, 1.0):
+				S = 1.5 * hfs
+	return push * S
 
 
 func _push(type: int, xf: Transform3D, cu: Color) -> void:
@@ -933,7 +976,8 @@ func _commit() -> void:
 		for i in _smoke_list.size():
 			var e: Array = _smoke_list[i]
 			var p: Vector3 = e[0]
-			mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, p))
+			var off: Vector2 = e[2]
+			mm.set_instance_transform(i, Transform3D(Basis(Vector3.RIGHT, Vector3(off.x, 1.0, off.y), Vector3.BACK), p))
 			mm.set_instance_custom_data(i, e[1])
 			lo = lo.min(p)
 			hi = hi.max(p)
@@ -1646,20 +1690,24 @@ func _build_bridge(rng: RandomNumberGenerator) -> ArrayMesh:
 	var mb := MB.new()
 	var concrete := Color(0.63, 0.61, 0.57)
 	# dry wash bed under the bridge (vertices snapped to the terrain in the shader)
+	# a meandering gravel channel whose banks dip under the terrain (irregular outline)
 	mb.part = P_GROUND
-	mb.color = Color(0.76, 0.70, 0.58)
-	var nx := 12
-	var nz := 18
-	var xs := 34.0
-	var zs := 95.0
+	var nx := 10
+	var nz := 44
+	var zs := 120.0
 	var base := mb.verts.size()
 	for j in nz + 1:
+		var z := -zs + 2.0 * zs * j / nz
+		var xc := 5.0 * sin(z * 0.027) + 2.0 * sin(z * 0.11 + 1.3)
+		var hw := (9.0 + 3.5 * sin(z * 0.05 + 0.7) + rng.randf_range(-1.5, 1.5)) * (1.0 - 0.6 * pow(absf(z) / zs, 4.0))
 		for i in nx + 1:
-			var x := -xs + 2.0 * xs * i / nx
-			var z := -zs + 2.0 * zs * j / nz
-			var edge := maxf(absf(x) / xs, absf(z) / zs)
-			var y := 0.06 if edge < 0.8 else lerpf(0.06, -0.6, (edge - 0.8) / 0.2)
-			mb.vert(Vector3(x + rng.randf_range(-0.8, 0.8) * (1.0 - edge), y, z), Vector3.UP)
+			var u := -1.0 + 2.0 * i / nx
+			var x := xc + u * hw * (1.0 + rng.randf_range(-0.12, 0.12) * absf(u))
+			var edge := maxf(absf(u), absf(z) / zs)
+			var y := 0.05 if edge < 0.75 else lerpf(0.05, -0.5, (edge - 0.75) / 0.25)
+			var g := rng.randf_range(0.9, 1.08)
+			mb.color = Color(0.62 * g, 0.585 * g, 0.53 * g)
+			mb.vert(Vector3(x, y, z), Vector3.UP)
 	for j in nz:
 		for i in nx:
 			var a := base + j * (nx + 1) + i
@@ -1939,6 +1987,8 @@ varying vec3 v_wp;
 varying float v_seed;
 varying float v_mode;
 varying float v_size;
+varying float v_brk;
+varying float v_old;
 
 float sat(float x) {
 	return clamp(x, 0.0, 1.0);
@@ -1958,11 +2008,14 @@ void vertex() {
 	float psi = floor(ic.w) * 0.1;
 	v_seed = fract(ic.w);
 	vec3 o = MODEL_MATRIX[3].xyz;
+	vec3 src_off = vec3(MODEL_MATRIX[1].x, 0.0, MODEL_MATRIX[1].z);
 	v_a = 0.0;
 	v_fire = 0.0;
 	v_h = 0.0;
 	v_size = size;
 	v_uv = UV;
+	v_brk = 0.0;
+	v_old = 0.0;
 	vec3 wpos = o;
 	if (age >= 0.0 && ti > 0.0) {
 		vec3 right = normalize(vec3(INV_VIEW_MATRIX[0].x, 0.0, INV_VIEW_MATRIX[0].z) + vec3(1e-5, 0.0, 0.0));
@@ -1971,13 +2024,15 @@ void vertex() {
 		float tb = age - ic.z;
 		float tp = max(0.5 * w13, 0.05);
 		float u = wind_u(psi);
+		// the burning wreck / dust source moves with the object it belongs to
+		o += src_off * (1.0 - pow(1.0 - sat(tb / 1.5), 3.0));
 		if (dust) {
 			float R = size * (0.6 + 2.2 * (1.0 - exp(-ti / 1.4)) + 0.04 * ti);
 			float H = R * (0.55 + 0.15 * sat(ti / 6.0));
 			float y = UV.y * H;
 			float w = 2.0 * R * (1.0 - 0.3 * UV.y * UV.y);
 			float D = min(u * tp * 0.35 * (1.0 - exp(-max(tb, 0.0) / tp)), size * 6.0);
-			wpos = o + right * (UV.x - 0.5) * w + vec3(0.0, y - 0.15 * size, 0.0) + push * D;
+			wpos = o + right * (UV.x - 0.5) * w + vec3(0.0, y - 0.3 * size, 0.0) + push * D;
 			v_h = y;
 			v_a = sat(ti / 0.25) * exp(-ti / 10.0);
 		} else {
@@ -1992,6 +2047,8 @@ void vertex() {
 				float ynew = rise * tb;
 				float old = smoothstep(ynew - 0.1 * H - 2.0, ynew + 0.1 * H + 2.0, y);
 				drift += push * D * old;
+				v_brk = 4.0 * old * (1.0 - old) * sat(D / max(size * 2.0, 1.0));
+				v_old = old * sat(tb / 1.2);
 				drift -= push * min(D * 0.15, 40.0) * old * sat((tb - tp) / (3.0 * tp));
 			}
 			wpos = o + right * (UV.x - 0.5) * w + vec3(0.0, y, 0.0) + drift;
@@ -2004,7 +2061,7 @@ void vertex() {
 			v_fire = v_mode > 0.5 ? fire * 0.5 : fire;
 		}
 	}
-	VERTEX = wpos - o;
+	VERTEX = (inverse(MODEL_MATRIX) * vec4(wpos, 1.0)).xyz;
 	v_wp = wpos;
 }
 
@@ -2042,9 +2099,9 @@ void fragment() {
 	if (v_mode > 1.5) {
 		float n = fbm2(vec2(uv.x * 2.2 + v_seed * 17.0, uv.y * 1.6 - age * 0.05) * 1.5);
 		float d = length(vec2(xs, uv.y * 1.15));
-		float m = 1.0 - smoothstep(0.45, 1.0, d + (n - 0.5) * 0.7);
-		a = sat(m * (0.5 + 0.9 * n)) * v_a * 0.85;
-		col = vec3(0.50, 0.43, 0.34) * lit * (0.7 + 0.5 * n + 0.2 * uv.y);
+		float m = 1.0 - smoothstep(0.2, 1.0, d + (n - 0.5) * 0.8);
+		a = sat(m * (0.6 + 0.9 * n)) * v_a * 0.92 * smoothstep(0.0, 0.18, uv.y);
+		col = vec3(0.42, 0.35, 0.27) * lit * (0.7 + 0.5 * n + 0.2 * uv.y);
 	} else {
 		float scale = max(v_size * 2.0, 1.0);
 		float n = fbm2(vec2(uv.x * 2.0 + v_seed * 13.0, v_h / scale - age * 0.25));
@@ -2054,18 +2111,20 @@ void fragment() {
 		float top = 1.0 - smoothstep(0.6, 1.0, uv.y + (nn - 0.5) * 0.4);
 		float bottom = smoothstep(0.0, 0.05, uv.y);
 		float dil = mix(1.0, 0.45, uv.y);
-		a = sat(edge * top * bottom * dil * (0.3 + 1.2 * nn)) * v_a * (v_mode > 0.5 ? 0.55 : 0.9);
+		a = sat(edge * top * bottom * dil * (0.3 + 1.2 * nn)) * v_a * (v_mode > 0.5 ? 0.55 : 0.9) * (1.0 - 0.9 * v_brk);
+		// smoke torn off by the blast wind is mixed away within about a second
+		a *= 1.0 - smoothstep(0.0, 0.5, v_old);
 		vec3 base = v_mode > 0.5 ? vec3(0.36, 0.34, 0.31) : vec3(0.07, 0.065, 0.06);
 		col = base * lit * (0.65 + 0.7 * nn);
-		float glow = v_fire * exp(-v_h / max(v_size * 0.7, 0.5));
+		float glow = v_fire * exp(-v_h / max(v_size * 0.4, 0.4));
 		float fl = 0.65 + 0.35 * sin(age * 13.0 + v_seed * 40.0) * sin(age * 7.3 + uv.x * 5.0);
-		col += vec3(1.0, 0.38, 0.08) * glow * fl * 2.5;
+		col += vec3(1.0, 0.38, 0.08) * glow * fl * 1.8;
 		a = max(a, sat(glow * 1.2) * edge * bottom * v_a);
 	}
 	if (g_fireball_color.w > 0.0 && g_fireball.w > 0.0) {
 		float d = length(g_fireball.xyz - v_wp);
 		float k = pow(g_fireball.w / max(d, g_fireball.w), 2.0);
-		col += col * g_fireball_color.rgb * min(g_fireball_color.w * k * 2.0, 40.0);
+		col += col * g_fireball_color.rgb * min(g_fireball_color.w * k * 0.5, 3.0);
 	}
 	ALBEDO = col;
 	ALPHA = sat(a);

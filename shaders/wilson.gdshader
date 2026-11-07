@@ -1,7 +1,7 @@
 // Wilson condensation cloud: a thin white shell behind the shock front that forms in humid air
 // during the rarefaction phase and evaporates within ~1-2 s. Thicker (more opaque) at the limb.
 shader_type spatial;
-render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, fog_disabled, shadows_disabled;
+render_mode unshaded, blend_mix, depth_draw_never, cull_back, fog_disabled, shadows_disabled;
 
 #include "res://shaders/atmos.gdshaderinc"
 
@@ -33,7 +33,7 @@ void fragment() {
 	vec3 np = v_local * 0.55 + vec3(seed, seed * 0.3, age * 0.05);
 	float nz = texture(noise_b, np).r * 0.7 + texture(noise_b, np * 2.1 + 2.0).r * 0.3;
 	// thin translucent shell, denser at the limb; soft billowy modulation, no hard holes
-	float a = (0.18 + 0.82 * limb) * (0.55 + 0.45 * smoothstep(0.2, 0.8, nz)) * opacity;
+	float a = pow(1.0 - facing, 3.0) * (0.45 + 0.55 * smoothstep(0.2, 0.8, nz)) * opacity * 1.3;
 	float above = smoothstep(-0.5, 2.0, v_local.y * radius - ground_y);
 	a *= above;
 	float depth = textureLod(depth_tex, SCREEN_UV, 0.0).r;

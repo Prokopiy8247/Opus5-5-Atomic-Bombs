@@ -282,7 +282,14 @@ func _scenario_visual(tag: String, gz: Vector3, w: float, hob: float, surface: b
 	else:
 		views.append(["overview", gz + Vector3(5200, 900, 3200), gz + Vector3(-600, 0, -1500), 62.0])
 	for target: float in ([10.0, 5.0, 3.0, 2.0] if tag == "a" else [20.0, 10.0, 5.0, 3.0]):
-		var v := _closeup(target, gz2)
+		var v := _closeup(RO.T_WOOD, target, gz2, 55.0, 17.0, "p%s" % str(target))
+		if not v.is_empty():
+			views.append(v)
+	# the special test structures
+	for e: Array in [[RO.T_BRIDGE, 14.0, 150.0, 40.0, "bridge"], [RO.T_HANGAR, 2.5, 140.0, 45.0, "airfield"],
+			[RO.T_RAILCAR, 7.5, 90.0, 26.0, "rail"], [RO.T_TOWER, 5.0, 120.0, 30.0, "tower"], [RO.T_MAST, 7.0, 100.0, 25.0, "mast"],
+			[RO.T_TANK, 40.0, 45.0, 14.0, "tank"], [RO.T_BUNKER, 60.0, 45.0, 14.0, "bunker"]]:
+		var v := _closeup(e[0], e[1], gz2, e[2], e[3], e[4])
 		if not v.is_empty():
 			views.append(v)
 	var shots := {}
@@ -336,15 +343,16 @@ func _tstr(t: float) -> String:
 	return ("m%d" % int(-t)) if t < 0.0 else ("%04.1f" % t)
 
 
-## Camera looking at the wooden house whose peak overpressure is closest to the target psi,
+## Camera looking at the object of a type whose peak overpressure is closest to the target psi,
 ## from the side (perpendicular to the blast direction) so the motion crosses the frame.
-func _closeup(target: float, gz2: Vector2) -> Array:
+func _closeup(type: int, target: float, gz2: Vector2, dist: float, height: float, label: String) -> Array:
 	var best := INF
 	var pos := Vector3.ZERO
 	var arr := 0.0
+	var psi := 0.0
 	for key: String in ro._buckets:
 		var b: Dictionary = ro._buckets[key]
-		if int(b["type"]) != RO.T_WOOD:
+		if int(b["type"]) != type:
 			continue
 		for i in (b["xf"] as Array).size():
 			var cu: Color = b["cu"][i]
@@ -353,6 +361,7 @@ func _closeup(target: float, gz2: Vector2) -> Array:
 				best = d
 				pos = (b["xf"][i] as Transform3D).origin
 				arr = cu.r
+				psi = cu.g
 	if best == INF:
 		return []
 	var o := Vector2(pos.x, pos.z)
@@ -360,10 +369,14 @@ func _closeup(target: float, gz2: Vector2) -> Array:
 	var u_t := Vector2(-u_r.y, u_r.x)
 	# stand on the side away from the bunker's line of sight, a bit downwind
 	var side := 1.0 if (o + u_t * 10.0).length() > o.length() else -1.0
-	var c2 := o + u_t * side * 55.0 + u_r * 22.0
-	var eye := Vector3(c2.x, TerrainMath.height(c2.x, c2.y) + 17.0, c2.y)
-	var look := pos + Vector3(u_r.x, 0, u_r.y) * 18.0 + Vector3(0, 2.0, 0)
-	return ["p%s" % str(target), eye, look, 50.0, arr]
+	var c2 := o + u_t * side * dist + u_r * dist * 0.4
+	if type == RO.T_RAILCAR:
+		# broadside: look from the ground-zero side across the track
+		c2 = o - u_r * dist + u_t * side * dist * 0.35
+	var eye := Vector3(c2.x, TerrainMath.height(c2.x, c2.y) + height, c2.y)
+	var look := pos + Vector3(u_r.x, 0, u_r.y) * dist * 0.33 + Vector3(0, 2.0 + (12.0 if type == RO.T_TOWER else 0.0), 0)
+	print("VIEW %s: type %s psi %.2f arrival %.2f s" % [label, RO.TYPE_NAMES[type], psi, arr])
+	return [label, eye, look, 50.0, arr]
 
 
 func _aim(eye: Vector3, look: Vector3, fov: float) -> void:

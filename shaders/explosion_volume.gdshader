@@ -26,7 +26,8 @@ uniform float base_steps = 64.0;
 uniform vec4 fb = vec4(0.0);                         // centre xyz (local), radius
 uniform vec4 fb_look = vec4(5000.0, 1.0, 0.25, 1.0); // temperature K, emission scale, noise amp (rel), opacity
 uniform vec4 fb_shape = vec4(1.0, 0.0, 6.0, 0.0);    // y-squash, rapatronic mottling 0..1, noise scale, smoke skin 0..1
-uniform vec4 fb_tint = vec4(1.0, 1.0, 1.0, 0.0);     // multiplicative tint (Trinity purple/green), w = strength
+uniform vec4 fb_tint = vec4(1.0, 1.0, 1.0, 0.0);     // additive glow tint (Trinity violet), w = strength
+uniform float fb_cut_y = -1e9;                       // flat underside cut by the reflected shock (local y)
 
 // --- mushroom head
 uniform vec4 head = vec4(0.0, -1e6, 0.0, 0.0);        // centre xyz, horizontal radius
@@ -52,6 +53,9 @@ uniform vec4 ice = vec4(0.0);        // centre y, radius, half height, opacity
 uniform vec4 ice2 = vec4(0.0);
 
 uniform vec3 ground_col = vec3(0.55, 0.47, 0.38);
+uniform vec3 wind = vec3(0.0);          // horizontal drift velocity (m/s) at wind_h; shear below it
+uniform float wind_h = 1000.0;
+uniform float churn = 0.0;              // noise advection (cells / s): boiling, evolving surfaces
 uniform int debug_mode = 0;
 
 // ------------------------------------------------------------------ helpers
@@ -162,12 +166,14 @@ float sdf_skirt(vec3 p) {
 	float r = length(p.xz);
 	float h = skirt.y;
 	float R = skirt.x;
-	// rolling front (torus) + a lower sheet that thickens toward the centre
-	float tor = length(vec2((r - (R - h)) * 0.8, p.y - h * 0.5)) - h * 0.7;
+	// height-field profile: a low sheet thickening toward a soft rolling front, no hard wall
+	float x = r / max(R, 1.0);
+	float prof = mix(0.4, 1.0, smoothstep(0.25, 0.9, x)) * (1.0 - smoothstep(0.9, 1.12, x));
+	float hh = h * prof;
+	float d = max(p.y - hh, -p.y - h * 0.15);
 	float inner = R * skirt.w;
-	float hh = h * mix(0.9, 0.35, clamp(r / R, 0.0, 1.0));
-	float sheet = max(max(p.y - hh, -p.y - h * 0.2), max(inner - r, r - (R - h)));
-	return min(tor, sheet);
+	d = max(d, (inner - r) * 0.5);
+	return d;
 }
 
 float sdf_rings(vec3 p) {
@@ -175,7 +181,7 @@ float sdf_rings(vec3 p) {
 	float r = length(p.xz);
 	for (int i = 0; i < 4; i++) {
 		if (rings[i].w > 0.0) {
-			float dr = length(vec2((r - rings[i].y) * 0.35, (p.y - rings[i].x) * 1.2)) - rings[i].z;
+			float dr = length(vec2((r - rings[i].y) * 0.3, (p.y - rings[i].x) * 3.0)) - rings[i].z;
 			d = min(d, dr);
 		}
 	}
@@ -207,10 +213,10 @@ float scene_sdf(vec3 p) {
 float cheap_density(vec3 p) {
 	float d = 0.0;
 	if (head.w > 0.0) {
-		d += clamp(-sdf_head(p) / (head_shape.x * 0.10), 0.0, 1.0) * head_shape.z;
+		d += clamp(-sdf_head(p) / (head_shape.x * 0.25), 0.0, 1.0) * head_shape.z;
 	}
 	if (stem.z > 0.0) {
-		d += clamp(-sdf_stem(p) / (stem.z * 0.25), 0.0, 1.0) * stem.w;
+		d += clamp(-sdf_stem(p) / (stem.z * 0.4), 0.0, 1.0) * stem.w;
 	}
 	if (fb.w > 0.0) {
 		d += clamp(-sdf_fireball(p) / (fb.w * 0.3), 0.0, 1.0) * fb_look.w * 2.0;
@@ -249,7 +255,7 @@ float head_density(vec3 p, out float cauli, out vec2 rc_out) {
 	vec2 rr = vec2(cr * rc.x - sr * rc.y, sr * rc.x + cr * rc.y);
 	vec3 qn = vec3(dir.x * (rr.x + a), rr.y - H * 0.25, dir.y * (rr.x + a));
 	float cell = max(R, H) * head_heat.w;
-	vec3 np = qn / cell + vec3(seed * 1.3, seed * 0.37, seed * 0.71);
+	vec3 np = qn / cell + vec3(seed * 1.3, seed * 0.37, seed * 0.71) + vec3(0.3, -1.0, 0.2) * (age * churn);
 	float warp = nlf(np * 0.13) - 0.5;
 	float b1 = nbl(np * 0.32 + warp * 0.35);
 	float b2 = nbl(np * 0.95 + 5.3);
@@ -267,7 +273,7 @@ float head_density(vec3 p, out float cauli, out vec2 rc_out) {
 		float hot = exp(-dc * dc * 2.0) * clamp(head_heat.y / 300.0, 0.0, 1.0);
 		dens *= 1.0 - 0.75 * hot;
 	}
-	dens = dens < 0.04 ? 0.0 : dens;
+	dens *= smoothstep(0.015, 0.08, dens);
 	return dens * head_shape.z;
 }
 
@@ -298,6 +304,8 @@ float stem_density(vec3 p, out float n_out) {
 		jetk = mix(0.35, 1.35, jet) * (1.0 - 0.6 * smoothstep(0.75, 1.0, h01) * (1.0 - n));
 	}
 	float dens = smoothstep(r * 0.04, -r * 0.3, dn) * jetk;
+	// fade the top over ~1.5 radii (no flat-cut pipe tops)
+	dens *= smoothstep(stem.y + r * 0.3, stem.y - r * 1.5 * (0.6 + 0.8 * lf), p.y);
 	return dens * stem.w;
 }
 
@@ -343,6 +351,7 @@ float fireball_density(vec3 p, out float lq_out, out float patch_out, out float 
 		disp += fb_shape.y * (mott - 0.5) * 0.10;
 	}
 	float dd = lq - 1.0 - disp;
+	dd = max(dd, (fb_cut_y - p.y) / max(fb.w, 1.0) + (n1 - 0.5) * 0.08);
 	lq_out = lq;
 	patch_out = nbl(nq * 1.3 + 7.7) * 0.6 + nbl(nq * 3.7 + 1.9) * 0.4;
 	mott_out = mott;
@@ -380,7 +389,14 @@ void fragment() {
 	float steps = clamp(base_steps * g_quality, 16.0, 256.0);
 	float dt = seg / steps;
 	float scale_hint = max(max(min(head.w, head_shape.x * 2.0), fb.w), max(stem.z * 2.0, skirt.y * 2.0));
-	dt = max(dt, scale_hint * 0.01);
+	// never step coarser than a quarter of the smallest active structure (no slicing/banding)
+	float minf = 1e9;
+	if (head.w > 0.0) { minf = min(minf, head_shape.x * 0.6); }
+	if (stem.z > 0.0) { minf = min(minf, stem.z * 0.8); }
+	if (fb.w > 0.0) { minf = min(minf, fb.w * 0.5); }
+	if (skirt.x > 0.0) { minf = min(minf, skirt.y * 1.2); }
+	dt = min(dt, minf * 0.25);
+	dt = max(dt, scale_hint * 0.004);
 	float dither = hash12(FRAGCOORD.xy + fract(age * 7.13) * 91.0);
 	float t = t_enter + dt * dither;
 
@@ -396,17 +412,21 @@ void fragment() {
 	vec3 acc = vec3(0.0);
 	float T = 1.0;
 	float first_hit = -1.0;
-	int max_iter = int(steps) * 2 + 48;
+	int max_iter = int(min(seg / dt, 520.0)) + 48;
 	float sh_len = max(min(head.w, head_shape.x * 2.5), max(fb.w * 1.5, stem.z * 3.0)) + 1.0;
 	for (int i = 0; i < 700; i++) {
 		if (i >= max_iter || t > t_exit || T < 0.006) {
 			break;
 		}
 		vec3 p = ro + rd * t;
+		// wind drift and shear: everything above the ground is advected with height
+		p.xz -= wind.xz * age * clamp(p.y / max(wind_h, 1.0), 0.0, 1.5);
 		float sd = scene_sdf(p);
 		float margin = scale_hint * 0.4;
 		if (sd > margin) {
 			t += max(sd - margin * 0.9, dt);
+			// re-snap to the per-pixel jittered grid so skips do not align all rays (banding)
+			t = t_enter + (ceil((t - t_enter) / dt) + dither) * dt;
 			continue;
 		}
 		// --- gather densities and materials
@@ -477,23 +497,30 @@ void fragment() {
 			od += cheap_density(p + L * sh_len * 0.12) * 0.25;
 			od += cheap_density(p + L * sh_len * 0.35) * 0.35;
 			od += cheap_density(p + L * sh_len * 0.80) * 0.40;
-			float od_far = od * sh_len * (dh > ds ? kh : ks) * 0.35;
-			// macro shape shading from the analytic SDF gradient (keeps the big forms readable),
-			// micro self-shadowing of the billows, long-range shadowing, multiple-scattering floor
-			float macro = 1.0;
-			if (dh > ds && head.w > 0.0) {
+			float wh = dh * kh;
+			float wst = ds * ks;
+			float kmix = (wh * kh + wst * ks) / max(wh + wst, 1e-9);
+			float od_far = od * sh_len * (wh + wst > 0.0 ? kmix : kh) * 0.35;
+			// macro shape shading from the analytic SDF gradients (keeps the big forms readable),
+			// blended by density so the head/stem junction has no seam
+			float macro_h = 1.0;
+			float macro_s = 1.0;
+			if (dh > 0.0 && head.w > 0.0) {
 				vec3 q = p - head.xyz;
 				float e = head_shape.x * 0.08;
 				vec3 nrm = normalize(vec3(
 					sdf_head_base(q + vec3(e, 0.0, 0.0)) - sdf_head_base(q - vec3(e, 0.0, 0.0)),
 					sdf_head_base(q + vec3(0.0, e, 0.0)) - sdf_head_base(q - vec3(0.0, e, 0.0)),
 					sdf_head_base(q + vec3(0.0, 0.0, e)) - sdf_head_base(q - vec3(0.0, 0.0, e))));
-				macro = clamp(dot(nrm, L) * 0.55 + 0.45, 0.0, 1.0);
-				macro = macro * macro;
-			} else if (ds > 0.0) {
-				vec2 nr = normalize(p.xz + vec2(1e-3));
-				macro = clamp(dot(vec3(nr.x, 0.15, nr.y), L) * 0.55 + 0.5, 0.0, 1.0);
+				macro_h = clamp(dot(nrm, L) * 0.55 + 0.45, 0.0, 1.0);
+				macro_h = macro_h * macro_h;
 			}
+			if (ds > 0.0) {
+				vec2 nr = normalize(p.xz + vec2(1e-3));
+				macro_s = clamp(dot(vec3(nr.x, 0.15, nr.y), L) * 0.55 + 0.5, 0.0, 1.0);
+			}
+			float wother = max(wsum - wh - wst, 0.0);
+			float macro = (macro_h * wh + macro_s * wst + 0.85 * wother) / max(wsum, 1e-9);
 			float micro = mix(1.0, exp(-od_local * 0.6), 0.65);
 			float far_s = exp(-od_far);
 			float t_sun = macro * micro * far_s;
@@ -507,7 +534,7 @@ void fragment() {
 			if (fb.w > 0.0 && fb_look.w > 0.0) {
 				float dfb = max(length(p - fb.xyz) - fb.w * 0.7, 0.0);
 				float fl = bb_lum(fb_look.x) * fb_look.y * fb_look.w;
-				light += blackbody(fb_look.x) * fl * 0.03 * (fb.w * fb.w) / (dfb * dfb + fb.w * fb.w) * (1.0 - fbo);
+				light += blackbody(fb_look.x) * fl * 0.25 * (fb.w * fb.w) / (dfb * dfb + fb.w * fb.w) * (1.0 - fbo);
 			}
 			// --- emission (planck radiance of opaque hot gas)
 			vec3 emit = vec3(0.0);
@@ -515,7 +542,8 @@ void fragment() {
 				float tloc = fb_look.x * mix(0.82, 1.12, fpatch) * mix(1.1, 0.92, clamp(lq, 0.0, 1.0));
 				vec3 bc = blackbody(tloc);
 				if (fb_tint.w > 0.0) {
-					bc = mix(bc, bc * fb_tint.rgb, fb_tint.w);
+					// additive ionised-air glow (Trinity's violet/green early colours)
+					bc += fb_tint.rgb * fb_tint.w * 0.6;
 				}
 				float lum = bb_lum(tloc) * fb_look.y;
 				lum *= 1.0 + fb_shape.y * (0.7 * smoothstep(0.8, 1.0, lq) - 0.5 * (fmott - 0.5));
@@ -553,7 +581,7 @@ void fragment() {
 	}
 	float th = first_hit > 0.0 ? first_hit : (t_enter + t_exit) * 0.5;
 	vec4 fog = atm_fog(cam, cam + rd * th);
-	vec3 col = mix(acc * g_exposure, fog.rgb * alpha, debug_mode > 0 ? 0.0 : fog.a);
+	vec3 col = mix(acc * g_exposure, fog.rgb * alpha, debug_mode > 0 ? 0.0 : fog.a * 0.65);
 	ALBEDO = col;
 	ALPHA = alpha;
 }

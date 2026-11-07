@@ -24,7 +24,7 @@ func run() -> void:
 	var q := Game.QUALITY_NAMES.find(Args.get_str("quality", "high"))
 	Game.quality = q if q >= 0 else Game.Quality.HIGH
 	Game.auto_quality = false
-	Game.humidity = Args.get_float("humidity", 0.55)
+	Game.humidity = Args.get_float("humidity", 0.35)
 	var view := Args.get_str("view", "bunker")
 	var prefix := Args.get_str("prefix", "b%02d_%s_%skm_%s_%s" % [bomb_n, bd.get("id", "x"), _fmt(dist), tod_s, view])
 	var shots := Args.get_float_list("shots")
@@ -45,6 +45,8 @@ func run() -> void:
 		main.after_age_set(ex, t - prev)
 		prev = t
 		_setup_view_dynamic(view, ex)
+		if main._whiteout:
+			main._whiteout.color.a = clampf(main.env_ctl.white_out * 0.9, 0.0, 0.95)
 		for i in 3:
 			await get_tree().process_frame
 		if Args.has("fps_hold"):

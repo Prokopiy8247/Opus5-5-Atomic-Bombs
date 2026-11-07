@@ -287,8 +287,9 @@ void debris(inout vec3 v, inout vec3 n, vec3 pv, float pr, vec3 fax, float fang,
 // Leaves / foliage shredded off a branch: the clump drifts downwind and shrinks to nothing.
 void strip_piece(inout vec3 v, vec3 pv, float f, float S, vec3 lpush) {
 	float e = ease_out2(f);
-	vec3 P = pv + lpush * S * e + vec3(0.0, 2.5 * e, 0.0);
-	v = P + (v - pv) * (1.0 - e);
+	float k = 1.0 - sat(f * 1.6);
+	vec3 P = pv + lpush * S * e + vec3(0.0, 1.5 * e, 0.0);
+	v = P + (v - pv) * k * k;
 }
 
 // A vehicle-like box pushed downwind while tumbling about the horizontal axis perpendicular to
@@ -484,7 +485,7 @@ void vertex() {
 			if (part == P_LEAVES) {
 				float lp = fract(CUSTOM0.w + seed * 3.7);
 				if (lp < strip) {
-					strip_piece(v, pv, sat(tau / (0.6 + 0.6 * lp)), (8.0 + 25.0 * strip) * imp, lpush);
+					strip_piece(v, pv, sat(tau / (0.35 + 0.4 * lp)), (6.0 + 18.0 * strip) * imp, lpush);
 				} else {
 					v = pv + (v - pv) * (1.0 - 0.45 * strip * ease_out2(tau / 0.5));
 				}
@@ -741,6 +742,10 @@ void vertex() {
 				b *= 1.0 - (kind == K_JUNIPER ? sat((psi - 3.0) / 4.0) : sat((psi - 1.2) / 1.3));
 			}
 		}
+		// once a wall has come apart there is no lit room behind its windows any more
+		if (part == P_GLASS && absolute && (kind == K_WOOD || kind == K_BRICK)) {
+			b = 0.0;
+		}
 		v_burn = b;
 	}
 	if (part == P_GLASS && hit) {
@@ -880,12 +885,13 @@ void fragment() {
 		vec3 fcol = mix(vec3(1.0, 0.30, 0.05), vec3(1.0, 0.62, 0.22), n2);
 		if (part == P_GLASS) {
 			// the room behind the window is on fire
-			emis += fcol * v_burn * (0.6 + 0.4 * n1) * flick * 3.0 * fire_gain;
+			emis += fcol * v_burn * (0.35 + 0.65 * n1) * flick * 2.0 * fire_gain;
 		} else {
-			float mask = 0.4 + 0.6 * face;
+			// tongues rise from vertical faces; surfaces facing up (debris lying flat) show embers
+			float mask = (0.4 + 0.6 * face) * (1.0 - 0.85 * smoothstep(0.5, 0.85, nw.y));
 			emis += fcol * tongue * low * mask * v_burn * flick * 4.5 * fire_gain;
-			float em = smoothstep(0.74, 0.95, vnoise3(wp * 3.3 + s * 11.0));
-			emis += vec3(1.0, 0.22, 0.03) * em * v_burn * 1.2 * fire_gain;
+			float em = smoothstep(0.8, 0.97, vnoise3(wp * 4.1 + s * 11.0));
+			emis += vec3(1.0, 0.22, 0.03) * em * v_burn * (0.9 + 0.3 * flick) * fire_gain;
 			alb *= 1.0 - 0.7 * v_burn;
 		}
 	}
@@ -896,7 +902,7 @@ void fragment() {
 		float d = length(L);
 		float ndl = max(dot(nw, L / max(d, 1e-3)), 0.0);
 		float k = pow(g_fireball.w / max(d, g_fireball.w), 2.0);
-		emis += alb * g_fireball_color.rgb * min(g_fireball_color.w * k * 0.5 * flash_tint_gain, 40.0) * ndl;
+		emis += alb * g_fireball_color.rgb * min(g_fireball_color.w * k * 0.25 * flash_tint_gain, 6.0) * ndl;
 	}
 
 	// ---- engulfed by the fireball: black glassy remains, glowing for a while

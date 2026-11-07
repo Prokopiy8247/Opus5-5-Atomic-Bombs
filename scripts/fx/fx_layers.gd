@@ -44,7 +44,9 @@ class ShockLayer extends Node3D:
 			return
 		var slant := ex.shock_slant_radius(t)
 		var p := BlastPhysics.overpressure(ex.prof.blast_yield(), slant, ex.prof.surface, ex.prof.conventional)
-		var strength := clampf(log(1.0 + p) / log(1.0 + 20.0), 0.0, 1.0) * 0.55
+		var strength := clampf(log(1.0 + p) / log(1.0 + 20.0), 0.0, 1.0) * 0.55 * smoothstep(0.3, 1.5, p)
+		var fsr: float = ex.prof.fireball_state(t)["radius"]
+		strength *= smoothstep(1.2, 1.6, slant / maxf(fsr, 1.0))
 		# the front is hard to see once it is weak and far
 		shell.visible = slant > 1.0 and p > 0.05
 		if not shell.visible:
@@ -203,6 +205,8 @@ class DebrisLayer extends Node3D:
 			var start := Vector3(cos(az), 0.0, sin(az)) * spread_r * rng.randf() + Vector3(0, 0.5, 0)
 			mm.set_instance_transform(i, Transform3D(Basis(), start))
 			mm.set_instance_custom_data(i, Color(v.x, v.y, v.z, rng.randf() * 100.0))
+			var sz := lerpf(0.35, 2.2, pow(rng.randf(), 2.5))
+			mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ONE * sz), start))
 		mmi.multimesh = mm
 		mat = ShaderMaterial.new()
 		mat.shader = FxLayersLib.DEBRIS_SHADER

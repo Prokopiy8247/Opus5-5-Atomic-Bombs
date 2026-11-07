@@ -83,7 +83,7 @@ bomb(id="sedan", name={"ru": "«Седан» (Plowshare)", "en": "Sedan (Plowsha
      country={"ru": "США", "en": "USA"}, yield_kt=104.0, yield_conf="measured",
      burst_type="NUCLEAR_BURIED", burst_height_m=-194.0, medium="underground",
      length_m=0.97, diameter_m=0.43, mass_kg=212, model="canister",
-     colors={"body": [0.6, 0.6, 0.58], "band": [0.9, 0.5, 0.1], "accent": [0.3, 0.3, 0.3]}, rec_km=35.0)
+     colors={"body": [0.6, 0.6, 0.58], "band": [0.9, 0.5, 0.1], "accent": [0.3, 0.3, 0.3]}, rec_km=12.0)
 bomb(id="ivy_king", name={"ru": "«Айви Кинг»", "en": "Ivy King"}, original="Ivy King (Mk 18 \"SOB\")", year=1952, date="1952-11-16",
      country={"ru": "США", "en": "USA"}, yield_kt=500.0, yield_conf="measured",
      burst_type="NUCLEAR_AIR", burst_height_m=450.0, medium="air",
@@ -169,7 +169,7 @@ for i, b in enumerate(B):
         prof.setdefault("fireball_r_m", float(rr["fireball_max_radius_m"]))
     if rr.get("cloud_top_km"):
         prof["cloud_top_m"] = float(rr["cloud_top_km"]) * 1000.0
-    if rr.get("cloud_cap_diameter_km"):
+    if rr.get("cloud_cap_diameter_km") and not prof.get("cap_keep"):
         prof["cap_radius_m"] = float(rr["cloud_cap_diameter_km"]) * 500.0
     if rr.get("crater_diameter_m") and prof.get("crater", True) and b["medium"] != "water":
         prof["crater_r_m"] = float(rr["crater_diameter_m"]) * 0.5

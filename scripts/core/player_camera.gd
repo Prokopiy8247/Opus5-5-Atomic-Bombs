@@ -8,6 +8,7 @@ signal mode_changed(cine: bool)
 const FOV_DEFAULT := 80.0
 const FOV_MIN := 3.0
 const BUNKER_EYE := Vector3.ZERO
+const EMBRASURE_EYE := Vector3(0.0, 0.3, -3.55)
 
 var yaw := 0.0
 var pitch := 0.0
@@ -117,6 +118,11 @@ func _process(delta: float) -> void:
 	var rdelta := delta / maxf(Engine.time_scale, 0.0001) if Engine.time_scale > 0.0 else delta
 	# smooth, stabilised zoom
 	fov = lerpf(fov, target_fov, 1.0 - exp(-rdelta * 6.0))
+	if not cine:
+		# with binoculars the observer leans into the embrasure, so the roof no longer cuts the sky
+		var k := clampf((55.0 - fov) / 35.0, 0.0, 1.0)
+		k = k * k * (3.0 - 2.0 * k)
+		position = BUNKER_EYE.lerp(EMBRASURE_EYE, k)
 	if cine:
 		_cine_move(rdelta)
 	# shake (applied as a small rotation + position jitter around the base pose)

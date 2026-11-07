@@ -121,7 +121,7 @@ func _derive() -> void:
 
 # ------------------------------------------------------------------ fireball
 
-## Returns {center_y, radius, temp, opacity, emis, mottle, squash}
+## Returns {center_y, radius, temp, opacity, emis, mottle, squash, skin}
 func fireball_state(t: float) -> Dictionary:
 	var st := {"center_y": hob, "radius": 0.0, "temp": 0.0, "opacity": 0.0, "emis": 0.0, "mottle": 0.0, "squash": 1.0, "skin": 0.0}
 	if t <= 0.0:
@@ -133,17 +133,17 @@ func fireball_state(t: float) -> Dictionary:
 	var r := BlastPhysics.fireball_radius(w_kt, t, surface or hob < fb_formula_max) * fb_scale
 	r = minf(r, r_fb_max)
 	var temp := BlastPhysics.fireball_temperature(w_kt, t, surface)
-	var rise := head_center_y(t) - hob
 	st["radius"] = r
 	st["temp"] = temp
-	st["center_y"] = hob + rise * 0.92
-	if surface:
-		st["center_y"] = maxf(hob * 0.5, 0.0) + rise * 0.92
-	# opacity: opaque until it cools below ~1800 K, then dissolves into the head
-	var fade := clampf((temp - 1250.0) / 900.0, 0.0, 1.0)
-	st["opacity"] = fade
+	# the ball IS the base of the rising head (same centre): no stacked "egg" of two spheres.
+	# Surface bursts start as a hemisphere centred on the ground and lift off later.
+	st["center_y"] = head_center_y(t)
+	# opacity: cools below ~2100 K, and in any case dissolves into the cloud between 4 and 12 t_max
+	var fade_temp := clampf((temp - 1250.0) / 900.0, 0.0, 1.0)
+	var fade_time := 1.0 - smoothstep(4.0 * t_fb_max, 12.0 * t_fb_max, t)
+	st["opacity"] = minf(fade_temp, fade_time)
 	st["emis"] = emission_scale * float(a("fireball_brightness", 1.0))
-	st["mottle"] = clampf(1.0 - t / maxf(t2 * 1.5, 1e-4), 0.0, 1.0)
+	st["mottle"] = clampf(1.0 - t / maxf(t2 * float(a("mottle_t2", 2.5)), 1e-4), 0.0, 1.0)
 	# smoke skin forms as the ball cools (dark patches, NOx brown), ~8..40 t2
 	st["skin"] = clampf((t / t2 - 8.0) / 32.0, 0.0, 1.0) * float(a("skin", 1.0))
 	# a rising fireball flattens slightly (onset of the vortex)
@@ -157,24 +157,40 @@ func fireball_state(t: float) -> Dictionary:
 	return st
 
 
+## Height (local y) below which the fireball is cut flat by the reflected shock (-1e9 = none).
+func fireball_cut_y(t: float) -> float:
+	var tr := float(a("reflect_cut_t", 0.0))
+	if tr <= 0.0 or t < tr:
+		return -1e9
+	var fs := fireball_state(t)
+	return float(fs["center_y"]) - float(fs["radius"]) * lerpf(1.0, 0.72, clampf((t - tr) / (tr * 2.0), 0.0, 1.0))
+
+
+func conventional_fb_duration() -> float:
+	return float(a("fb_duration_s", fb_duration))
+
+
 func _conventional_fireball(t: float) -> Dictionary:
 	var st := {"center_y": maxf(hob, 0.0), "radius": 0.0, "temp": 0.0, "opacity": 0.0, "emis": 0.0, "mottle": 0.0, "squash": 1.0, "skin": 0.0}
-	var x := t / maxf(t_fb_max, 1e-4)
+	var dur := conventional_fb_duration()
+	var t_grow := minf(t_fb_max, dur * 0.3)
+	var x := t / maxf(t_grow, 1e-4)
 	var grow := 1.0 - exp(-x * 2.5)
-	st["radius"] = r_fb_max * (0.25 + 0.75 * grow) * (1.0 + 0.1 * maxf(t - t_fb_max, 0.0) / maxf(fb_duration, 0.01))
-	var life := clampf(t / maxf(fb_duration, 1e-3), 0.0, 1.5)
-	var t_peak := 4200.0 if kind != Kind.THERMOBARIC else 2600.0
-	if String(a("explosive", "tnt")) == "aluminized":
-		t_peak = 5200.0
-	st["temp"] = lerpf(t_peak, 1300.0, smoothstep(0.0, 1.0, life))
-	st["opacity"] = clampf(1.0 - (life - 0.85) / 0.4, 0.0, 1.0)
+	st["radius"] = r_fb_max * (0.25 + 0.75 * grow) * (1.0 + 0.12 * clampf((t - t_grow) / maxf(dur, 0.01), 0.0, 1.5))
+	var life := clampf(t / maxf(dur, 1e-3), 0.0, 1.6)
+	var t_peak := float(a("fb_temp_peak", 3000.0 if kind != Kind.THERMOBARIC else 2600.0))
+	if String(a("explosive", "tnt")) == "aluminized" and not art.has("fb_temp_peak"):
+		t_peak = 3300.0
+	# stays yellow-orange (>2200 K) for most of the burn, then dull red flame remnants
+	st["temp"] = lerpf(t_peak, 1300.0, smoothstep(0.35, 1.25, life))
+	st["opacity"] = clampf(1.0 - (life - 0.9) / 0.5, 0.0, 1.0)
 	st["emis"] = emission_scale * float(a("fireball_brightness", 1.0))
 	st["mottle"] = 0.0
-	st["skin"] = clampf((life - 0.25) / 0.6, 0.0, 1.0) * float(a("skin", 1.0))
+	st["skin"] = clampf((life - 0.2) / 0.6, 0.0, 1.0) * float(a("skin", 1.0))
 	var base_y := maxf(hob, 0.0) + r_fb_max * 0.55 * (0.4 + 0.6 * grow)
 	# the burning ball rises with (and into) the smoke head
-	st["center_y"] = lerpf(base_y, head_center_y(t), smoothstep(0.0, 1.0, life * 0.8))
-	st["squash"] = 0.85 if kind != Kind.THERMOBARIC else 0.75
+	st["center_y"] = lerpf(base_y, head_center_y(t), smoothstep(0.0, 1.0, life * 0.7))
+	st["squash"] = float(a("fireball_squash", 0.85 if kind != Kind.THERMOBARIC else 0.75))
 	return st
 
 
@@ -213,7 +229,7 @@ func light_power(t: float) -> float:
 	if float(fs2["radius"]) <= 0.0:
 		return 0.0
 	var tt: float = fs2["temp"]
-	return float(fs2["opacity"]) * pow(tt / 4200.0, 4.0)
+	return float(fs2["opacity"]) * pow(tt / 3300.0, 4.0)
 
 
 # ------------------------------------------------------------------ cloud head
@@ -227,16 +243,22 @@ func head_center_final() -> float:
 
 
 func head_center_y(t: float) -> float:
-	var start := maxf(hob, 0.0) if nuclear else maxf(hob, 0.0) + r_fb_max * 0.5
-	if surface:
-		start = r_fb_max * 0.5
-	var f := rise_norm(t)
+	var start := maxf(hob, 0.0)
+	if surface and nuclear:
+		start = 0.0
+	elif not nuclear:
+		start = maxf(hob, 0.0) + r_fb_max * 0.5
 	var target := head_center_final()
+	var rk := float(a("rise_k", 0.0))
+	if rk > 0.0:
+		# buoyant thermal from a conventional charge: z ~ k sqrt(t) (Church 1969 TNT analogues)
+		var te := maxf(t - float(a("rise_delay", 0.0)), 0.0)
+		return minf(start + rk * sqrt(te), target + cap_half * 0.3)
+	var f := rise_norm(t)
 	var y := lerpf(start, target, f)
-	# overshoot and settling for megaton clouds
+	# overshoot and settling for megaton clouds (research A5.3)
 	var ov := float(a("overshoot", 0.0 if w_kt < 200.0 else 0.06))
 	if ov > 0.0:
-		# research A5.3: x (1 + 0.06 exp(-((t - 2 tau)/tau)^2))
 		y += target * ov * exp(-pow((t - 2.0 * rise_tau) / rise_tau, 2.0))
 	return y
 
@@ -250,38 +272,48 @@ func head_state(t: float) -> Dictionary:
 	if is_column_kind():
 		return _column_head(t, st)
 	var x := t / maxf(t_stab, 1.0)
-	var f := rise_norm(t)
-	var start_r := r_fb_max * 1.05
-	var start_h := r_fb_max * 1.0
 	var appear := 0.0
+	var r_now := r_fb_max
 	if nuclear:
 		appear = clampf((t / t2 - 10.0) / 30.0, 0.0, 1.0)
+		r_now = minf(BlastPhysics.fireball_radius(w_kt, t, surface or hob < fb_formula_max) * fb_scale, r_fb_max) * 1.04
 	else:
-		appear = clampf((t - t_fb_max * 0.5) / maxf(fb_duration * 0.6, 0.05), 0.0, 1.0)
-	var grow := clampf(f * 1.25, 0.0, 1.0)
-	grow = 1.0 - pow(1.0 - grow, 1.6)
-	var r := lerpf(start_r, cap_r, grow)
+		var dur := conventional_fb_duration()
+		appear = clampf((t - dur * 0.15) / maxf(dur * 0.5, 0.05), 0.0, 1.0)
+		r_now = r_fb_max * 1.05
+	# lateral growth: power law in time (King: ~3.4 km at 60 s of a 13.5 km final cap)
+	var g := clampf(pow(x, 0.8), 0.0, 1.0)
+	var r := lerpf(r_now, cap_r, g)
 	if x > 1.0:
 		r *= 1.0 + float(a("late_spread", 0.12)) * minf(x - 1.0, 3.0)
-	var h := lerpf(start_h, cap_half, grow)
+	if art.has("cap_d_keys"):
+		# measured cap diameters (dossier), log-time interpolation
+		r = maxf(r_now, _keys_log(art["cap_d_keys"], t) * 0.5)
+	var h_final := minf(cap_half, cap_r * float(a("cap_aspect_max", 0.75)))
+	var h := lerpf(r_now * 0.95, h_final, g)
+	if art.has("cap_d_keys"):
+		h = minf(h, r * float(a("cap_aspect_max", 0.75)))
 	st["center_y"] = head_center_y(t)
+	if art.has("top_keys") and t > t_fb_max:
+		st["center_y"] = maxf(_keys_log(art["top_keys"], t) - h, float(st["center_y"]) * 0.5)
 	st["radius"] = r
 	st["half"] = h
-	st["torus"] = clampf((x - 0.01) / 0.12, 0.0, 1.0) * float(a("torus", 1.0))
+	st["torus"] = clampf((x - 0.008) / 0.06, 0.0, 1.0) * float(a("torus", 1.0))
 	st["density"] = appear * float(a("head_density", 1.0)) * (1.0 - clampf((x - float(a("dissipate_at", 6.0))) / 3.0, 0.0, 0.85))
 	st["roll"] = float(a("roll", 2.2)) * (1.0 - exp(-x / 0.25))
 	st["col_mix"] = clampf((x - 0.04) / float(a("whiten_time", 0.5)), 0.0, 1.0)
 	if nuclear and kind != Kind.NUCLEAR_UNDERWATER and kind != Kind.NUCLEAR_BURIED:
-		# the vortex core stays incandescent much longer than the fireball surface
+		# the vortex core stays incandescent longer than the fireball surface (absolute time scale)
 		var tt := BlastPhysics.fireball_temperature(w_kt, t, surface)
-		var core_t := lerpf(2300.0, 950.0, smoothstep(0.0, 1.0, x / float(a("core_cool", 0.14))))
+		var cool := float(a("core_cool_s", 2.5 * pow(w_kt, 0.35)))
+		var core_t := lerpf(2300.0, 950.0, smoothstep(0.0, 1.0, t / cool))
 		var tc := maxf(tt, core_t)
 		st["heat_temp"] = tc
-		st["heat_glow"] = emission_scale * 0.9 * clampf((tc - 950.0) / 500.0, 0.0, 1.0) * float(a("core_glow", 1.0))
+		st["heat_glow"] = emission_scale * 0.9 * clampf((tc - 950.0) / 500.0, 0.0, 1.0) * float(a("core_glow", 0.7))
 	elif not nuclear and kind != Kind.CONVENTIONAL_BURIED:
 		var fs := fireball_state(t)
 		st["heat_temp"] = maxf(float(fs["temp"]), 900.0)
-		st["heat_glow"] = emission_scale * 0.5 * float(fs["opacity"])
+		st["heat_glow"] = emission_scale * 0.4 * float(fs["opacity"])
 	return st
 
 
@@ -294,6 +326,9 @@ func stem_state(t: float) -> Dictionary:
 		return st
 	if is_column_kind():
 		return _column_stem(t, st)
+	var dens := float(a("stem_density", 0.9 if (surface or dusty) else 0.35))
+	if dens <= 0.0:
+		return st
 	var hs := head_state(t)
 	var head_bottom: float = float(hs["center_y"]) - float(hs["half"]) * 0.5
 	var t_start := float(a("stem_delay", 0.0))
@@ -307,13 +342,15 @@ func stem_state(t: float) -> Dictionary:
 		return st
 	var v := float(a("stem_speed_rel", 0.75))
 	var avg_speed := head_center_final() / maxf(t_stab * 0.35, 1.0)
-	var top := minf(head_bottom + float(hs["half"]) * 0.3, (t - t_start) * avg_speed * v + r_fb_max * 0.3)
+	var rising := (t - t_start) * avg_speed * v + r_fb_max * 0.3
+	var top := minf(head_bottom + float(hs["half"]) * 0.45, rising)
+	if bool(a("stem_detached", false)):
+		top = minf(rising, head_bottom * float(a("stem_detached_frac", 0.6)))
 	var rx := clampf(t / maxf(t_stab * 0.4, 1.0), 0.0, 1.0)
 	st["bottom"] = -5.0
 	st["top"] = maxf(top, 0.0)
 	st["radius"] = lerpf(maxf(r_fb_max * 0.35, stem_r * 0.35), stem_r, sqrt(rx))
-	var dens := float(a("stem_density", 0.9 if (surface or dusty) else 0.35))
-	st["density"] = dens * clampf((t - t_start) / maxf(t_fb_max * 2.0, 0.5), 0.0, 1.0)
+	st["density"] = dens * clampf((t - t_start) / maxf(t_fb_max * 2.0, 0.5), 0.0, 1.0) * (1.0 - clampf((t / t_stab - 2.0) / 3.0, 0.0, 0.8))
 	st["flare"] = float(a("stem_flare", 1.6 if (surface or dusty) else 1.3))
 	st["waist"] = float(a("stem_waist", 0.3))
 	st["rise"] = avg_speed * 0.4
@@ -335,13 +372,16 @@ func skirt_state(t: float, shock_r: float) -> Dictionary:
 	if r <= 0.0:
 		return st
 	var t_hit := BlastPhysics.arrival_time(w_kt, maxf(hob, 1.0), false, conventional)
+	if not bool(a("skirt_early", false)):
+		t_hit = maxf(t_hit, t_fb_max * 0.5)
 	if t < t_hit:
 		return st
 	var grow := clampf(r / maxf(rmax, 1.0), 0.0, 1.0)
-	st["radius"] = r + (t - t_hit) * 2.0
+	st["radius"] = r + minf(t - t_hit, 40.0) * 1.0
 	var hk := 1.0 if (surface or dusty) else 0.45
-	st["height"] = maxf(r * 0.06, r_fb_max * 0.12) * float(a("skirt_height", 1.0)) * hk * (0.6 + 0.4 * grow) + t * 0.8
-	st["density"] = amt * (1.0 - clampf((t - t_stab * 0.5) / (t_stab * 0.6), 0.0, 0.9))
+	st["height"] = maxf(r * 0.05, r_fb_max * 0.1) * float(a("skirt_height", 1.0)) * hk * (0.55 + 0.45 * grow) + minf(t, 6.0) * 0.6
+	var fade := 1.0 - smoothstep(0.3 * t_stab, 1.6 * t_stab, t)
+	st["density"] = amt * fade * clampf((t - t_hit) / maxf(t_fb_max, 0.2), 0.0, 1.0)
 	st["inner"] = 0.0
 	return st
 
@@ -380,7 +420,7 @@ func build_arrival_table() -> PackedFloat64Array:
 # ------------------------------------------------------------------ columns (buried / underwater)
 
 func is_column_kind() -> bool:
-	return kind in [Kind.CONVENTIONAL_BURIED, Kind.NUCLEAR_BURIED, Kind.NUCLEAR_UNDERWATER]
+	return kind in [Kind.CONVENTIONAL_BURIED, Kind.NUCLEAR_BURIED, Kind.NUCLEAR_UNDERWATER] or art.has("col_height")
 
 
 ## Height of the ejecta / water column at time t: fast rise, then (optionally) collapse.
@@ -430,10 +470,12 @@ func _column_head(t: float, st: Dictionary) -> Dictionary:
 		return st
 	var cap := float(a("col_cap_r", float(a("col_radius", 20.0)) * 1.6))
 	var grow := clampf(h / maxf(float(a("col_height", 100.0)), 1.0), 0.0, 1.0)
-	var late := clampf((t - float(a("col_rise", 2.0))) / maxf(float(a("cap_grow_time", 20.0)), 1.0), 0.0, 1.0)
+	var late := sqrt(clampf((t - float(a("col_rise", 2.0))) / maxf(float(a("cap_grow_time", 20.0)), 1.0), 0.0, 1.0))
 	var r := cap * (0.35 + 0.65 * grow) * (1.0 + float(a("cap_late_grow", 0.6)) * late)
 	var rise_extra := float(a("cap_rise", 0.0)) * late
-	st["center_y"] = h * 0.92 + rise_extra
+	# the cloud keeps the height the ejecta reached (it does not sink with the collapsing column)
+	var h_ref := float(a("col_height", 100.0)) * clampf(grow * 3.0, 0.0, 1.0) if bool(a("cap_hold_peak", false)) else h
+	st["center_y"] = maxf(h, h_ref) * 0.92 + rise_extra
 	st["radius"] = r
 	st["half"] = r * float(a("cap_aspect", 0.55))
 	st["torus"] = float(a("torus", 0.0)) * late
@@ -489,14 +531,27 @@ func dome_state(t: float) -> Vector4:
 ## Up to 4 condensation rings around the stem: Array of Vector4(y, radius, thickness, opacity).
 func rings_state(t: float) -> Array[Vector4]:
 	var out: Array[Vector4] = [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
+	var hum := clampf((Game.humidity - 0.3) / 0.5, 0.15, 1.0)
+	if art.has("ring_list"):
+		# explicit documented rings: [t_on, life, y, radius, half_thickness]
+		var lst: Array = art["ring_list"]
+		for i in mini(lst.size(), 4):
+			var rg: Array = lst[i]
+			var x0 := (t - float(rg[0])) / maxf(float(rg[1]), 1.0)
+			if x0 < 0.0 or x0 > 1.6:
+				continue
+			var op0 := smoothstep(0.0, 0.12, x0) * (1.0 - smoothstep(0.7, 1.6, x0)) * maxf(hum, 0.6)
+			out[i] = Vector4(float(rg[2]) + float(rg[2]) * 0.15 * x0, float(rg[3]) * (1.0 + 0.25 * x0), float(rg[4]), op0)
+		return out
 	var n := int(a("rings", 0))
 	if n <= 0:
 		return out
-	var hum := clampf((Game.humidity - 0.3) / 0.5, 0.15, 1.0)
+	var r_t0 := float(a("ring_t0", 0.03))
+	var r_life := float(a("ring_life", 0.12))
 	for i in mini(n, 4):
 		var fr := 0.25 + 0.13 * i
-		var t_on := t_stab * (0.05 + 0.025 * i)
-		var life := t_stab * 0.18
+		var t_on := t_stab * (r_t0 + 0.02 * i)
+		var life := t_stab * r_life
 		if t < t_on or t > t_on + life * 2.0:
 			continue
 		var x := (t - t_on) / life
@@ -504,7 +559,7 @@ func rings_state(t: float) -> Array[Vector4]:
 		var y := cloud_top * fr * (0.6 + 0.4 * rise_norm(t))
 		var ss := stem_state(t)
 		var rr := maxf(float(ss["radius"]), stem_r * 0.5) * (2.2 + 0.4 * i) * (1.0 + 0.3 * x)
-		out[i] = Vector4(y, rr, rr * 0.12, op)
+		out[i] = Vector4(y, rr, clampf(rr * 0.05, 60.0, 400.0), op)
 	return out
 
 
@@ -541,3 +596,19 @@ func blast_yield() -> float:
 		Kind.NUCLEAR_UNDERWATER:
 			return w_kt * float(a("air_coupling", 0.3))
 	return w_kt
+
+
+## Log-time interpolation of [[t_s, value], ...] keyframes (clamped at the ends).
+func _keys_log(keys: Array, t: float) -> float:
+	if keys.is_empty():
+		return 0.0
+	var tt := maxf(t, 0.001)
+	if tt <= float(keys[0][0]):
+		return float(keys[0][1]) * sqrt(tt / float(keys[0][0]))
+	for i in range(1, keys.size()):
+		var t1 := float(keys[i][0])
+		if tt <= t1:
+			var t0 := float(keys[i - 1][0])
+			var f := (log(tt) - log(t0)) / maxf(log(t1) - log(t0), 1e-6)
+			return lerpf(float(keys[i - 1][1]), float(keys[i][1]), f)
+	return float(keys[keys.size() - 1][1])

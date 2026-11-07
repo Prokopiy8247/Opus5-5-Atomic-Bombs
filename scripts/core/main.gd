@@ -8,6 +8,7 @@ enum State { MENU, FLIGHT, EXPLOSION, DESTROYED }
 const UI_PATH := "res://scripts/ui/ui_root.gd"
 const SOUND_PATH := "res://scripts/audio/sound_manager.gd"
 const RANGE_PATH := "res://scripts/world/range_objects.gd"
+const QA_DRIVER := preload("res://scripts/tools/qa_driver.gd")
 
 var env_ctl: EnvironmentCtl
 var terrain: Terrain
@@ -30,6 +31,8 @@ var _quality_cooldown := 0.0
 var _destroyed_shown := false
 var _shot_counter := 0
 var _flight_bomb := -1
+var _whiteout: ColorRect
+var _whistling := false
 
 
 func _ready() -> void:
@@ -52,6 +55,22 @@ func _ready() -> void:
 	launcher.detonated.connect(_on_detonated)
 	env_ctl.set_humidity(Game.humidity)
 	_load_optional_modules()
+	# eye white-out / glare from the flash (also present in movie and test-rig renders)
+	var wl := CanvasLayer.new()
+	wl.layer = 50
+	add_child(wl)
+	_whiteout = ColorRect.new()
+	_whiteout.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_whiteout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_whiteout.color = Color(1.0, 0.98, 0.95, 0.0)
+	wl.add_child(_whiteout)
+	if Args.has("qa_matrix"):
+		Game.is_test_rig = false
+		var qa: Node = QA_DRIVER.new()
+		qa.set("main", self)
+		add_child(qa)
+		qa.call_deferred("run")
+		return
 	if Args.has("shots"):
 		Game.is_test_rig = true
 		var rig := ShotRig.new()
@@ -194,7 +213,11 @@ func _setup_water(b: Dictionary, gz: Vector3) -> void:
 		return
 	water = WaterPond.new()
 	add_child(water)
-	(water as WaterPond).setup(gz, float(b.get("profile", {}).get("pond_radius_m", 4000.0)))
+	var pr := float(b.get("profile", {}).get("pond_radius_m", 4000.0))
+	# lagoon reaching to a beach ~1 km in front of the bunker so the water is actually in view
+	var d := Vector2(gz.x, gz.z).length()
+	pr = maxf(pr, d - 1000.0)
+	(water as WaterPond).setup(gz, pr)
 
 
 func detonate_now(bomb_idx: int, dist_km: float, az_deg: float) -> Explosion:
@@ -254,6 +277,7 @@ func launch(bomb_index: int, dist_km: float, az_deg: float) -> void:
 	var contact := float(b.get("burst_height_m", 0.0)) <= 3.0
 	launcher.launch(target_gz, burst_point, dist_km, contact)
 	_flight_bomb = bomb_index
+	_whistling = false
 	state = State.FLIGHT
 	if sound:
 		sound.rocket_start(launcher.current_position())
@@ -412,6 +436,10 @@ func _process(delta: float) -> void:
 	launcher.advance(dt)
 	if state == State.FLIGHT and sound:
 		sound.rocket_update(launcher.current_position())
+		# falling-bomb whistle over the last seconds (air-dropped / parachute phase)
+		if not _whistling and launcher.time_to_detonation() < 4.0:
+			_whistling = true
+			sound.whistle_start()
 	if explosion:
 		explosion.advance(dt)
 		explosion.step_exposure(explosion.age, dt)
@@ -426,8 +454,8 @@ func _process(delta: float) -> void:
 			_update_mouse()
 	_update_hud()
 	_auto_quality(delta)
-	if ui and ui.has_method("flash_white"):
-		ui.flash_white(env_ctl.white_out * 0.85)
+	if _whiteout:
+		_whiteout.color.a = clampf(env_ctl.white_out * 0.9, 0.0, 0.95)
 
 
 func _update_hud() -> void:
