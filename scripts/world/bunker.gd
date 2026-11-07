@@ -27,6 +27,7 @@ var emergency_mat: StandardMaterial3D
 var dust: GPUParticles3D
 var dust_mat: ParticleProcessMaterial
 var screens_mat: StandardMaterial3D
+var screens_mats: Array[StandardMaterial3D] = []   # per-screen variants of the CRT display
 var flash_light: DirectionalLight3D
 var probe: ReflectionProbe
 
@@ -78,18 +79,23 @@ func _noise_tex(freq: float, seed: int, normal := false, ramp: Gradient = null) 
 
 
 func _make_materials() -> void:
+	# cast concrete: fine, low-contrast neutral grey (review c3: the old 0.018 noise at 0.5 uv scale
+	# read as brown camouflage blotches, and the strong normal map as carpet under the lamps)
 	var g := Gradient.new()
-	g.set_color(0, Color(0.40, 0.39, 0.37))
-	g.add_point(0.55, Color(0.50, 0.49, 0.46))
-	g.set_color(g.get_point_count() - 1, Color(0.56, 0.55, 0.52))
+	g.set_color(0, Color(0.43, 0.43, 0.42))
+	g.add_point(0.5, Color(0.48, 0.48, 0.47))
+	g.set_color(g.get_point_count() - 1, Color(0.53, 0.53, 0.52))
 	concrete = StandardMaterial3D.new()
-	concrete.albedo_texture = _noise_tex(0.018, 11, false, g)
+	concrete.albedo_texture = _noise_tex(0.045, 11, false, g)
 	concrete.normal_enabled = true
-	concrete.normal_texture = _noise_tex(0.06, 12, true)
-	concrete.normal_scale = 0.35
-	concrete.roughness = 0.94
+	concrete.normal_texture = _noise_tex(0.11, 12, true)
+	concrete.normal_scale = 0.12
+	concrete.roughness = 0.92
 	concrete.uv1_triplanar = true
-	concrete.uv1_scale = Vector3(0.5, 0.5, 0.5)
+	concrete.uv1_scale = Vector3(0.35, 0.35, 0.35)
+	# the interior is lit by its lamps and the window, not by the open sky's ambient light (Godot has
+	# no occlusion for it here: at dawn the whole ceiling turned sky-orange)
+	concrete.disable_ambient_light = true
 	concrete_floor = concrete.duplicate()
 	concrete_floor.albedo_color = Color(0.72, 0.72, 0.72)
 	concrete_floor.roughness = 0.8
@@ -97,6 +103,7 @@ func _make_materials() -> void:
 	steel.albedo_color = Color(0.20, 0.22, 0.20)
 	steel.metallic = 0.6
 	steel.roughness = 0.5
+	steel.disable_ambient_light = true
 	lamp_mat = StandardMaterial3D.new()
 	lamp_mat.albedo_color = Color(1, 1, 1)
 	lamp_mat.emission_enabled = true
@@ -107,11 +114,81 @@ func _make_materials() -> void:
 	emergency_mat.emission_enabled = true
 	emergency_mat.emission = Color(1.0, 0.08, 0.04)
 	emergency_mat.emission_energy_multiplier = 0.0
-	screens_mat = StandardMaterial3D.new()
-	screens_mat.albedo_color = Color(0.02, 0.05, 0.03)
-	screens_mat.emission_enabled = true
-	screens_mat.emission = Color(0.25, 1.0, 0.45)
-	screens_mat.emission_energy_multiplier = 0.9
+	screens_mat = _screen_material(0)
+	for v in 3:
+		screens_mats.append(_screen_material(v))
+
+
+## Procedural monochrome CRT display (phosphor green on near-black): status text rows, a range
+## scale, a scrolling-trace graph and scanlines. `variant` changes the layout and the text.
+func _screen_material(variant: int) -> StandardMaterial3D:
+	var w := 384
+	var h := 224
+	var img := Image.create_empty(w, h, false, Image.FORMAT_RGB8)
+	var bg := Color(0.004, 0.018, 0.008)
+	img.fill(bg)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9001 + variant * 77
+	var ph := Color(0.30, 1.0, 0.45)
+	var dim := Color(0.06, 0.24, 0.10)
+	# frame and grid
+	for x in range(6, w - 6):
+		img.set_pixel(x, 6, dim)
+		img.set_pixel(x, h - 7, dim)
+	for y in range(6, h - 6):
+		img.set_pixel(6, y, dim)
+		img.set_pixel(w - 7, y, dim)
+	# text rows: 5x7 'glyph' blocks with gaps (unreadable at desk distance, reads as text)
+	var rows := 9 if variant != 1 else 6
+	for r in rows:
+		var y0 := 14 + r * 13
+		var x := 14
+		var line_len := rng.randi_range(14, 34)
+		for c in line_len:
+			if x > w / 2 - 8 and variant == 2:
+				break
+			if rng.randf() < 0.14:
+				x += 7
+				continue
+			for gy in 7:
+				for gx in 5:
+					if rng.randf() < 0.55:
+						img.set_pixel(x + gx, y0 + gy, ph if r != 0 else ph * 1.2)
+			x += 7
+			if x > w - 20:
+				break
+	# trace graph (seismic / pressure channel) in the lower part
+	var gy0 := 150 if variant != 1 else 100
+	var amp := 16.0 if variant != 1 else 36.0
+	var prev := gy0
+	for x in range(14, w - 14):
+		var v := sin(x * 0.07 + variant) * 0.35 + sin(x * 0.23 + variant * 2.0) * 0.15 + rng.randf_range(-0.18, 0.18)
+		if variant == 1:
+			v *= exp(-pow((x - w * 0.55) / 60.0, 2.0)) * 2.2 + 0.15
+		var y := int(gy0 + v * amp)
+		for yy in range(mini(prev, y), maxi(prev, y) + 1):
+			img.set_pixel(x, clampi(yy, 8, h - 9), ph)
+		prev = y
+		if x % 24 == 0:
+			for yy in range(gy0 - 30, gy0 + 31, 3):
+				img.set_pixel(x, clampi(yy, 8, h - 9), dim)
+	# scanlines
+	for y in range(0, h, 2):
+		for x in w:
+			img.set_pixel(x, y, img.get_pixel(x, y) * 0.55)
+	img.generate_mipmaps()
+	var tex := ImageTexture.create_from_image(img)
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.0, 0.0, 0.0)
+	m.roughness = 0.15
+	m.metallic_specular = 0.6
+	m.emission_enabled = true
+	m.emission = Color(1, 1, 1)
+	m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+	m.emission_texture = tex
+	m.emission_energy_multiplier = 1.6
+	m.uv1_scale = Vector3(1, 1, 1)
+	return m
 
 
 func _box(size: Vector3, pos: Vector3, mat: Material, parent: Node3D = self) -> MeshInstance3D:
@@ -215,12 +292,22 @@ func _build_desk() -> void:
 	var panel_mat := StandardMaterial3D.new()
 	panel_mat.albedo_color = Color(0.32, 0.36, 0.30)
 	panel_mat.roughness = 0.6
+	panel_mat.disable_ambient_light = true
 	for i in 7:
 		var x := -4.5 + i * 1.5
 		var p := _box(Vector3(1.3, 0.35, 0.05), Vector3(x, desk_top + 0.2, dz - 0.35), panel_mat)
 		p.rotation_degrees.x = -35.0
-		var scr := _box(Vector3(0.42, 0.24, 0.01), Vector3(x - 0.3, desk_top + 0.21, dz - 0.33), screens_mat)
+		# CRT face: a quad just in front of the sloped panel (a BoxMesh would show only one cell of
+		# its UV atlas)
+		var scr := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.42, 0.24)
+		scr.mesh = qm
+		scr.material_override = screens_mats[i % screens_mats.size()]
+		scr.layers = LAYER_BUNKER
 		scr.rotation_degrees.x = -35.0
+		scr.position = Vector3(x - 0.3, desk_top + 0.21, dz - 0.33) + Vector3(0.0, 0.574, 0.819) * 0.031
+		add_child(scr)
 		# small indicator lamps
 		for k in 4:
 			var lampm := StandardMaterial3D.new()
@@ -242,8 +329,8 @@ func _build_lights() -> void:
 		var x := -4.4 + i * 4.4
 		var l := OmniLight3D.new()
 		l.position = Vector3(x, CEIL_Y - 0.5, 0.6)
-		l.light_color = Color(1.0, 0.88, 0.7)
-		l.light_energy = 2.2
+		l.light_color = Color(1.0, 0.93, 0.84)
+		l.light_energy = 1.3
 		l.omni_range = 11.0
 		l.shadow_enabled = i == 1
 		l.light_cull_mask = LAYER_BUNKER
@@ -349,7 +436,7 @@ var night_mode := false
 func set_night(on: bool) -> void:
 	night_mode = on
 	for l in lamps:
-		l.light_color = Color(1.0, 0.22, 0.12) if on else Color(1.0, 0.88, 0.7)
+		l.light_color = Color(1.0, 0.22, 0.12) if on else Color(1.0, 0.93, 0.84)
 	lamp_mat.emission = Color(1.0, 0.2, 0.1) if on else Color(1.0, 0.92, 0.78)
 	_apply_lamps(lights_health)
 
@@ -371,9 +458,10 @@ func reset_state() -> void:
 func _apply_lamps(level: float) -> void:
 	var k := 0.12 if night_mode else 1.0
 	for l in lamps:
-		l.light_energy = 2.2 * level * k
-	lamp_mat.emission_energy_multiplier = 6.0 * level * (0.25 if night_mode else 1.0)
-	screens_mat.emission_energy_multiplier = 0.9 * clampf(level * 1.2, 0.15, 1.0) * (0.2 if night_mode else 1.0)
+		l.light_energy = 1.3 * level * k
+	lamp_mat.emission_energy_multiplier = 4.0 * level * (0.25 if night_mode else 1.0)
+	for m in screens_mats:
+		m.emission_energy_multiplier = 1.6 * clampf(level * 1.2, 0.15, 1.0) * (0.35 if night_mode else 1.0)
 
 
 func _process(delta: float) -> void:
