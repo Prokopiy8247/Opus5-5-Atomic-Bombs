@@ -139,8 +139,10 @@ class ShockLayer extends Node3D:
 			stem = minf(slant * 0.25, prof.hob * 1.5)
 		mat.set_shader_parameter("stem_h", stem)
 		var hum := clampf((Game.humidity - 0.45) / 0.35, 0.0, 1.0)
-		mat.set_shader_parameter("condensation", cond_k * hum * clampf(p / 2.0, 0.0, 1.0) * out)
-		mat.set_shader_parameter("cond_w", clampf(thick, slant * 0.01, slant * 0.05))
+		# a free-air condensation veil exists only for seconds near the strong front (cycle 3: gated by
+		# p > 1-2 psi it stayed on for minutes as a pen-line 'glass dome' across the sky)
+		mat.set_shader_parameter("condensation", cond_k * hum * smoothstep(4.0, 10.0, p) * (1.0 - smoothstep(6.0, 12.0, t)) * out)
+		mat.set_shader_parameter("cond_w", slant * 0.06)
 
 
 # ------------------------------------------------------------------------------------ dust ring
@@ -278,8 +280,13 @@ class WilsonLayer extends Node3D:
 		# it (King, RDS-37: 'wilson' > 0) get one, rendered as flattened stacked discs
 		var big := prof.w_kt > 150.0
 		var default_w := 0.0 if big else 1.0
-		amount = clampf((hum - 0.45) / 0.35, 0.0, 1.0) * float(prof.a("wilson", default_w))
+		# wilson_hum_min: the documented shot had humid air even if the player's humidity is lower
+		amount = clampf((maxf(hum, float(prof.a("wilson_hum_min", 0.0))) - 0.45) / 0.35, 0.0, 1.0) * float(prof.a("wilson", default_w))
+		# duration: wilson_dur_s in SECONDS if given, else wilson_duration as a multiplier of the
+		# physics duration (cycle 3: King's 5.0 multiplier meant a 48 s opaque igloo)
 		dur = maxf(prof.wilson_t, 0.25) * float(prof.a("wilson_duration", 1.0))
+		if prof.art.has("wilson_dur_s"):
+			dur = float(prof.art["wilson_dur_s"])
 		t0 = float(prof.a("wilson_start", 0.0))
 		if t0 <= 0.0:
 			# when the front reaches ~ the Wilson radius

@@ -136,28 +136,28 @@ func _setup_view(view: String, ex: Explosion) -> void:
 func _setup_view_dynamic(view: String, ex: Explosion) -> void:
 	if view != "zoom" and view != "near":
 		return
-	# Binocular (zoom) and outside (near) framing with ONE fixed field of view per phase (fireball /
-	# growing cloud / mature cloud), fitted to the largest extent reached in that phase, so the scale
-	# progression stays readable within a phase (review c2). Angular sizes use the cloud's NEAR edge
-	# (d - R). The binocular view is limited to 58 deg (wider, the embrasure lintel enters the frame);
-	# the outside camera widens up to 100 deg so a tall cloud is never cut off (review c3).
+	# Binocular (zoom) and outside (near) framing with ONE fixed field of view per phase, fitted to the
+	# largest extent reached in that phase, so the scale progression stays readable within a phase
+	# (review c2). Phases are cut so that none spans much more than ~6x growth (review c3). Angular
+	# sizes use the cloud's NEAR edge (d - R). The binocular view is limited to 58 deg (wider, the
+	# embrasure lintel enters the frame); the outside camera widens up to 100 deg.
 	var cam: PlayerCamera = main.cam
+	var prof := ex.prof
 	var near := view == "near"
 	var fov_min := Args.get_float("fov", 55.0) if near else 3.0
 	var fov_max := 100.0 if near else 58.0
-	var prof := ex.prof
-	var t_a := maxf(3.0 * prof.t_fb_max, 0.1)
-	var t_b := maxf(0.25 * prof.t_stab, t_a * 8.0)
-	var ph := _phase(ex.age, t_a, t_b)
+	var bounds := _phase_bounds(prof)
+	var ph := _phase_of(ex.age, bounds)
 	var a_top := 0.0
 	var a_w := 0.0
 	var ages: Array = []
 	for t in _shot_ages:
-		if _phase(t, t_a, t_b) == ph:
+		if _phase_of(t, bounds) == ph:
 			ages.append(t)
 	if ages.is_empty():
 		ages.append(ex.age)
 	var d := Vector2(ex.gz.x - cam.global_position.x, ex.gz.z - cam.global_position.z).length()
+	var cone := float(prof.a("col_cone", 0.0)) if prof.is_column_kind() else 0.0
 	for t in ages:
 		var hs := prof.head_state(t)
 		var fs := prof.fireball_state(t)
@@ -165,9 +165,25 @@ func _setup_view_dynamic(view: String, ex: Explosion) -> void:
 		var hr := float(hs["radius"]) if float(hs["density"]) > 0.01 else 0.0
 		var fr := float(fs["radius"]) if float(fs["opacity"]) > 0.01 else 0.0
 		var top := maxf(float(hs["center_y"]) + float(hs["half"]) * 1.25 if hr > 0.0 else 0.0, float(fs["center_y"]) + fr * 1.15)
-		top = maxf(top, float(ss["top"]))
-		top = maxf(top, 30.0)
-		var w := maxf(maxf(hr * 1.2, fr * 1.15) * 2.0, float(ss["radius"]) * 2.0)
+		var stop := float(ss["top"]) * (1.35 if cone > 0.0 else 1.0) if float(ss["radius"]) > 0.0 else 0.0
+		top = maxf(top, stop)
+		var w := maxf(maxf(hr * 1.2, fr * 1.15) * 2.0, float(ss["radius"]) * 2.0 * maxf(1.0 + cone, 1.0))
+		# soil dome (buried shots)
+		var dm := prof.dome_state(t)
+		if dm.y > 0.05:
+			top = maxf(top, dm.y * 3.0)
+			w = maxf(w, dm.x * 3.0)
+		# condensation rings and ice caps belong to the cloud too
+		for rg in prof.rings_state(t):
+			if rg.w > 0.0:
+				top = maxf(top, rg.x + rg.z)
+				w = maxf(w, rg.y * 2.0)
+		for k in 2:
+			var ic := prof.ice_state(t, k)
+			if ic.w > 0.0:
+				top = maxf(top, ic.x + ic.z)
+				w = maxf(w, ic.y * 2.0)
+		top = maxf(top, 30.0 if prof.nuclear else 8.0)
 		var dn := maxf(d - w * 0.5, d * 0.35)
 		a_top = maxf(a_top, atan(top / dn))
 		a_w = maxf(a_w, 2.0 * atan(w * 0.5 / dn))
@@ -183,14 +199,35 @@ func _setup_view_dynamic(view: String, ex: Explosion) -> void:
 	var el_gz := atan2(dir.y, Vector2(dir.x, dir.z).length())
 	var pitch := el_gz + vf * 0.28
 	if a_top > vf * 0.70:
-		# widest field of view reached: tilt up to keep the top in, ground zero stays >= 4% in
-		pitch = minf(el_gz + a_top - vf * 0.45, el_gz + vf * 0.46)
+		# widest field of view reached: tilt up a little, but ground zero stays >= 18% above the bottom
+		pitch = minf(el_gz + a_top - vf * 0.45, el_gz + vf * 0.32)
 	pitch = minf(pitch, deg_to_rad(40.0))
 	cam.set_look(atan2(-dir.x, -dir.z), pitch)
 
 
-func _phase(t: float, t_a: float, t_b: float) -> int:
-	return 0 if t < t_a else (1 if t < t_b else 2)
+## Phase boundaries (s) for the per-phase framing: fireball / early cloud / growing cloud / mature
+## cloud; profiles may override them with frame_phase_s.
+func _phase_bounds(prof: ExplosionProfile) -> Array:
+	if prof.art.has("frame_phase_s"):
+		return Array(prof.art["frame_phase_s"])
+	var t_a := maxf(3.0 * prof.t_fb_max, 0.1)
+	if prof.is_column_kind():
+		# buried / underwater / column shots: the heave and vent before the eruption get their own frame
+		t_a = minf(t_a, float(prof.a("col_delay", 0.05)) + 0.1)
+	var t_b := maxf(0.25 * prof.t_stab, t_a * 8.0)
+	var out := [t_a]
+	var t_m := 0.03 * prof.t_stab
+	if t_m > t_a * 2.5 and t_m < t_b / 2.5:
+		out.append(t_m)
+	out.append(t_b)
+	return out
+
+
+func _phase_of(t: float, bounds: Array) -> int:
+	for i in bounds.size():
+		if t < float(bounds[i]):
+			return i
+	return bounds.size()
 
 
 func _contact_sheet(files: Array[String], shots: PackedFloat64Array, path: String) -> void:

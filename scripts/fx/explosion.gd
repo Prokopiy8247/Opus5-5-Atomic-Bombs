@@ -164,6 +164,8 @@ func _apply_art_static() -> void:
 	else:
 		vol_mat.set_shader_parameter("churn", float(prof.a("churn_abs", 0.12)))
 	vol_mat.set_shader_parameter("debug_mode", Args.get_int("vdebug", 0))
+	vol_mat.set_shader_parameter("fb_grad", 0.0 if prof.nuclear else 1.0)
+	vol_mat.set_shader_parameter("head_lobes", float(prof.a("head_lobes", 0.0)))
 	var empty: Array[Vector4] = [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
 	vol_mat.set_shader_parameter("rings", empty)
 
@@ -252,10 +254,15 @@ func _update_volume(t: float) -> void:
 	vol_mat.set_shader_parameter("stem", Vector4(ss["bottom"], ss["top"], sr, ss["density"]))
 	vol_mat.set_shader_parameter("stem_shape", Vector4(ss["flare"], ss["waist"], ss["hollow"], ss["rise"]))
 	vol_mat.set_shader_parameter("stem_cone", float(prof.a("col_cone", 0.0)) if prof.is_column_kind() else 0.0)
+	vol_mat.set_shader_parameter("stem_top_flare", 0.0 if prof.is_column_kind() else float(prof.a("stem_top_flare", 0.0)))
 	if ss.has("front"):
 		vol_mat.set_shader_parameter("stem_wake", Vector4(ss["front"], ss["wake_bottom"], ss["wake"], ss["dust_ramp"]))
 	else:
-		vol_mat.set_shader_parameter("stem_wake", Vector4(1.0e9, 0.0, float(prof.a("jet_amount", 1.0)), 1.0))
+		var jfade := 1.0
+		if prof.art.has("jet_fade_s"):
+			var jf: Array = prof.art["jet_fade_s"]
+			jfade = 1.0 - smoothstep(float(jf[0]), float(jf[1]), t)
+		vol_mat.set_shader_parameter("stem_wake", Vector4(1.0e9, 0.0, float(prof.a("jet_amount", 1.0)) * jfade, 1.0))
 	var dm := prof.dome_state(t)
 	vol_mat.set_shader_parameter("dome_u", Vector4(dm.x, dm.y, clampf((t - float(prof.a("dome_time", 1.0)) * 0.6) / maxf(float(prof.a("dome_time", 1.0)), 0.1), 0.0, 1.0), 0.0))
 	var kr: float = ks["radius"] if float(ks["density"]) > 0.001 else 0.0
@@ -281,7 +288,8 @@ func _update_volume(t: float) -> void:
 	if sr > 0.0:
 		var se: float = sr * maxf(float(ss["flare"]), 1.0 + float(prof.a("col_cone", 0.0))) * 1.6
 		mn = mn.min(Vector3(-se, ss["bottom"], -se))
-		mx = mx.max(Vector3(se, float(ss["top"]) + sr, se))
+		var stop: float = float(ss["top"]) * (1.4 if float(prof.a("col_cone", 0.0)) > 0.0 and prof.is_column_kind() else 1.0) + sr
+		mx = mx.max(Vector3(se * (1.0 + float(prof.a("stem_top_flare", 0.0))), stop, se * (1.0 + float(prof.a("stem_top_flare", 0.0)))))
 	if kr > 0.0:
 		var kh: float = ks["height"]
 		mn = mn.min(Vector3(-kr - kh, -kh * 0.3, -kr - kh))
@@ -297,8 +305,8 @@ func _update_volume(t: float) -> void:
 			mn = mn.min(Vector3(-e3, sh.x - sh.z * 0.3, -e3))
 			mx = mx.max(Vector3(e3, sh.x + sh.z * 1.2, e3))
 	if dm.y > 0.05:
-		mn = mn.min(Vector3(-dm.x * 1.1, -1.0, -dm.x * 1.1))
-		mx = mx.max(Vector3(dm.x * 1.1, dm.y * 1.3 + 1.0, dm.x * 1.1))
+		mn = mn.min(Vector3(-dm.x * 1.7, -1.0, -dm.x * 1.7))
+		mx = mx.max(Vector3(dm.x * 1.7, dm.y * 1.3 + 1.0, dm.x * 1.7))
 	if mn.x < mx.x:
 		var drift := wind_v * t * 2.1
 		mn = mn.min(mn + Vector3(drift.x, 0.0, drift.z))
@@ -351,6 +359,9 @@ func _update_lights(t: float) -> void:
 		var amb := 1.0 if Game.tod != Game.TimeOfDay.NIGHT else 0.03
 		var lum := illum / amb
 		# the visible fireball adds glare even when the illuminance is modest
+		var wo := float(prof.a("whiteout_s", 0.0))
+		if wo > 0.0 and t < wo:
+			lum = maxf(lum, 4.0 * (1.0 - t / wo))
 		env_ctl.flash_lum = lum
 
 
@@ -388,9 +399,10 @@ func metered_luminance(ti: float, amb: float) -> float:
 		ill = prof.light_power(ti) * 20.0 * fr * fr / maxf(obs_dist * obs_dist, 1.0) * 1000.0
 	var lum := ill / amb
 	if not prof.nuclear:
-		# HE flames are not bright enough to make a camera stop down hard: meter the lit scene only
-		env_ctl.max_comp = 1.0
-		return lum
+		# HE flames are not bright enough to make a camera stop down hard (cycle 3: ~1 stop was still
+		# too much at noon): a fraction of a stop at most
+		env_ctl.max_comp = 0.25
+		return 0.08 * lum
 	if cam and float(fs["radius"]) > 0.0 and float(fs["opacity"]) > 0.3 and float(fs["temp"]) > 3000.0:
 		var fpos := gz + Vector3(0, float(fs["center_y"]), 0)
 		var to := fpos - cam.global_position
@@ -432,18 +444,26 @@ func _update_globals(t: float) -> void:
 		pw *= 0.05
 	var col := _bb_color(maxf(float(fs["temp"]), 1500.0))
 	var inten := pw * pow(maxf(prof.w_kt, 0.0001), 0.33) * 40.0 * BlastPhysics.transmittance(obs_dist, Game.humidity)
+	if prof.conventional:
+		inten *= 0.12
 	var crim := float(prof.a("crimson", 0.0))
 	if crim > 0.0:
-		# Bravo: the flash dyed the sky and clouds crimson for minutes
-		col = col.lerp(Color(1.0, 0.18, 0.12), crim * 0.75)
-		inten = maxf(inten, crim * 6.0 * exp(-t / 150.0) * clampf(t / 0.5, 0.0, 1.0))
+		# Bravo: the flash dyed the sky and clouds crimson (dark maroon/orange, not a red filter),
+		# fading by ~2.5 min
+		col = col.lerp(Color(0.80, 0.28, 0.12), crim * 0.75)
+		inten = maxf(inten, crim * 6.0 * exp(-t / 45.0) * clampf(t / 0.5, 0.0, 1.0) * (1.0 - smoothstep(60.0, 150.0, t)))
 	RenderingServer.global_shader_parameter_set("g_fireball_color", Vector4(col.r, col.g, col.b, inten))
-	RenderingServer.global_shader_parameter_set("g_flash", clampf(pw * pow(maxf(prof.w_kt, 0.0001), 0.3) * BlastPhysics.transmittance(obs_dist, Game.humidity) * 0.3, 0.0, 20.0))
+	var gflash := clampf(pw * pow(maxf(prof.w_kt, 0.0001), 0.3) * BlastPhysics.transmittance(obs_dist, Game.humidity) * 0.3, 0.0, 20.0)
+	if prof.conventional:
+		gflash *= 0.2
+	RenderingServer.global_shader_parameter_set("g_flash", gflash)
 	# cloud shadow on the ground
 	var hs := prof.head_state(t)
 	var ss := prof.stem_state(t)
 	var opacity := clampf(float(hs["density"]) * 0.85, 0.0, 0.85)
-	RenderingServer.global_shader_parameter_set("g_cloud_pos", Vector4(gz.x, gz.y + float(hs["center_y"]), gz.z, opacity))
+	var hc: float = float(hs["center_y"])
+	var drift := wind_v * t * pow(clampf(maxf(hc, 0.0) / maxf(prof.cloud_top * 0.5, 50.0), 0.0, 1.5), 1.0)
+	RenderingServer.global_shader_parameter_set("g_cloud_pos", Vector4(gz.x + drift.x, gz.y + hc, gz.z + drift.z, opacity))
 	RenderingServer.global_shader_parameter_set("g_cloud_shape", Vector4(hs["radius"], hs["half"], ss["radius"], gz.y + float(ss["top"])))
 	# crater forms during the first moments (excavation ~ a few seconds)
 	var cr_prog := 0.0
@@ -464,7 +484,8 @@ func _update_globals(t: float) -> void:
 		RenderingServer.global_shader_parameter_set("g_scorch", Vector4(0, 0, 0, 0))
 	var shock_r := prof.shock_ground_radius(t, arrival_tbl)
 	RenderingServer.global_shader_parameter_set("g_shock", Vector4(shock_r, 1.0, maxf(shock_r * 0.02, 5.0), 1.0 if (prof.surface or prof.dusty) else 0.4))
-	RenderingServer.global_shader_parameter_set("g_dome", prof.dome_state(t))
+	var dmv := prof.dome_state(t)
+	RenderingServer.global_shader_parameter_set("g_dome", Vector4(dmv.x, dmv.y * 0.15, 0.0, 0.0))
 
 
 func _fluence_radius(q: float) -> float:

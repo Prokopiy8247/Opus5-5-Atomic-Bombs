@@ -53,7 +53,8 @@ def main():
         run(n, b, "bunker", ab, a.res, out_dir, [])
         run(n, b, "zoom", az, a.res, out_dir, [])
         near = max(min(rec * 0.12, 25000.0 / 1000.0), 0.8)
-        run(n, b, "near", an, a.res, out_dir, ["--near", str(int(max(BOMB_NEAR.get(b["id"], 0), near * 1000))), "--fov", "55",
+        near_m = float(b.get("profile", {}).get("near_m", max(BOMB_NEAR.get(b["id"], 0), near * 1000)))
+        run(n, b, "near", an, a.res, out_dir, ["--near", str(int(near_m)), "--fov", "55",
                                                  "--look_h", str(int(LOOK_H.get(b["id"], 300))), "--cam_h", "30"])
 
 

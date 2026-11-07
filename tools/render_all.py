@@ -69,7 +69,9 @@ def main():
                         # outside cinematic camera between the bunker and ground zero (same as tools/make_screens.py)
                         from make_screens import BOMB_NEAR, LOOK_H
                         near = max(min(rec * 0.12, 25.0), 0.8) * 1000.0
-                        cmd += ["--near", str(int(max(BOMB_NEAR.get(b["id"], 0), near))), "--fov", "55",
+                        near = max(BOMB_NEAR.get(b["id"], 0), near)
+                        near = float(b.get("profile", {}).get("near_m", near))   # per-bomb override
+                        cmd += ["--near", str(int(near)), "--fov", "55",
                                 "--look_h", str(int(LOOK_H.get(b["id"], 300))), "--cam_h", "30"]
                     t1 = time.time()
                     for attempt in range(2):

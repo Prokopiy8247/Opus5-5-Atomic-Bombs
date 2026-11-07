@@ -246,7 +246,11 @@ void fragment() {
 		float s = (hcap - wp.y) / g_sun_dir.y;
 		vec2 q = wp.xz + g_sun_dir.xz * s;
 		float dcap = length(q - g_cloud_pos.xz);
-		float cap_sh = 1.0 - smoothstep(g_cloud_shape.x * 0.75, g_cloud_shape.x * 1.08, dcap);
+		// soft, lobed edge (a real cloud shadow has no knife edge)
+		vec2 dq = q - g_cloud_pos.xz;
+		float ang = atan(dq.y, dq.x);
+		float wob = 1.0 + sin(ang * 5.0 + 1.3) * 0.08 + sin(ang * 11.0 + 0.4) * 0.04;
+		float cap_sh = 1.0 - smoothstep(g_cloud_shape.x * 0.35, g_cloud_shape.x * 1.25, dcap * wob);
 		// stem: closest approach of the sun ray to the vertical axis
 		vec2 rel = g_cloud_pos.xz - wp.xz;
 		vec2 ldir = normalize(g_sun_dir.xz + vec2(1e-5));
@@ -255,7 +259,8 @@ void fragment() {
 		float s_axis = along / max(length(g_sun_dir.xz), 1e-4);
 		float h_at = wp.y + g_sun_dir.y * s_axis;
 		float stem_sh = (1.0 - smoothstep(g_cloud_shape.z * 0.6, g_cloud_shape.z * 1.2, perp)) * step(0.0, along) * step(h_at, g_cloud_shape.w);
-		shadow = clamp(max(cap_sh, stem_sh * 0.85) * g_cloud_pos.w, 0.0, 0.95);
+		// skylight still reaches a shadowed desert: at most ~55 % darker (cycle 3: near-black discs)
+		shadow = clamp(max(cap_sh, stem_sh * 0.7) * g_cloud_pos.w, 0.0, 0.55);
 	}
 	v_cloud_shadow = shadow;
 
