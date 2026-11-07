@@ -112,15 +112,15 @@ func apply_tod(t: int) -> void:
 		Game.TimeOfDay.DAWN:
 			p = {"az": 68.0, "el": 1.6, "sun_col": Color(1.0, 0.62, 0.38), "sun_e": 1.6, "sky_i": 20.0,
 				"exposure": 1.5, "fog": 0.000035, "turb": 1.6, "night": 0.0, "amb": 1.0,
-				"amb_col": Color(0.22, 0.24, 0.32), "amb_scale": 1.0, "fog_col": Color(0.55, 0.48, 0.45), "fog_sun": Color(1.0, 0.55, 0.28), "fog_bright": 1.0}
+				"amb_col": Color(0.22, 0.24, 0.32), "amb_scale": 1.0, "fog_col": Color(0.42, 0.38, 0.40), "fog_sun": Color(1.0, 0.55, 0.28), "fog_bright": 0.9}
 		Game.TimeOfDay.NOON:
 			p = {"az": 100.0, "el": 46.0, "sun_col": Color(1.0, 0.96, 0.9), "sun_e": 3.2, "sky_i": 22.0,
 				"exposure": 0.42, "fog": 0.000026, "turb": 1.0, "night": 0.0, "amb": 1.0,
-				"amb_col": Color(0.30, 0.38, 0.52), "amb_scale": 1.0, "fog_col": Color(0.60, 0.67, 0.78), "fog_sun": Color(1.0, 0.95, 0.85), "fog_bright": 0.8}
+				"amb_col": Color(0.30, 0.38, 0.52), "amb_scale": 1.0, "fog_col": Color(0.50, 0.58, 0.70), "fog_sun": Color(0.6, 0.55, 0.45), "fog_bright": 0.85}
 		Game.TimeOfDay.DUSK:
 			p = {"az": 292.0, "el": 2.2, "sun_col": Color(1.0, 0.55, 0.3), "sun_e": 1.5, "sky_i": 20.0,
 				"exposure": 1.6, "fog": 0.000038, "turb": 1.8, "night": 0.0, "amb": 1.0,
-				"amb_col": Color(0.25, 0.22, 0.30), "amb_scale": 1.0, "fog_col": Color(0.55, 0.45, 0.42), "fog_sun": Color(1.0, 0.5, 0.25), "fog_bright": 1.0}
+				"amb_col": Color(0.25, 0.22, 0.30), "amb_scale": 1.0, "fog_col": Color(0.42, 0.36, 0.38), "fog_sun": Color(1.0, 0.5, 0.25), "fog_bright": 0.9}
 		_:
 			p = {"az": 0.0, "el": -28.0, "sun_col": Color(1.0, 0.8, 0.6), "sun_e": 0.0, "sky_i": 20.0,
 				"exposure": 2.2, "fog": 0.00002, "turb": 1.0, "night": 1.0, "amb": 0.3,

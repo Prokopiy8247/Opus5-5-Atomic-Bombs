@@ -3,6 +3,10 @@
 # Sources: docs/01_BOMBS_REFERENCE.md and docs/RESEARCH_NOTES.md.
 import json
 import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from bomb_profiles import PROFILES  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 B = []
@@ -55,23 +59,23 @@ bomb(id="b61_12", name={"ru": "B61 мод. 12", "en": "B61 Mod 12"}, original="B
      burst_type="NUCLEAR_AIR", burst_height_m=100.0, medium="air",
      length_m=3.6, diameter_m=0.34, mass_kg=374, model="b61",
      colors={"body": [0.78, 0.78, 0.76], "band": [0.2, 0.2, 0.2], "accent": [0.55, 0.55, 0.55]}, rec_km=12.0)
-bomb(id="little_boy", name={"ru": "«Малыш» (Хиросима)", "en": "Little Boy (Hiroshima)"}, original="Little Boy", year=1945, date="1945-08-06",
-     country={"ru": "США", "en": "USA"}, yield_kt=15.0, yield_conf="measured",
-     burst_type="NUCLEAR_AIR", burst_height_m=580.0, medium="air",
-     length_m=3.0, diameter_m=0.71, mass_kg=4400, model="little_boy",
-     colors={"body": [0.30, 0.32, 0.27], "band": [0.30, 0.32, 0.27], "accent": [0.2, 0.2, 0.2]}, rec_km=20.0)
 bomb(id="grable", name={"ru": "«Грейбл»", "en": "Grable"}, original="Upshot-Knothole Grable (W9, 280 mm)", year=1953, date="1953-05-25",
      country={"ru": "США", "en": "USA"}, yield_kt=15.0, yield_conf="measured",
      burst_type="NUCLEAR_LOW_AIR", burst_height_m=160.0, medium="air",
      length_m=1.38, diameter_m=0.28, mass_kg=364, model="shell",
      colors={"body": [0.35, 0.38, 0.30], "band": [0.9, 0.8, 0.2], "accent": [0.6, 0.45, 0.2]}, rec_km=20.0)
+bomb(id="little_boy", name={"ru": "«Малыш» (Хиросима)", "en": "Little Boy (Hiroshima)"}, original="Little Boy", year=1945, date="1945-08-06",
+     country={"ru": "США", "en": "USA"}, yield_kt=16.0, yield_conf="measured",
+     burst_type="NUCLEAR_AIR", burst_height_m=580.0, medium="air",
+     length_m=3.0, diameter_m=0.71, mass_kg=4400, model="little_boy",
+     colors={"body": [0.30, 0.32, 0.27], "band": [0.30, 0.32, 0.27], "accent": [0.2, 0.2, 0.2]}, rec_km=20.0)
 bomb(id="trinity", name={"ru": "«Тринити» («Гаджет»)", "en": "Trinity (\"Gadget\")"}, original="Trinity / Gadget", year=1945, date="1945-07-16",
      country={"ru": "США", "en": "USA"}, yield_kt=21.0, yield_conf="measured",
      burst_type="NUCLEAR_TOWER", burst_height_m=30.0, medium="ground",
      length_m=1.5, diameter_m=1.5, mass_kg=4700, model="gadget",
      colors={"body": [0.55, 0.55, 0.52], "band": [0.3, 0.3, 0.3], "accent": [0.7, 0.5, 0.3]}, rec_km=25.0)
 bomb(id="baker", name={"ru": "«Бейкер» (Crossroads)", "en": "Baker (Crossroads)"}, original="Crossroads Baker (Mk III)", year=1946, date="1946-07-25",
-     country={"ru": "США", "en": "USA"}, yield_kt=21.0, yield_conf="measured",
+     country={"ru": "США", "en": "USA"}, yield_kt=23.0, yield_conf="measured",
      burst_type="NUCLEAR_UNDERWATER", burst_height_m=-27.0, medium="water",
      length_m=3.26, diameter_m=1.53, mass_kg=4670, model="fatman",
      colors={"body": [0.78, 0.66, 0.25], "band": [0.15, 0.15, 0.15], "accent": [0.2, 0.2, 0.2]}, rec_km=25.0)
@@ -116,14 +120,62 @@ bomb(id="tsar", name={"ru": "«Царь-бомба» (АН602)", "en": "Tsar Bom
      length_m=8.0, diameter_m=2.1, mass_kg=26500, model="tsar",
      colors={"body": [0.92, 0.92, 0.90], "band": [0.6, 0.6, 0.6], "accent": [0.3, 0.3, 0.3]}, rec_km=150.0, parachute=True, snow=True)
 
+# ---------------------------------------------------------------- research values
+# data/research_values.json is extracted from the research workflow (docs/RESEARCH_NOTES.md):
+# measured / resolved numbers override the formula defaults for each bomb.
+RES = {}
+_rp = os.path.join(ROOT, "data", "research_values.json")
+if os.path.exists(_rp):
+    for r in json.load(open(_rp, encoding="utf-8")):
+        RES[r["number"]] = r
+# research numbering follows the task table (Little Boy 9, Grable 10); our order swaps them (D007)
+RES_BY_ID = {}
+_order_task = ["mk82", "mk84", "tallboy", "grand_slam", "moab", "davy_crockett", "foab", "b61_12", "little_boy",
+               "grable", "trinity", "baker", "sedan", "ivy_king", "b83", "rds37", "ivy_mike", "castle_bravo", "test219", "tsar"]
+for i, bid in enumerate(_order_task):
+    if (i + 1) in RES:
+        RES_BY_ID[bid] = RES[i + 1]
+
 for i, b in enumerate(B):
     b["num"] = i + 1
+    r = RES_BY_ID.get(b["id"])
+    if r is None:
+        continue
+    for key in ("length_m", "diameter_m", "mass_kg"):
+        if r.get(key):
+            b[key] = r[key]
+    if r.get("burst_height_m") is not None and b["id"] not in ("little_boy",):
+        b["burst_height_m"] = r["burst_height_m"]
+    if b["id"] == "little_boy":
+        b["burst_height_m"] = 600.0
+    b["blurb"] = {"ru": r.get("blurb_ru", ""), "en": r.get("blurb_en", "")}
+    b["paint_note"] = r.get("paint", "")
+    b["research"] = {
+        "fireball_max_radius_m": r.get("fireball_max_radius_m"),
+        "cloud_top_km": r.get("cloud_top_km"),
+        "cloud_cap_diameter_km": r.get("cloud_cap_diameter_km"),
+        "crater_diameter_m": r.get("crater_diameter_m"),
+        "crater_depth_m": r.get("crater_depth_m"),
+    }
+
     b.setdefault("parachute", False)
     b.setdefault("device", False)
     b.setdefault("snow", False)
     b.setdefault("charge_kg", 0)
     b.setdefault("blurb", {"ru": "", "en": ""})
-    b.setdefault("profile", {})
+    prof = dict(PROFILES.get(b["id"], {}))
+    rr = b.get("research", {})
+    if rr.get("fireball_max_radius_m"):
+        prof.setdefault("fireball_r_m", float(rr["fireball_max_radius_m"]))
+    if rr.get("cloud_top_km"):
+        prof["cloud_top_m"] = float(rr["cloud_top_km"]) * 1000.0
+    if rr.get("cloud_cap_diameter_km"):
+        prof["cap_radius_m"] = float(rr["cloud_cap_diameter_km"]) * 500.0
+    if rr.get("crater_diameter_m") and prof.get("crater", True) and b["medium"] != "water":
+        prof["crater_r_m"] = float(rr["crater_diameter_m"]) * 0.5
+        if rr.get("crater_depth_m"):
+            prof["crater_depth_m"] = float(rr["crater_depth_m"])
+    b["profile"] = prof
 
 if __name__ == "__main__":
     out = {"version": 1, "bombs": B}

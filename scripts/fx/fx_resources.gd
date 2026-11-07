@@ -44,6 +44,11 @@ static func noise_billow() -> ImageTexture3D:
 	return _noise_billow
 
 
+static func release() -> void:
+	_noise_fbm = null
+	_noise_billow = null
+
+
 static func wait_ready(_tree: SceneTree) -> void:
 	var t0 := Time.get_ticks_msec()
 	noise_fbm()

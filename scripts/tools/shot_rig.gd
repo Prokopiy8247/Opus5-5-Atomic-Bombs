@@ -87,6 +87,16 @@ func _setup_view(view: String, ex: Explosion) -> void:
 			cam.director_angle(4, ex.gz, hs.cloud_top, hs.cap_r)
 		"cine":
 			cam.director_angle(1, ex.gz, hs.cloud_top, hs.cap_r)
+		"near":
+			# camera between the bunker and ground zero at --near metres from it, --cam_h above ground
+			var fwd := Vector3(ex.gz.x, 0, ex.gz.z).normalized()
+			var nd := Args.get_float("near", 1000.0)
+			var p := ex.gz - fwd * nd
+			p.y = TerrainMath.height(p.x, p.z) + Args.get_float("cam_h", 20.0)
+			cam.position = p
+			var aim := ex.gz + Vector3(0, Args.get_float("look_h", 50.0), 0)
+			var d := (aim - p).normalized()
+			cam.set_look(atan2(-d.x, -d.z), asin(clampf(d.y, -1.0, 1.0)))
 	var fov := Args.get_float("fov", -1.0)
 	if fov > 0.0:
 		cam.fov = fov

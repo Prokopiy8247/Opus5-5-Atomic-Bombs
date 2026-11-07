@@ -46,14 +46,8 @@ func setup(b: Dictionary, ground_zero: Vector3, p_env: EnvironmentCtl, p_bunker:
 	var burst := gz + Vector3(0, maxf(prof.hob, 0.0), 0)
 	obs_dist = burst.distance_to(observer)
 	obs_ground_dist = Vector2(gz.x, gz.z).length()
-	t_shock_obs = BlastPhysics.arrival_time(prof.w_kt, obs_dist, prof.surface)
-	if prof.kind == ExplosionProfile.Kind.NUCLEAR_BURIED or prof.kind == ExplosionProfile.Kind.CONVENTIONAL_BURIED:
-		# coupled into the ground: weaker air blast
-		p_obs = BlastPhysics.overpressure(prof.w_kt * 0.1, obs_dist, true)
-	elif prof.kind == ExplosionProfile.Kind.NUCLEAR_UNDERWATER:
-		p_obs = BlastPhysics.overpressure(prof.w_kt * 0.3, obs_dist, true)
-	else:
-		p_obs = BlastPhysics.overpressure(prof.w_kt, obs_dist, prof.surface)
+	t_shock_obs = BlastPhysics.arrival_time(prof.w_kt, obs_dist, prof.surface, prof.conventional)
+	p_obs = BlastPhysics.overpressure(prof.blast_yield(), obs_dist, prof.surface, prof.conventional)
 	t_sound_obs = maxf(t_shock_obs, 0.0)
 	t_seismic_obs = BlastPhysics.seismic_delay(obs_ground_dist)
 	q_obs = BlastPhysics.thermal_fluence(prof.w_kt, obs_dist, Game.humidity) if prof.nuclear else 0.0
@@ -80,6 +74,8 @@ func _build() -> void:
 	add_child(volume)
 	_apply_art_static()
 
+	_build_layers()
+
 	fire_light = OmniLight3D.new()
 	fire_light.name = "FireLight"
 	fire_light.light_cull_mask = 1
@@ -87,6 +83,55 @@ func _build() -> void:
 	fire_light.omni_attenuation = 1.0
 	fire_light.light_energy = 0.0
 	add_child(fire_light)
+
+
+func _build_layers() -> void:
+	var k := prof.kind
+	var shock := FxLayersLib.ShockLayer.new()
+	shock.name = "Shock"
+	add_child(shock)
+	shock.setup(self)
+	layers.append(shock)
+	var dust := FxLayersLib.DustWallLayer.new()
+	dust.name = "DustWall"
+	add_child(dust)
+	dust.setup(self)
+	layers.append(dust)
+	var wil := FxLayersLib.WilsonLayer.new()
+	wil.name = "Wilson"
+	add_child(wil)
+	wil.setup(self)
+	layers.append(wil)
+	# ejecta / fragments for ground-coupled bursts
+	var deb_n := int(prof.a("debris_count", 0))
+	if deb_n == 0 and (prof.surface or k in [ExplosionProfile.Kind.NUCLEAR_BURIED, ExplosionProfile.Kind.CONVENTIONAL_BURIED, ExplosionProfile.Kind.CONVENTIONAL_SURFACE]):
+		deb_n = 2500
+	if deb_n > 0:
+		var deb := FxLayersLib.DebrisLayer.new()
+		deb.name = "Debris"
+		add_child(deb)
+		var spd := float(prof.a("debris_speed", clampf(sqrt(prof.crater_r * 9.81 * 2.0) * 1.6, 15.0, 400.0)))
+		var dc: Array = prof.a("debris_color", [0.33, 0.27, 0.21])
+		var size := float(prof.a("debris_size", clampf(prof.crater_r * 0.025, 0.15, 25.0)))
+		var ddelay := float(prof.a("debris_delay", float(prof.a("dome_burst", 0.0))))
+		deb.setup(self, deb_n, spd, float(prof.a("debris_cone", 50.0)), size, Vector3(dc[0], dc[1], dc[2]), float(prof.a("debris_hot", 0.0)), prof.crater_r * 0.6, ddelay)
+		layers.append(deb)
+
+
+## Slant radius of the shock front at time t (from the cumulative arrival table).
+func shock_slant_radius(t: float) -> float:
+	if t <= 0.0:
+		return 0.0
+	var n := arrival_tbl.size()
+	for k in n:
+		if arrival_tbl[k] >= t:
+			if k == 0:
+				return 10.0 * t / maxf(arrival_tbl[0], 1e-6)
+			var r0 := 10.0 * pow(1.06, k - 1)
+			var r1 := 10.0 * pow(1.06, k)
+			var f := (t - arrival_tbl[k - 1]) / maxf(arrival_tbl[k] - arrival_tbl[k - 1], 1e-9)
+			return lerpf(r0, r1, f)
+	return 10.0 * pow(1.06, n - 1)
 
 
 func _apply_art_static() -> void:
@@ -179,6 +224,10 @@ func _update_volume(t: float) -> void:
 	vol_mat.set_shader_parameter("fb", Vector4(0.0, fs["center_y"], 0.0, fr if float(fs["opacity"]) > 0.001 else 0.0))
 	vol_mat.set_shader_parameter("fb_look", Vector4(fs["temp"], fs["emis"], float(prof.a("fireball_noise", 0.22)), fs["opacity"]))
 	vol_mat.set_shader_parameter("fb_shape", Vector4(fs["squash"], fs["mottle"], float(prof.a("fireball_noise_scale", 6.0)), fs["skin"]))
+	var tint: Array = prof.a("fireball_tint", [1.0, 1.0, 1.0, 0.0])
+	if float(tint[3]) > 0.0:
+		var tw := float(tint[3]) * clampf(1.0 - t / float(prof.a("tint_time", 5.0)), 0.0, 1.0)
+		vol_mat.set_shader_parameter("fb_tint", Vector4(tint[0], tint[1], tint[2], tw))
 	var hr: float = hs["radius"] if float(hs["density"]) > 0.001 else 0.0
 	vol_mat.set_shader_parameter("head", Vector4(0.0, hs["center_y"], 0.0, hr))
 	vol_mat.set_shader_parameter("head_shape", Vector4(hs["half"], hs["torus"], hs["density"], hs["roll"]))
@@ -190,8 +239,15 @@ func _update_volume(t: float) -> void:
 	var sr: float = ss["radius"] if float(ss["density"]) > 0.001 and float(ss["top"]) > 1.0 else 0.0
 	vol_mat.set_shader_parameter("stem", Vector4(ss["bottom"], ss["top"], sr, ss["density"]))
 	vol_mat.set_shader_parameter("stem_shape", Vector4(ss["flare"], ss["waist"], ss["hollow"], ss["rise"]))
+	vol_mat.set_shader_parameter("stem_cone", float(prof.a("col_cone", 0.0)) if prof.is_column_kind() else 0.0)
 	var kr: float = ks["radius"] if float(ks["density"]) > 0.001 else 0.0
 	vol_mat.set_shader_parameter("skirt", Vector4(kr, ks["height"], ks["density"], ks["inner"]))
+	var rings := prof.rings_state(t)
+	vol_mat.set_shader_parameter("rings", rings)
+	var ice0 := prof.ice_state(t, 0)
+	var ice1 := prof.ice_state(t, 1)
+	vol_mat.set_shader_parameter("ice", ice0)
+	vol_mat.set_shader_parameter("ice2", ice1)
 	# proxy bounds (local, relative to ground zero)
 	var mn := Vector3(1e9, 1e9, 1e9)
 	var mx := Vector3(-1e9, -1e9, -1e9)
@@ -205,13 +261,23 @@ func _update_volume(t: float) -> void:
 		mn = mn.min(Vector3(-hr - amp, float(hs["center_y"]) - hh - amp, -hr - amp))
 		mx = mx.max(Vector3(hr + amp, float(hs["center_y"]) + hh + amp, hr + amp))
 	if sr > 0.0:
-		var se: float = sr * float(ss["flare"]) * 1.6
+		var se: float = sr * maxf(float(ss["flare"]), 1.0 + float(prof.a("col_cone", 0.0))) * 1.6
 		mn = mn.min(Vector3(-se, ss["bottom"], -se))
 		mx = mx.max(Vector3(se, float(ss["top"]) + sr, se))
 	if kr > 0.0:
 		var kh: float = ks["height"]
 		mn = mn.min(Vector3(-kr - kh, -kh * 0.3, -kr - kh))
 		mx = mx.max(Vector3(kr + kh, kh * 2.2, kr + kh))
+	for rg in rings:
+		if rg.w > 0.0:
+			var e2: float = rg.y + rg.z * 3.0 + 500.0
+			mn = mn.min(Vector3(-e2, rg.x - rg.z * 2.0 - 500.0, -e2))
+			mx = mx.max(Vector3(e2, rg.x + rg.z * 2.0 + 500.0, e2))
+	for sh in [ice0, ice1]:
+		if sh.w > 0.0:
+			var e3: float = sh.y * 1.1
+			mn = mn.min(Vector3(-e3, sh.x - sh.z * 0.3, -e3))
+			mx = mx.max(Vector3(e3, sh.x + sh.z * 1.2, e3))
 	volume.visible = mn.x < mx.x
 	if volume.visible:
 		vol_mat.set_shader_parameter("box_min", mn)
@@ -235,8 +301,10 @@ func _update_lights(t: float) -> void:
 	var d := to_obs.length()
 	# illuminance at the observer in "noon suns"
 	var illum := 0.0
-	if prof.nuclear:
+	if prof.nuclear and not prof.is_column_kind():
 		illum = BlastPhysics.flash_illuminance(prof.w_kt, t, d, Game.humidity)
+	elif prof.nuclear:
+		illum = pw * 50.0 * BlastPhysics.transmittance(d, Game.humidity)
 	else:
 		var fr: float = fs["radius"]
 		illum = pw * 20.0 * (fr * fr) / maxf(d * d, 1.0) * 1000.0 * BlastPhysics.transmittance(d, Game.humidity)
@@ -286,8 +354,10 @@ func step_exposure(t: float, dt: float) -> void:
 func metered_luminance(ti: float, amb: float) -> float:
 	var ill := 0.0
 	var fs := prof.fireball_state(ti)
-	if prof.nuclear:
+	if prof.nuclear and not prof.is_column_kind():
 		ill = BlastPhysics.flash_illuminance(prof.w_kt, ti, obs_dist, Game.humidity)
+	elif prof.nuclear:
+		ill = prof.light_power(ti) * 50.0 * BlastPhysics.transmittance(obs_dist, Game.humidity)
 	else:
 		var fr: float = fs["radius"]
 		ill = prof.light_power(ti) * 20.0 * fr * fr / maxf(obs_dist * obs_dist, 1.0) * 1000.0
@@ -324,8 +394,15 @@ func _update_globals(t: float) -> void:
 	var fpos := gz + Vector3(0, float(fs["center_y"]), 0)
 	RenderingServer.global_shader_parameter_set("g_fireball", Vector4(fpos.x, fpos.y, fpos.z, float(fs["radius"])))
 	var pw := prof.light_power(t)
+	if prof.is_column_kind():
+		pw *= 0.05
 	var col := _bb_color(maxf(float(fs["temp"]), 1500.0))
 	var inten := pw * pow(maxf(prof.w_kt, 0.0001), 0.33) * 40.0 * BlastPhysics.transmittance(obs_dist, Game.humidity)
+	var crim := float(prof.a("crimson", 0.0))
+	if crim > 0.0:
+		# Bravo: the flash dyed the sky and clouds crimson for many seconds
+		col = col.lerp(Color(1.0, 0.18, 0.12), crim * 0.7)
+		inten = maxf(inten, crim * 6.0 * exp(-t / 25.0) * clampf(t / 0.5, 0.0, 1.0))
 	RenderingServer.global_shader_parameter_set("g_fireball_color", Vector4(col.r, col.g, col.b, inten))
 	RenderingServer.global_shader_parameter_set("g_flash", clampf(pw * pow(maxf(prof.w_kt, 0.0001), 0.3) * BlastPhysics.transmittance(obs_dist, Game.humidity) * 0.3, 0.0, 20.0))
 	# cloud shadow on the ground
@@ -353,6 +430,7 @@ func _update_globals(t: float) -> void:
 		RenderingServer.global_shader_parameter_set("g_scorch", Vector4(0, 0, 0, 0))
 	var shock_r := prof.shock_ground_radius(t, arrival_tbl)
 	RenderingServer.global_shader_parameter_set("g_shock", Vector4(shock_r, 1.0, maxf(shock_r * 0.02, 5.0), 1.0 if (prof.surface or prof.dusty) else 0.4))
+	RenderingServer.global_shader_parameter_set("g_dome", prof.dome_state(t))
 
 
 func _fluence_radius(q: float) -> float:

@@ -24,6 +24,8 @@ uniform vec2 level_center = vec2(0.0);
 uniform float half_n = 64.0;
 uniform float inner_half_extent = 0.0; // 0 for level 0
 uniform vec2 inner_center = vec2(0.0);
+uniform bool is_patch = false;
+global uniform vec4 g_patch;   // high-resolution patch around ground zero: x, z, half extent, active
 
 varying vec3 v_world;
 varying float v_cloud_shadow;
@@ -54,7 +56,15 @@ float blast_deform(vec2 xz) {
 }
 
 float full_height(vec2 xz) {
-	return t_height(xz) + blast_deform(xz);
+	float h = t_height(xz);
+	// lagoon basin for the underwater shot
+	if (g_water.z > 0.0) {
+		float r = length(xz - g_water.xy);
+		float k = smoothstep(g_water.z * 1.05, g_water.z * 0.8, r);
+		float bed = g_water.w - 4.0 - 50.0 * smoothstep(g_water.z * 0.95, g_water.z * 0.3, r);
+		h = mix(h, min(h, bed), k);
+	}
+	return h + blast_deform(xz);
 }
 
 void vertex() {
@@ -100,6 +110,13 @@ void fragment() {
 	if (inner_half_extent > 0.0) {
 		vec2 q = abs(xz - inner_center);
 		if (max(q.x, q.y) < inner_half_extent - spacing * 0.75) {
+			discard;
+		}
+	}
+	// the camera-centred clipmap yields to the fine patch around ground zero
+	if (!is_patch && g_patch.w > 0.0) {
+		vec2 qp = abs(xz - g_patch.xy);
+		if (max(qp.x, qp.y) < g_patch.z - spacing * 0.75 && spacing > g_patch.w) {
 			discard;
 		}
 	}

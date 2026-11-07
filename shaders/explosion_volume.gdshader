@@ -40,6 +40,7 @@ uniform vec4 head_detail = vec4(0.32, 0.6, 0.8, 0.0);  // noise amp rel, billow 
 uniform vec4 stem = vec4(0.0);                       // bottom y, top y, radius, density
 uniform vec4 stem_shape = vec4(2.0, 0.25, 0.0, 0.0); // base flare (mult), waist 0..1, hollow wall rel (0 = solid), rise speed
 uniform vec4 stem_col = vec4(0.5, 0.42, 0.35, 2.5);  // rgb, w = noise vertical stretch
+uniform float stem_cone = 0.0;                       // >0: widens with height (ejecta cone / geyser)
 
 // --- ground skirt / base surge
 uniform vec4 skirt = vec4(0.0);                      // outer radius, height, density, inner radius rel
@@ -136,6 +137,7 @@ float stem_radius_at(float y) {
 	float h01 = clamp((y - stem.x) / max(stem.y - stem.x, 1.0), 0.0, 1.0);
 	float r = stem.z * (1.0 + (stem_shape.x - 1.0) * exp(-h01 * 10.0));
 	r *= 1.0 - stem_shape.y * sin(h01 * PI) * 0.5;
+	r *= 1.0 + stem_cone * h01;
 	return r;
 }
 
@@ -447,7 +449,7 @@ void fragment() {
 			float lowk = clamp(-rc.y / max(head_shape.x, 1.0), 0.0, 1.0) * head_col_b.w;
 			c_head *= 1.0 - 0.45 * lowk;
 			vec3 c_stem = stem_col.rgb * (0.8 + 0.35 * sn);
-			vec3 c_skirt = skirt_col.rgb * (0.8 + 0.35 * kn);
+			vec3 c_skirt = skirt_col.rgb * (0.8 + 0.35 * kn) * 0.65;
 			vec3 c_fb = mix(vec3(0.30, 0.13, 0.06), vec3(0.10, 0.07, 0.05), fb_shape.w);
 			vec3 albedo = (c_head * dh * kh + c_stem * ds * ks + c_skirt * dk * kk + c_fb * fbo * kf + vec3(0.97) * (dr * kr + di * ki)) / max(wsum, 1e-9);
 
@@ -482,14 +484,14 @@ void fragment() {
 				vec2 nr = normalize(p.xz + vec2(1e-3));
 				macro = clamp(dot(vec3(nr.x, 0.15, nr.y), L) * 0.55 + 0.5, 0.0, 1.0);
 			}
-			float micro = exp(-od_local * 0.5);
+			float micro = mix(1.0, exp(-od_local * 0.6), 0.65);
 			float far_s = exp(-od_far);
 			float t_sun = macro * micro * far_s;
 			float sunlit = t_sun * mix(1.0, phase, 0.5) * 1.1 + 0.05 * exp(-od_far * 0.3) * (0.3 + 0.7 * macro);
 			float od_up = cheap_density(p + vec3(0.0, sh_len * 0.3, 0.0));
 			float dh_up = dh > 0.0 ? head_density(p + vec3(0.0, hl * 0.12, 0.0), c2, rc2) : 0.0;
 			float ao = exp(-od_up * 1.4 - dh_up * 1.5) * 0.85 + 0.15;
-			vec3 light = sun_c * sunlit + amb * ao * 0.8;
+			vec3 light = sun_c * sunlit + amb * ao * 0.6;
 			float hgt = clamp(p.y / max(sh_len * 2.0, 1.0), 0.0, 1.0);
 			light += ground_col * (sun_c * max(L.y, 0.0) * 0.18 + fire_c * 0.004) * (1.0 - hgt) * (1.0 - ao * 0.6);
 			if (fb.w > 0.0 && fb_look.w > 0.0) {

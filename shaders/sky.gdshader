@@ -7,6 +7,8 @@ global uniform vec4 g_fireball;        // xyz world pos, w radius
 global uniform vec4 g_fireball_color;  // rgb colour, w luminous intensity (relative)
 global uniform float g_flash;          // global scattered flash 0..N
 global uniform float g_night;
+global uniform vec4 g_fog_color;     // shared haze colour (also used by aerial perspective)
+global uniform vec4 g_fog_sun;
 
 uniform vec3 sun_dir = vec3(0.0, 0.5, -0.8);
 uniform float sun_intensity = 22.0;
@@ -131,6 +133,11 @@ void sky() {
 		float md = dot(rd, M);
 		col += vec3(0.9, 0.9, 0.85) * smoothstep(0.99996, 0.99999, md) * 0.6 * g_night;
 	}
+	// horizon haze: the same colour the aerial perspective fades distant terrain into
+	float hz = exp(-max(rd.y, 0.0) * 14.0) * 0.75 + exp(-max(rd.y, 0.0) * 60.0) * 0.2;
+	float mu_s = max(dot(rd_s, L), 0.0);
+	vec3 haze = g_fog_color.rgb * g_fog_color.w + g_fog_sun.rgb * g_fog_color.w * (pow(mu_s, 6.0) * 0.8 + pow(mu_s, 40.0) * 1.5);
+	col = mix(col, haze, clamp(hz, 0.0, 0.95));
 	// sun disc
 	if (!AT_CUBEMAP_PASS) {
 		float sd = dot(rd, L);

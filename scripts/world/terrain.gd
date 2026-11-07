@@ -9,6 +9,10 @@ const LEVELS := 14             # outer extent: 64 * 2^13 m = 524 km
 
 var _levels: Array[MeshInstance3D] = []
 var _materials: Array[ShaderMaterial] = []
+var _patch_levels: Array[MeshInstance3D] = []
+var _patch_mats: Array[ShaderMaterial] = []
+const PATCH_LEVELS := 6
+var _grid_mesh: ArrayMesh
 var _shader: Shader
 var _focus := Vector3.ZERO
 
@@ -16,6 +20,7 @@ var _focus := Vector3.ZERO
 func _ready() -> void:
 	_shader = load("res://shaders/terrain.gdshader")
 	var mesh := _build_grid_mesh()
+	_grid_mesh = mesh
 	for l in LEVELS:
 		var mi := MeshInstance3D.new()
 		mi.name = "Level%d" % l
@@ -82,6 +87,48 @@ func update_focus(cam_pos: Vector3, force := false) -> void:
 		mat.set_shader_parameter("inner_center", prev_center)
 		prev_center = c
 		prev_half = s * N * 0.5
+
+
+## High-resolution terrain patch around ground zero so craters, domes and scorch marks are
+## resolved in geometry even 100+ km away. half_extent: metres covered by the outer patch level.
+func set_patch(center: Vector3, half_extent: float) -> void:
+	clear_patch()
+	var s0 := maxf(half_extent / (float(N) * 0.5 * pow(2.0, PATCH_LEVELS - 1)), 0.05)
+	var prev_center := Vector2.ZERO
+	var prev_half := 0.0
+	for l in PATCH_LEVELS:
+		var s := s0 * pow(2.0, l)
+		var snap := 2.0 * s
+		var c := Vector2(roundf(center.x / snap) * snap, roundf(center.z / snap) * snap)
+		var mi := MeshInstance3D.new()
+		mi.name = "Patch%d" % l
+		mi.mesh = _grid_mesh
+		var mat := ShaderMaterial.new()
+		mat.shader = _shader
+		mat.set_shader_parameter("half_n", float(N / 2))
+		mat.set_shader_parameter("spacing", s)
+		mat.set_shader_parameter("level_center", c)
+		mat.set_shader_parameter("inner_half_extent", prev_half)
+		mat.set_shader_parameter("inner_center", prev_center)
+		mat.set_shader_parameter("is_patch", true)
+		mi.material_override = mat
+		mi.extra_cull_margin = 16384.0
+		mi.custom_aabb = AABB(Vector3(-600000, -20000, -600000), Vector3(1200000, 40000, 1200000))
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mi)
+		_patch_levels.append(mi)
+		_patch_mats.append(mat)
+		prev_center = c
+		prev_half = s * N * 0.5
+	RenderingServer.global_shader_parameter_set("g_patch", Vector4(prev_center.x, prev_center.y, prev_half, s0 * pow(2.0, PATCH_LEVELS - 1)))
+
+
+func clear_patch() -> void:
+	for mi in _patch_levels:
+		mi.queue_free()
+	_patch_levels.clear()
+	_patch_mats.clear()
+	RenderingServer.global_shader_parameter_set("g_patch", Vector4.ZERO)
 
 
 func _process(_delta: float) -> void:

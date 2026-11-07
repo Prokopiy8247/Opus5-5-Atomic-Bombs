@@ -242,8 +242,8 @@ func _build_lights() -> void:
 		var l := OmniLight3D.new()
 		l.position = Vector3(x, CEIL_Y - 0.5, 0.6)
 		l.light_color = Color(1.0, 0.88, 0.7)
-		l.light_energy = 1.4
-		l.omni_range = 9.0
+		l.light_energy = 2.2
+		l.omni_range = 11.0
 		l.shadow_enabled = i == 1
 		l.light_cull_mask = LAYER_BUNKER
 		add_child(l)
@@ -341,6 +341,18 @@ func apply_shock(pressure_psi: float) -> void:
 	_flicker_t = 3.0 + pressure_psi
 
 
+var night_mode := false
+
+
+## Night: dim red "night-vision" lighting so the range stays visible through the window.
+func set_night(on: bool) -> void:
+	night_mode = on
+	for l in lamps:
+		l.light_color = Color(1.0, 0.22, 0.12) if on else Color(1.0, 0.88, 0.7)
+	lamp_mat.emission = Color(1.0, 0.2, 0.1) if on else Color(1.0, 0.92, 0.78)
+	_apply_lamps(lights_health)
+
+
 func reset_state() -> void:
 	crack = 0.0
 	shattered = false
@@ -356,10 +368,11 @@ func reset_state() -> void:
 
 
 func _apply_lamps(level: float) -> void:
+	var k := 0.12 if night_mode else 1.0
 	for l in lamps:
-		l.light_energy = 1.4 * level
-	lamp_mat.emission_energy_multiplier = 6.0 * level
-	screens_mat.emission_energy_multiplier = 0.9 * clampf(level * 1.2, 0.15, 1.0)
+		l.light_energy = 2.2 * level * k
+	lamp_mat.emission_energy_multiplier = 6.0 * level * (0.25 if night_mode else 1.0)
+	screens_mat.emission_energy_multiplier = 0.9 * clampf(level * 1.2, 0.15, 1.0) * (0.2 if night_mode else 1.0)
 
 
 func _process(delta: float) -> void:

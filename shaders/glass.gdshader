@@ -111,9 +111,9 @@ void fragment() {
 		cm = max(cm, web * web_mask * 0.7);
 	}
 	ALBEDO = mix(vec3(0.02, 0.025, 0.025), vec3(0.30, 0.29, 0.26), d);
-	ROUGHNESS = mix(0.04, 0.6, d);
+	ROUGHNESS = mix(0.22, 0.6, d);
 	METALLIC = 0.0;
-	SPECULAR = 0.35;
+	SPECULAR = 0.18;
 	float a = 0.05 + d * 0.16;
 	// crack lines catch light
 	ALBEDO = mix(ALBEDO, vec3(0.85), cm);

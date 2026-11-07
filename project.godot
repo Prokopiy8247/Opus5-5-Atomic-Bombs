@@ -140,3 +140,7 @@ g_sun_light={
 "type": "vec4",
 "value": Vector4(3, 2.9, 2.8, 1)
 }
+g_patch={
+"type": "vec4",
+"value": Vector4(0, 0, 0, 0)
+}
