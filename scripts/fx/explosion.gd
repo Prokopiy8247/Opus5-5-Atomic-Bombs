@@ -289,9 +289,11 @@ func _update_volume(t: float) -> void:
 		mx = mx.max(Vector3(e, float(fs["center_y"]) + e, e))
 	if hr > 0.0:
 		var hh: float = hs["half"]
-		var amp := float(prof.a("head_noise_amp", 0.30)) * hh * 1.6
-		mn = mn.min(Vector3(-hr - amp, float(hs["center_y"]) - hh - amp, -hr - amp))
-		mx = mx.max(Vector3(hr + amp, float(hs["center_y"]) + hh + amp, hr + amp))
+		# lobes reach ~1.1 R and the noise displacement ~amp beyond: the box must not cut them
+		var amp := float(prof.a("head_noise_amp", 0.30)) * minf(hr, hh * 1.8) * 1.2 + hh * 0.3
+		var exh := hr * 1.15 + amp
+		mn = mn.min(Vector3(-exh, float(hs["center_y"]) - hh * 1.1 - amp, -exh))
+		mx = mx.max(Vector3(exh, float(hs["center_y"]) + hh * 1.1 + amp, exh))
 	if sr > 0.0:
 		var se: float = sr * maxf(float(ss["flare"]), 1.0 + float(prof.a("col_cone", 0.0))) * 1.6
 		mn = mn.min(Vector3(-se, ss["bottom"], -se))
@@ -299,8 +301,8 @@ func _update_volume(t: float) -> void:
 		mx = mx.max(Vector3(se * (1.0 + float(prof.a("stem_top_flare", 0.0))), stop, se * (1.0 + float(prof.a("stem_top_flare", 0.0)))))
 	if kr > 0.0:
 		var kh: float = ks["height"]
-		mn = mn.min(Vector3(-kr - kh, -kh * 0.3, -kr - kh))
-		mx = mx.max(Vector3(kr + kh, kh * 2.2, kr + kh))
+		mn = mn.min(Vector3(-kr * 1.32 - kh * 1.5, -kh * 0.3, -kr * 1.32 - kh * 1.5))
+		mx = mx.max(Vector3(kr * 1.32 + kh * 1.5, kh * 2.6, kr * 1.32 + kh * 1.5))
 	for rg in rings:
 		if rg.w > 0.0:
 			var e2: float = rg.y + rg.z * 3.0 + 500.0
@@ -425,14 +427,17 @@ func metered_luminance(ti: float, amb: float) -> float:
 			# the auto-framed binocular view is not the eye filled by the ball: coverage capped
 			var cov := clampf(pow(ang_r / half_fov, 2.0) * 6.0, 0.0, 0.35)
 			# a camera / binocular stopped down on a fireball that fills the view (rapatronic look)
-			env_ctl.max_comp = lerpf(4.5, 6.0, cov) if ti < 3.0 * prof.t2 else lerpf(1.6, 2.6, cov)
+			# the camera opens up gradually as the ball cools (a hard switch at 3 t2 flashed the frame
+			# to white for megatons)
+			var kc := smoothstep(3.0 * prof.t2, 15.0 * prof.t2, ti)
+			env_ctl.max_comp = lerpf(lerpf(4.5, 6.0, cov), lerpf(1.6, 2.6, cov), kc)
 			var tt: float = fs["temp"]
 			var x := tt / 8000.0
 			# metering keeps the ball ~4 stops above middle grey: blinding white core, structure only
 			# at the limb (cycle-2 review: the ball must not turn into grey-beige cotton)
 			# ~4 stops above middle grey while blinding (< 3 t2), then the camera keeps the cooling
 			# ball's colour (yellow -> orange -> red) instead of letting it clip to white
-			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / ((16.0 if ti < 3.0 * prof.t2 else 6.0) * amb)
+			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / (lerpf(16.0, 6.0, kc) * amb)
 			lum = maxf(lum, (1.0 - cov) * (1.0 + lum) + cov * l_fb - 1.0)
 			if prof.w_kt < 1.0 and ti > 3.0 * prof.t2:
 				# a sub-kiloton ball at 10+ km does not keep a camera stopped down

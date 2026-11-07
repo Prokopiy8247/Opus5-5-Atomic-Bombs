@@ -519,65 +519,89 @@ static func make_tremor() -> AudioStreamWAV:
 
 # =============================================================================== flight
 
-## Rocket ignition (2.6 s): bang plus the roar building up (the loop takes over).
+## Rocket ignition (3 s): the ignition overpressure 'whump' (a ~30 ms pressure pulse), a sharp
+## crack, then the roar and its crackle building up over ~0.4 s (the loop takes over at ~2 s).
 static func make_rocket_ignite() -> AudioStreamWAV:
-	var rate := 22050.0
-	var n := int(2.6 * rate)
-	var out := sweep(n, rate, 95.0, 38.0, 0.12, 0.002, 0.22)
-	scale(out, 0.9)
-	var bn := noise(n, 701)
-	lp1(bn, 520.0, rate)
-	env_ad(bn, rate, 0.0008, 0.12)
-	add(out, normalize(bn, 1.0), 0, 0.85)
-	var core := noise(n, 702)
-	lp1(core, 1600.0, rate)
-	var cr := impulses(n, 0.004, 703, true)
-	biquad(cr, BQ_BP, 2400.0, 0.9, rate)
-	normalize(cr, 1.0)
-	normalize(core, 1.0)
-	var ka := exp(-1.0 / (0.28 * rate))
+	var rate := 32000.0
+	var n := int(3.0 * rate)
+	var out := _buf(n)
+	var o := int(0.01 * rate)
+	# ignition overpressure: Friedlander pulse t+ 30 ms, plus its ground reflection
+	nwave(out, o, rate, 0.034, 1.0, 0.0004)
+	nwave(out, o + int(0.006 * rate), rate, 0.04, 0.45, 0.0015)
+	var roar := _rocket_noise(n, rate, 7101, 1.0)
+	var ka := exp(-1.0 / (0.32 * rate))
 	var ea := 1.0
 	for i in n:
 		var t := float(i) / rate
-		var e := (1.0 - ea) * (1.0 - smoothstep(1.3, 2.6, t))
-		out[i] += (core[i] * 0.7 + cr[i] * 0.35) * e
-		ea *= ka
+		var e := (1.0 - ea) * (1.0 - smoothstep(2.0, 3.0, t)) if t > 0.03 else 0.0
+		out[i] = out[i] * 1.1 + roar[i] * e * 0.8
+		if t > 0.03:
+			ea *= ka
+	hp1(out, 18.0, rate)
 	normalize(out, 0.95)
-	fade_out(out, rate, 0.1)
+	fade_out(out, rate, 0.15)
 	return to_wav(out, int(rate), false)
 
 
-## Rocket motor roar loop (3 s, mono for AudioStreamPlayer3D): low roar, mid, hiss, crackle.
+## Rocket motor roar loop (4 s, mono for AudioStreamPlayer3D): see _rocket_noise.
 static func make_rocket_loop() -> AudioStreamWAV:
-	var rate := 22050.0
-	var ln := int(3.0 * rate)
-	var xn := int(0.4 * rate)
-	var n := ln + xn
-	var nz := noise(n, 801)
-	var fl := smooth_noise(n, 802, 13.0, rate)
-	var cr := impulses(n, 0.0035, 803, true)
-	hp1(cr, 400.0, rate)
-	biquad(cr, BQ_BP, 2100.0, 0.8, rate)
-	normalize(cr, 1.0)
-	var out := _buf(n)
-	var f1 := 2.0 * sin(PI * 260.0 / rate)
-	var f2 := 2.0 * sin(PI * 1300.0 / rate)
-	var lo1 := 0.0
-	var bd1 := 0.0
-	var lo2 := 0.0
-	var bd2 := 0.0
-	for i in n:
-		var x := nz[i]
-		lo1 += f1 * bd1
-		var hi1 := x - lo1 - 1.0 * bd1
-		bd1 += f1 * hi1
-		lo2 += f2 * bd2
-		var hi2 := x - lo2 - 1.2 * bd2
-		bd2 += f2 * hi2
-		out[i] = (lo1 * 2.0 - bd2 * 0.65 + hi2 * 0.14) * (0.85 + 0.15 * fl[i]) + cr[i] * 0.45
+	var rate := 32000.0
+	var ln := int(4.0 * rate)
+	var xn := int(0.5 * rate)
+	var out := _rocket_noise(ln + xn, rate, 8101, 1.0)
 	out = loopify(out, xn)
 	normalize(out, 0.9)
 	return to_wav(out, int(rate), true)
+
+
+## Solid-motor jet noise: a broad roar peaking around 100-400 Hz (large-scale turbulence of a
+## ~0.5-1 m nozzle, Strouhal ~0.1-0.2), a weaker mid/high band, and CRACKLE - the skewed train of
+## steepened shocklets (sharp positive spikes, slow negative return, Pareto-distributed strength)
+## that makes rocket noise 'tear' and 'pop' (waveform skewness ~0.4). Turbulent amplitude
+## modulation at a few Hz.
+static func _rocket_noise(n: int, rate: float, sd: int, amp: float) -> PackedFloat32Array:
+	var lo := noise(n, sd)
+	lp1(lo, 160.0, rate)
+	lp1(lo, 260.0, rate)
+	hp1(lo, 25.0, rate)
+	normalize(lo, 1.0)
+	var mid := noise(n, sd + 1)
+	biquad(mid, BQ_BP, 520.0, 0.7, rate)
+	normalize(mid, 1.0)
+	var hi := noise(n, sd + 2)
+	hp1(hi, 1800.0, rate)
+	lp1(hi, 7000.0, rate)
+	normalize(hi, 1.0)
+	# crackle: Poisson shocklets
+	var cr := _buf(n)
+	var st := _seed(sd + 3)
+	var i := 0
+	var mean_gap := rate / 600.0
+	while i < n:
+		st = (st * 1103515245 + 12345) & 0x7FFFFFFF
+		var u := float(st) * INV_2_31
+		i += int(-log(maxf(u, 1e-6)) * mean_gap) + 1
+		if i >= n:
+			break
+		st = (st * 1103515245 + 12345) & 0x7FFFFFFF
+		var v := maxf(float(st) * INV_2_31, 1e-3)
+		var a := minf(pow(v, -1.0 / 1.7), 12.0)       # heavy-tailed strengths
+		var m := mini(int(0.004 * rate), n - i)
+		var kd := 1.0 / (0.00035 * rate)
+		for j in m:
+			var fj := float(j)
+			# instantaneous rise, fast decay, then a slower shallow negative return
+			cr[i + j] += a * (exp(-fj * kd) - 0.22 * (1.0 - exp(-fj * kd * 0.25)) * exp(-fj * kd * 0.12))
+	hp1(cr, 250.0, rate)
+	normalize(cr, 1.0)
+	var am := smooth_noise(n, sd + 4, 7.0, rate)
+	var am2 := smooth_noise(n, sd + 5, 1.3, rate)
+	var out := _buf(n)
+	for k in n:
+		var g := 0.78 + 0.16 * am[k] + 0.08 * am2[k]
+		out[k] = (lo[k] * 1.0 + mid[k] * 0.3 + hi[k] * 0.05 + cr[k] * 1.15) * g * amp
+	return out
 
 
 ## Falling-bomb whistle loop (2 s): a 1450 Hz tone with vibrato plus narrow-band air noise.

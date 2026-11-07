@@ -3,6 +3,8 @@ extends Node3D
 ## UI and audio; runs the game loop (menu -> flight -> explosion), input, auto-quality,
 ## movie/cinematic mode and the deterministic test rig.
 
+const BlastParams = preload("res://scripts/audio/blast_params.gd")
+
 enum State { MENU, FLIGHT, EXPLOSION, DESTROYED }
 
 const UI_PATH := "res://scripts/ui/ui_root.gd"
@@ -345,6 +347,11 @@ func launch(bomb_index: int, dist_km: float, az_deg: float) -> void:
 	if sound:
 		sound.rocket_start(launcher.current_position())
 		sound.play_ui("launch")
+		# synthesize the blast this bomb will make at this distance while the booster flies
+		var gd := Vector2(target_gz.x, target_gz.z).length()
+		var sp := BlastParams.params_for(b, gd, Game.humidity)
+		sp["key"] = _synth_key(bomb_index, gd)
+		sound.prepare_blast(sp)
 	if ui:
 		ui.show_menu(false)
 		if ui.has_method("show_destroyed"):
@@ -368,7 +375,12 @@ func _on_detonated(_burst: Vector3) -> void:
 			"t_seismic": explosion.t_seismic_obs, "t_shock": explosion.t_shock_obs,
 			"p_psi": explosion.p_obs, "nuclear": explosion.prof.nuclear,
 			"kind": String(b.get("burst_type", "")), "megaton": explosion.prof.w_kt >= 1000.0,
+			"synth_key": _synth_key(_flight_bomb, Vector2(target_gz.x, target_gz.z).length()),
 		})
+
+
+func _synth_key(bomb_index: int, ground_m: float) -> String:
+	return "%d_%d" % [bomb_index, int(ground_m)]
 
 
 func reset_scene() -> void:

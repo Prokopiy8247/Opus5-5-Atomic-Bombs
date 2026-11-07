@@ -34,7 +34,46 @@ at the given age and 240 frames timed; `--write-movie` is never used for FPS).
 
 ## 4. Visual verification: fix → render → look cycles
 
-<!--CYCLES-->
+Each cycle: deterministic renders of every bomb (`tools/render_all.py`: binocular "zoom" view from the bunker at the
+recommended distance and the historical time of day, plus an outside camera between the bunker and ground zero),
+then an independent review by five art-director agents comparing contact sheets with the reference photos in
+`docs/refs/` (`docs/reviews/cycleN_art_review.json`: per bomb a 1-10 realism score and severity-ranked issues with
+concrete fixes), then fixes, then a re-render that the lead developer looked at frame by frame. Cycle 3 added five
+parallel technical-artist agents that each tuned four bombs over 6-13 render iterations (`docs/reviews/cycle3_tuning.json`).
+
+| # | bomb | cycle 1 | cycle 2 | cycle 3 review | after cycle-3 tuning (tuner estimate) |
+|---|---|---|---|---|---|
+| 1 | mk82 | 2 | 3 | 4 | 6 |
+| 2 | mk84 | 2 | 3 | 3 | 6 |
+| 3 | tallboy | 3 | 3 | 4 | 5 |
+| 4 | grand_slam | 2 | 3 | 3 | 5 |
+| 5 | moab | 3 | 2 | 3 | 6 |
+| 6 | davy_crockett | 3 | 3 | 3 | 6 |
+| 7 | foab | 2 | 4 | 4 | 6 |
+| 8 | b61_12 | 3 | 4 | 4 | 6 |
+| 9 | grable | 3 | 3 | 4 | 6 |
+| 10 | little_boy | 2 | 3 | 3 | 5 |
+| 11 | trinity | 3 | 3 | 4 | 7 |
+| 12 | baker | 3 | 2 | 3 | 6 |
+| 13 | sedan | 2 | 3 | 3 | 5 |
+| 14 | ivy_king | 3 | 3 | 4 | 5 |
+| 15 | b83 | 2 | 4 | 5 | 6 |
+| 16 | rds37 | 3 | 3 | 4 | 5 |
+| 17 | ivy_mike | 3 | 4 | 4 | 6 |
+| 18 | castle_bravo | 2 | 3 | 3 | 5 |
+| 19 | test219 | 3 | 3 | 4 | 6 |
+| 20 | tsar | 3 | 3 | 4 | 5 |
+| | **average** | 2.60 | 3.10 | 3.65 | 5.65 |
+
+The reviewers were instructed to be harsh ("find everything that looks fake"); a 5-6 means "clearly recognisable
+and plausible, with visible CG shortcuts". The tuner estimates are self-assessments by the agents that made the
+changes, verified by the lead on the final render set (r8) - they are not independent scores.
+
+Main systemic fixes of cycle 3 (details in `docs/DECISIONS.md` D022-D030): cloud-head noise rescaled from a fine
+"pom-pom" felt to large cauliflower lobes; condensation rings as thin laminar sheets; HE flames on the ground with a hot
+core dying into soot; fireball metering that keeps the white -> yellow -> orange progression; phallic silhouettes
+(Sedan, Mk 84 at 2 s, Grand Slam, B61 dust column, Bravo stem tip) removed; the Baker lagoon made visible (it was
+back-face culled); a pre-dawn preset for Trinity; review framing that keeps ground zero and the whole cloud in frame.
 
 ## 5. Launch scripts
 

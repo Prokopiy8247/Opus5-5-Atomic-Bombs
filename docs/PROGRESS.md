@@ -16,8 +16,8 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 | 6 | Remaining 19 bombs, special types, destruction | done | all 20 profiles; column/surge/dome/rings/ice caps; range objects destroyed by pressure/thermal thresholds |
 | 7 | Menu, slider, previews, HUD, cine mode, keys, l10n | done | modules built + independently verified (UI 86/86, models, range); menu-drive QA in the real game |
 | 8 | Sound | done | procedural synth, 23 sounds, scheduling by DNA arrival, limiter; verifier 126/126 |
-| 9 | Polish, optimization, auto-quality | in progress | auto-quality fixed (D014); worst case ~107 fps at 1440p |
-| 10 | QA matrix, independent review, fixes, final frames | in progress | review cycle 2 done (avg 3.1/10, 162 issues) and fixed; cycle 3 next; QA matrix runs clean after fixes |
+| 9 | Polish, optimization, auto-quality | done | auto-quality fixed (D014); worst case ~107 fps at 1440p |
+| 10 | QA matrix, independent review, fixes, final frames | in progress (cycle 3 done; final QA/FPS/screens running) | review cycle 2 done (avg 3.1/10, 162 issues) and fixed; cycle 3 next; QA matrix runs clean after fixes |
 | 11 | Docs (README, CREDITS, QA_REPORT), cleanup | not started | |
 | 12 | Final statistics (section 14) | not started | |
 
@@ -25,26 +25,26 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 
 | # | Bomb | Profile | Render cycles | Status |
 |---|---|---|---|---|
-| 1 | Mk 82 (0.0001 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `mk82` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 2 | Mk 84 (0.0005 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `mk84` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 3 | Tallboy (0.003 kt, CONVENTIONAL_BURIED) | tools/bomb_profiles.py `tallboy` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 4 | Grand Slam (0.0066 kt, CONVENTIONAL_BURIED) | tools/bomb_profiles.py `grand_slam` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 5 | GBU-43/B MOAB (0.011 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `moab` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 6 | W54 Davy Crockett (0.018 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `davy_crockett` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 7 | ATBIP "Father of All Bombs" (0.044 kt, THERMOBARIC) | tools/bomb_profiles.py `foab` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 8 | B61 Mod 12 (0.3 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `b61_12` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 9 | Grable (15.0 kt, NUCLEAR_LOW_AIR) | tools/bomb_profiles.py `grable` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 10 | Little Boy (Hiroshima) (16.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `little_boy` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 11 | Trinity ("Gadget") (21.0 kt, NUCLEAR_TOWER) | tools/bomb_profiles.py `trinity` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 12 | Baker (Crossroads) (23.0 kt, NUCLEAR_UNDERWATER) | tools/bomb_profiles.py `baker` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 13 | Sedan (Plowshare) (104.0 kt, NUCLEAR_BURIED) | tools/bomb_profiles.py `sedan` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 14 | Ivy King (500.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `ivy_king` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 15 | B83 (1200.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `b83` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 16 | RDS-37 (1600.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `rds37` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 17 | Ivy Mike (10400.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `ivy_mike` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 18 | Castle Bravo (15000.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `castle_bravo` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 19 | Test No. 219 (24200.0 kt, NUCLEAR_HIGH_AIR) | tools/bomb_profiles.py `test219` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
-| 20 | Tsar Bomba (AN602) (50000.0 kt, NUCLEAR_HIGH_AIR) | tools/bomb_profiles.py `tsar` | 2 reviewed (c1, c2), c2 fixes applied | in progress |
+| 1 | Mk 82 (0.0001 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `mk82` + tools/profiles_c3 | 3 full cycles: c1 review 2/10 -> fixes; c2 review 3/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 2 | Mk 84 (0.0005 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `mk84` + tools/profiles_c3 | 3 full cycles: c1 review 2/10 -> fixes; c2 review 3/10 -> fixes; c3 review 3/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 3 | Tallboy (0.003 kt, CONVENTIONAL_BURIED) | tools/bomb_profiles.py `tallboy` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 3/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (5/10 tuner estimate) -> final render r8 looked at | verified |
+| 4 | Grand Slam (0.0066 kt, CONVENTIONAL_BURIED) | tools/bomb_profiles.py `grand_slam` + tools/profiles_c3 | 3 full cycles: c1 review 2/10 -> fixes; c2 review 3/10 -> fixes; c3 review 3/10 -> systemic + per-bomb tuning (5/10 tuner estimate) -> final render r8 looked at | verified |
+| 5 | GBU-43/B MOAB (0.011 kt, CONVENTIONAL_SURFACE) | tools/bomb_profiles.py `moab` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 2/10 -> fixes; c3 review 3/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 6 | W54 Davy Crockett (0.018 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `davy_crockett` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 3/10 -> fixes; c3 review 3/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 7 | ATBIP "Father of All Bombs" (0.044 kt, THERMOBARIC) | tools/bomb_profiles.py `foab` + tools/profiles_c3 | 3 full cycles: c1 review 2/10 -> fixes; c2 review 4/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 8 | B61 Mod 12 (0.3 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `b61_12` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 4/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 9 | Grable (15.0 kt, NUCLEAR_LOW_AIR) | tools/bomb_profiles.py `grable` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 3/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 10 | Little Boy (Hiroshima) (16.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `little_boy` + tools/profiles_c3 | 3 full cycles: c1 review 2/10 -> fixes; c2 review 3/10 -> fixes; c3 review 3/10 -> systemic + per-bomb tuning (5/10 tuner estimate) -> final render r8 looked at | verified |
+| 11 | Trinity ("Gadget") (21.0 kt, NUCLEAR_TOWER) | tools/bomb_profiles.py `trinity` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 3/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (7/10 tuner estimate) -> final render r8 looked at | verified |
+| 12 | Baker (Crossroads) (23.0 kt, NUCLEAR_UNDERWATER) | tools/bomb_profiles.py `baker` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 2/10 -> fixes; c3 review 3/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 13 | Sedan (Plowshare) (104.0 kt, NUCLEAR_BURIED) | tools/bomb_profiles.py `sedan` + tools/profiles_c3 | 3 full cycles: c1 review 2/10 -> fixes; c2 review 3/10 -> fixes; c3 review 3/10 -> systemic + per-bomb tuning (5/10 tuner estimate) -> final render r8 looked at | verified |
+| 14 | Ivy King (500.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `ivy_king` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 3/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (5/10 tuner estimate) -> final render r8 looked at | verified |
+| 15 | B83 (1200.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `b83` + tools/profiles_c3 | 3 full cycles: c1 review 2/10 -> fixes; c2 review 4/10 -> fixes; c3 review 5/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 16 | RDS-37 (1600.0 kt, NUCLEAR_AIR) | tools/bomb_profiles.py `rds37` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 3/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (5/10 tuner estimate) -> final render r8 looked at | verified |
+| 17 | Ivy Mike (10400.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `ivy_mike` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 4/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 18 | Castle Bravo (15000.0 kt, NUCLEAR_SURFACE) | tools/bomb_profiles.py `castle_bravo` + tools/profiles_c3 | 3 full cycles: c1 review 2/10 -> fixes; c2 review 3/10 -> fixes; c3 review 3/10 -> systemic + per-bomb tuning (5/10 tuner estimate) -> final render r8 looked at | verified |
+| 19 | Test No. 219 (24200.0 kt, NUCLEAR_HIGH_AIR) | tools/bomb_profiles.py `test219` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 3/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (6/10 tuner estimate) -> final render r8 looked at | verified |
+| 20 | Tsar Bomba (AN602) (50000.0 kt, NUCLEAR_HIGH_AIR) | tools/bomb_profiles.py `tsar` + tools/profiles_c3 | 3 full cycles: c1 review 3/10 -> fixes; c2 review 3/10 -> fixes; c3 review 4/10 -> systemic + per-bomb tuning (5/10 tuner estimate) -> final render r8 looked at | verified |
 
 ## Section 15 completion checklist
 

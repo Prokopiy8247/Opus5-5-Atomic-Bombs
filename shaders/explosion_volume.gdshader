@@ -211,6 +211,9 @@ float sdf_skirt(vec3 p) {
 	}
 	float hh = h * prof;
 	float d = max(p.y - hh, -p.y - h * 0.15);
+	// radial bound: beyond the toe there is nothing (the proxy box used to cut a thin noisy sheet
+	// that ran out to infinity, leaving vertical 'walls' at the box faces)
+	d = max(d, r - R * 1.3 - h * 0.5);
 	float inner = R * skirt.w;
 	d = max(d, (inner - r) * 0.5);
 	return d;

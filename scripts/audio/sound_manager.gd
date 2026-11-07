@@ -17,6 +17,7 @@ extends Node
 ## time_scale 0; a forward jump starts a layer at the matching offset or skips it if it is over.
 
 const AudioSynth = preload("res://scripts/audio/audio_synth.gd")
+const BlastSynth = preload("res://scripts/audio/blast_synth.gd")
 
 const SOUND_SPEED := 343.0
 const LN10 := 2.302585092994046
@@ -36,7 +37,11 @@ const MAX_THUNDER := 7
 const EXIT_DRAIN_MS := 60
 ## One player per thunder roll: reusing a playing player would cut its tail (set_stream stops it).
 const BLAST_IDS := ["crack", "crack2", "thump", "infra", "rumble", "thunder0", "thunder1",
-		"thunder2", "thunder3", "thunder4", "thunder5", "thunder6", "roar", "wind"]
+		"thunder2", "thunder3", "thunder4", "thunder5", "thunder6", "roar", "wind",
+		"blast_front", "blast_tail"]
+## Generic layers replaced by the per-event synthesis (BlastSynth) when it is ready in time.
+const GENERIC_IDS := ["crack", "crack2", "thump", "rumble", "thunder0", "thunder1", "thunder2",
+		"thunder3", "thunder4", "thunder5", "thunder6"]
 const BUNKER_IDS := ["tremor", "debris", "glass"]
 const LOOP_STREAM := {"roar": "roar", "wind": "wind"}
 
@@ -92,6 +97,15 @@ var _kind := ""
 var _t_shock := 0.0
 var _lvl := 0.0
 var _mf_on := false
+# per-event blast synthesis (BlastSynth on the WorkerThreadPool, started at launch)
+var _syn_key := ""                 # key of the prepared event (bomb + distance)
+var _syn_task := -1
+var _syn_res: Dictionary = {}
+var _syn_res_key := ""
+var _syn_mutex := Mutex.new()
+var _syn_pending: Array[int] = []  # finished-or-running task ids still to be waited for
+var _mode := ""                    # "", "synth" or "generic" (decided when the blast arrives)
+var _syn_stream: Dictionary = {}   # id -> AudioStreamWAV for the synthesized layers
 var _mf_rec := 4.0
 var _mf_min := 1000.0
 var _mf_dip := -6.0
@@ -195,6 +209,38 @@ func whistle_stop() -> void:
 		_wh_state = 2
 
 
+## Starts synthesizing the blast heard at the bunker for the coming detonation (call at launch;
+## params from BlastSynth.params_for plus "key"). Runs on the WorkerThreadPool while the booster
+## flies; on_detonation() with the same "synth_key" uses it if it is ready when the blast arrives.
+func prepare_blast(params: Dictionary) -> void:
+	if not is_setup:
+		return
+	_syn_key = String(params.get("key", ""))
+	if not use_threads:
+		_synth_job(params, _syn_key)
+		return
+	_syn_task = WorkerThreadPool.add_task(_synth_job.bind(params, _syn_key), false, "BlastSynth")
+	_syn_pending.append(_syn_task)
+
+
+func _synth_job(params: Dictionary, key: String) -> void:
+	var r := BlastSynth.make_event(params)
+	_syn_mutex.lock()
+	_syn_res = r
+	_syn_res_key = key
+	_syn_mutex.unlock()
+
+
+## The synthesized event for `key`, or {} if it is not finished (never blocks).
+func _synth_ready(key: String) -> Dictionary:
+	if key == "" or key != _syn_key:
+		return {}
+	_syn_mutex.lock()
+	var r := _syn_res if _syn_res_key == key else {}
+	_syn_mutex.unlock()
+	return r
+
+
 ## Schedules the explosion soundtrack. Keys: yield_kt, distance_m (slant), t_seismic, t_shock,
 ## p_psi, nuclear, kind, megaton; optional hob_m (burst height, adds the second report of high
 ## bursts). Missing keys get physical defaults. Call update_age() every frame afterwards.
@@ -295,6 +341,20 @@ func on_detonation(p: Dictionary) -> void:
 		_loops["wind"] = {"t0": _t_shock + 1.5,
 				"dur": clampf(BlastPhysics.cloud_stabilization_time(_w) * 0.5, 20.0, 180.0),
 				"att": 8.0, "shape": 0.7, "db": wdb, "pitch": clampf(pow(_w / 15.0, -0.04), 0.75, 1.15)}
+	# per-event synthesis: front just before the arrival (zero-phase pre-roll), tail at the arrival
+	_mode = ""
+	_syn_stream.clear()
+	var skey := String(p.get("synth_key", ""))
+	if skey != "" and skey == _syn_key:
+		_add_ev(_t_shock - BlastSynth.FRONT_PRE, "blast_front", "", _lvl + 2.0, 1.0)
+		_add_ev(_t_shock, "blast_tail", "", _lvl + 2.0, 1.0)
+		if mega:
+			# keep a felt, saturated infrasonic thump under the synthesized front for megatons
+			for ev: Dictionary in _events:
+				if ev["id"] == "infra":
+					ev["db"] = float(ev["db"]) - 5.0
+	else:
+		_mode = "generic"
 	for id: String in _loops:
 		var st: AudioStreamWAV = sounds[LOOP_STREAM[id]]
 		(_p[id] as AudioStreamPlayer).stream = st
@@ -329,7 +389,13 @@ func update_age(age: float, time_scale: float) -> void:
 	if not backwards:
 		for ev: Dictionary in _events:
 			if not ev["fired"] and age >= float(ev["t"]):
+				var id: String = ev["id"]
+				var grp := "synth" if id.begins_with("blast_") else ("generic" if id in GENERIC_IDS else "")
+				if grp != "" and _mode == "":
+					_resolve_mode()
 				ev["fired"] = true
+				if grp != "" and grp != _mode:
+					continue
 				_fire(ev, age - float(ev["t"]), age)
 	_update_loops(age, not backwards)
 	_update_ears(age)
@@ -378,6 +444,9 @@ func _exit_tree() -> void:
 	# stop every voice so the AudioServer drops its playbacks before the engine shuts down
 	if not is_setup:
 		return
+	for tid in _syn_pending:
+		WorkerThreadPool.wait_for_task_completion(tid)
+	_syn_pending.clear()
 	stop_all()
 	for c in get_children():
 		if c is AudioStreamPlayer:
@@ -560,6 +629,12 @@ func _process(delta: float) -> void:
 	_refresh_pause()
 	var dt_game := 0.0 if _paused else delta * ts
 	_update_ambience(delta)
+	# reap finished synthesis tasks (WorkerThreadPool requires every task to be waited for)
+	for i in range(_syn_pending.size() - 1, -1, -1):
+		var tid := _syn_pending[i]
+		if WorkerThreadPool.is_task_completed(tid):
+			WorkerThreadPool.wait_for_task_completion(tid)
+			_syn_pending.remove_at(i)
 	_update_rocket(delta, dt_game, ts)
 	_update_whistle(delta, dt_game, ts)
 
@@ -578,6 +653,26 @@ func _refresh_pause() -> void:
 		_rocket_loop.stream_paused = want
 
 
+## Decides once per explosion (when the blast arrives) between the synthesized event and the
+## generic layers; the synthesized one is used only if it finished in time.
+func _resolve_mode() -> void:
+	var r := _synth_ready(_syn_key)
+	if r.is_empty() or r.get("front") == null:
+		_mode = "generic"
+		return
+	_mode = "synth"
+	_syn_stream["blast_front"] = r["front"]
+	_syn_stream["blast_tail"] = r["tail"]
+	for ev: Dictionary in _events:
+		if ev["id"] == "blast_tail":
+			ev["db"] = float(ev["db"]) + float(r.get("tail_gain_db", -10.0))
+	# the synthesized streams already carry the air absorption and the echoes
+	lp_blast.cutoff_hz = 20000.0
+	reverb_blast.wet = 0.04
+	if log_events:
+		print("AUDIO synth event used: tail %.1f dB, rise %.5f s" % [float(r.get("tail_gain_db", 0.0)), float(r.get("rise_s", 0.0))])
+
+
 func _add_ev(t: float, id: String, stream: String, db: float, pitch: float) -> void:
 	_events.append({"t": t, "id": id, "stream": stream, "db": db, "pitch": pitch, "fired": false})
 
@@ -585,7 +680,7 @@ func _add_ev(t: float, id: String, stream: String, db: float, pitch: float) -> v
 func _fire(ev: Dictionary, late: float, age: float) -> void:
 	var id: String = ev["id"]
 	var pl: AudioStreamPlayer = _p[id]
-	var st: AudioStreamWAV = sounds.get(String(ev["stream"]))
+	var st: AudioStreamWAV = _syn_stream.get(id) if id.begins_with("blast_") else sounds.get(String(ev["stream"]))
 	if st == null:
 		return
 	var pitch: float = ev["pitch"]
