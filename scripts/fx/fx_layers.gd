@@ -89,6 +89,7 @@ class ShockLayer extends Node3D:
 		# refraction samples the screen texture (opaque scene only): it must be drawn before the
 		# volume, otherwise it would paint the background over the cloud (the old pen-line arcs)
 		mat.render_priority = FxLayersLib.PRIO_SHOCK
+		mat.set_shader_parameter("noise_b", FxResources.noise_billow())
 		shell.material_override = mat
 		shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		shell.extra_cull_margin = 100000.0
@@ -104,9 +105,8 @@ class ShockLayer extends Node3D:
 			amp *= 0.2
 		amp *= float(prof.a("shock_refraction", 1.0))
 		# a visible condensation band in the front is only justified for big yields in humid air
-		var hum := clampf((Game.humidity - 0.45) / 0.35, 0.0, 1.0)
-		var big := smoothstep(100.0, 3000.0, prof.w_kt) if prof.nuclear else 0.0
-		cond_k = hum * big * float(prof.a("shock_condensation", 1.0))
+		var big := smoothstep(300.0, 5000.0, prof.w_kt) if prof.nuclear else 0.0
+		cond_k = big * float(prof.a("shock_condensation", 1.0))
 
 	func update(t: float) -> void:
 		var prof := ex.prof
@@ -138,7 +138,8 @@ class ShockLayer extends Node3D:
 		if prof.hob > 0.0 and slant > prof.hob * 1.1:
 			stem = minf(slant * 0.25, prof.hob * 1.5)
 		mat.set_shader_parameter("stem_h", stem)
-		mat.set_shader_parameter("condensation", cond_k * clampf(p / 2.0, 0.0, 1.0) * out)
+		var hum := clampf((Game.humidity - 0.45) / 0.35, 0.0, 1.0)
+		mat.set_shader_parameter("condensation", cond_k * hum * clampf(p / 2.0, 0.0, 1.0) * out)
 		mat.set_shader_parameter("cond_w", clampf(thick, slant * 0.01, slant * 0.05))
 
 
@@ -242,7 +243,7 @@ class DustWallLayer extends Node3D:
 			w.scale = Vector3(r, hm, r)
 			(w as MeshInstance3D).custom_aabb = AABB(Vector3(-1.2, -50.0, -1.2), Vector3(2.4, 100.0, 2.4))
 		FxLayersLib._set_all(mats, "radius", r)
-		FxLayersLib._set_all(mats, "lean", minf(h * 4.0 / r, 0.35))
+		FxLayersLib._set_all(mats, "lean", minf(h * 2.0 / r, 0.15))
 		FxLayersLib._set_all(mats, "height", h)
 		FxLayersLib._set_all(mats, "mesh_h", hm)
 		FxLayersLib._set_all(mats, "opacity", op)
@@ -377,7 +378,6 @@ class DebrisLayer extends Node3D:
 		mmi.multimesh = mm
 		mat = ShaderMaterial.new()
 		mat.shader = FxLayersLib.DEBRIS_SHADER
-		mat.set_shader_parameter("size_ref", size)
 		mat.set_shader_parameter("base_col", color)
 		mat.set_shader_parameter("hot", hot)
 		mat.set_shader_parameter("drag", float(prof.a("debris_drag", 0.6)))

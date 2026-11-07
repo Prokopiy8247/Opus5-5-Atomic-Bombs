@@ -18,6 +18,7 @@ global uniform vec4 g_ambient;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap, repeat_disable;
 uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
+uniform sampler3D noise_b : filter_linear_mipmap, repeat_enable;
 uniform vec3 centre = vec3(0.0);  // burst point (world)
 uniform float radius = 100.0;     // slant radius of the front (m)
 uniform float p_psi = 1.0;        // peak overpressure at the front
@@ -98,7 +99,12 @@ void fragment() {
 	if (condensation > 0.0) {
 		float xc = s / max(cond_w, 1.0);
 		float band = xc * xc * exp(2.0 - 2.0 * xc);
-		ca = condensation * band * 0.3 * smoothstep(0.5, 2.0, cond_w / tc * px_per_rad);
+		// patchy: condensation only where the air is humid enough (never a clean geometric outline)
+		vec3 pd = perp / max(b, 1e-3);
+		vec3 hp = pd * 0.8 + vec3(xc * 0.12, 0.0, radius * 1e-4);
+		float hn = texture(noise_b, hp).r * 0.75 + texture(noise_b, hp * 2.2 + 0.5).r * 0.25;
+		band *= smoothstep(0.3, 0.7, hn);
+		ca = condensation * band * 0.2 * smoothstep(0.5, 2.0, cond_w / tc * px_per_rad);
 		vec3 L = normalize(g_sun_dir);
 		float lit = 0.6 + 0.4 * clamp(dot(normalize(perp), L) * 0.5 + 0.5, 0.0, 1.0);
 		ccol = vec3(0.95, 0.96, 1.0) * (g_sun_light.rgb * lit + g_ambient.rgb * g_ambient.w);

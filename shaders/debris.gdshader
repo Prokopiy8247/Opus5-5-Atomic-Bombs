@@ -14,8 +14,7 @@ render_mode cull_disabled, diffuse_burley, skip_vertex_transform;
 global uniform float g_blast_age;
 
 uniform float t_launch = 0.0;     // global delay
-uniform float drag = 0.6;         // 1/s for a piece of the nominal size
-uniform float size_ref = 1.0;     // nominal piece size (m)
+uniform float drag = 0.6;         // 1/s for a 0.2 m piece (terminal ~16 m/s)
 uniform vec3 base_col = vec3(0.35, 0.29, 0.22);
 uniform float hot = 0.0;          // incandescent fragments (0..1)
 uniform float min_px = 0.9;       // pieces smaller than this on screen are not drawn
@@ -44,8 +43,9 @@ void vertex() {
 	float delay = t_launch + hash11(seed * 13.1) * 0.04;
 	float t_raw = g_blast_age - delay;
 	float t = max(t_raw, 0.0);
-	// linear drag, stronger for small clods (terminal velocity grows ~ sqrt(size))
-	float k = drag * clamp(sqrt(size_ref / max(size, 1e-3)), 0.6, 2.0) * (0.8 + 0.4 * hash11(seed * 7.7));
+	// linear drag k = g / v_terminal; v_terminal grows ~ sqrt(size): `drag` is k for a 0.2 m clod
+	// (~16 m/s), small crumbs slow down at once, metre-size blocks (Sedan, B83) still fly far
+	float k = drag * clamp(sqrt(0.2 / max(size, 1e-3)), 0.12, 2.0) * (0.8 + 0.4 * hash11(seed * 7.7));
 	float e = exp(-k * t);
 	vec3 disp = v0 / k * (1.0 - e);
 	float vt = 9.81 / k;

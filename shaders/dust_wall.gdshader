@@ -102,8 +102,8 @@ void fragment() {
 		vec2 e = vec2(uv.x / stretch, uv.y);
 		vec3 np = vec3(uv * 0.3 + v_seed, v_seed * 0.31 + v_x * 0.15);
 		float n = texture(noise_b, np).r * 0.6 + texture(noise_a, np * 2.7 + 0.5).r * 0.4;
-		float r = length(e) + (n - 0.5) * 0.9;
-		a = smoothstep(1.0, 0.1, r) * (0.35 + 0.8 * smoothstep(0.3, 0.8, n)) * v_a * opacity;
+		float r = length(e) + (n - 0.5) * 0.6;
+		a = smoothstep(1.0, 0.1, r) * (0.5 + 0.7 * smoothstep(0.3, 0.8, n)) * v_a * opacity;
 		a *= clamp((scene_d - frag_d) / max(v_size * 0.35, 0.5), 0.0, 1.0);
 		// self-shadowed fresh soil: darker than the sunlit flat ground around it
 		lit = 0.4 + 0.25 * clamp(uv.y * 0.5 + 0.5, 0.0, 1.0) + 0.12 * n;
@@ -125,7 +125,7 @@ void fragment() {
 		float n_big = texture(noise_a, vec3(fp / (cell * 10.0), seed)).r;
 		float n_jet = texture(noise_b, vec3(fp / (cell * 3.0), seed + 0.37)).r;
 		float top = height * (0.55 + 1.0 * smoothstep(0.25, 0.75, n_big));
-		top += height * ragged * 0.9 * (smoothstep(0.45, 0.85, n_jet) - 0.3);
+		top += height * ragged * 0.7 * (smoothstep(0.4, 0.9, n_jet) - 0.3);
 		top = max(top, height * 0.25);
 		// rolling billows (large, soft): noise scrolls up/outward with time
 		vec3 bp = vec3(fp / (cell * 6.0), (y - age * height * 1.5) / (cell * 3.0) + seed);
@@ -137,7 +137,7 @@ void fragment() {
 		// soft against the terrain
 		a *= clamp((scene_d - frag_d) / max(height * 0.4, 0.5), 0.0, 1.0);
 		vec3 nrm = normalize(vec3(rad.x, 0.35, rad.y));
-		lit = (0.62 + 0.3 * clamp(dot(nrm, L), -1.0, 1.0)) * (0.75 + 0.25 * clamp(yf, 0.0, 1.0)) * (0.82 + 0.25 * nb);
+		lit = (0.72 + 0.2 * clamp(dot(nrm, L), -1.0, 1.0)) * (0.78 + 0.22 * clamp(yf, 0.0, 1.0)) * (0.85 + 0.2 * nb);
 	}
 	if (a < 0.003) {
 		discard;
