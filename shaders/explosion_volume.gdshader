@@ -703,7 +703,9 @@ void fragment() {
 				float dfb = max(length(ph - fb.xyz) - fb.w * 0.7, 0.0);
 				float fl = bb_lum(fb_look.x) * fb_look.y * fb_look.w;
 				float ring_k = (dr * kr + di_w) / max(wsum, 1e-9);
-				light += blackbody(fb_look.x) * fl * mix(0.25, 1.0, ring_k) * (fb.w * fb.w) / (dfb * dfb + fb.w * fb.w) * (1.0 - fbo);
+				// condensation sheets are lit by the ball, but they scatter only part of it toward the camera
+				// (1.0 made them glow like neon tubes at 5-40 s)
+				light += blackbody(fb_look.x) * fl * mix(0.25, 0.4, ring_k) * (fb.w * fb.w) / (dfb * dfb + fb.w * fb.w) * (1.0 - fbo);
 			}
 			// --- emission (planck radiance of opaque hot gas)
 			vec3 emit = vec3(0.0);
