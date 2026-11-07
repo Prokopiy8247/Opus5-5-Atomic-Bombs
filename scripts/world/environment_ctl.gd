@@ -113,7 +113,7 @@ func apply_tod(t: int) -> void:
 	var p := {}
 	match t:
 		Game.TimeOfDay.DAWN:
-			p = {"az": 68.0, "el": 1.6, "sun_col": Color(1.0, 0.74, 0.50), "sun_e": 1.6, "sky_i": 20.0,
+			p = {"az": 68.0, "el": 1.6, "sun_col": Color(1.0, 0.80, 0.55), "sun_e": 1.6, "sky_i": 20.0,
 				"exposure": 1.5, "fog": 0.000028, "turb": 1.6, "night": 0.0, "amb": 1.0,
 				"amb_col": Color(0.22, 0.24, 0.32), "amb_scale": 1.0, "fog_bright": 1.0}
 		Game.TimeOfDay.NOON:
@@ -121,7 +121,7 @@ func apply_tod(t: int) -> void:
 				"exposure": 0.42, "fog": 0.000018, "turb": 1.0, "night": 0.0, "amb": 1.0,
 				"amb_col": Color(0.30, 0.38, 0.52), "amb_scale": 1.0, "fog_bright": 1.0}
 		Game.TimeOfDay.DUSK:
-			p = {"az": 292.0, "el": 2.2, "sun_col": Color(1.0, 0.68, 0.42), "sun_e": 1.5, "sky_i": 20.0,
+			p = {"az": 292.0, "el": 2.2, "sun_col": Color(1.0, 0.74, 0.48), "sun_e": 1.5, "sky_i": 20.0,
 				"exposure": 1.6, "fog": 0.00003, "turb": 1.8, "night": 0.0, "amb": 1.0,
 				"amb_col": Color(0.25, 0.22, 0.30), "amb_scale": 1.0, "fog_bright": 1.0}
 		_:

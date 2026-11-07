@@ -181,9 +181,14 @@ void sky() {
 		col *= mix(1.0, 0.75, smoothstep(0.0, -0.2, rd.y));
 	}
 	// explosion glow scattered by the air around the fireball (normalised to the ball's radiance)
-	if (!AT_CUBEMAP_PASS && g_fireball_color.w > 0.0) {
-		col += atm_fireball_glow(POSITION, rd, 1.0);
+	vec3 flash_col = vec3(0.9, 0.93, 1.0);
+	if (g_fireball_color.w > 0.0) {
+		if (!AT_CUBEMAP_PASS) {
+			col += atm_fireball_glow(POSITION, rd, 1.0);
+		}
+		// the whole-sky flash is the same light scattered again: half its colour, half sky blue
+		flash_col = mix(flash_col, atm_fireball_tint(POSITION), 0.5);
 	}
-	col += g_flash * vec3(0.9, 0.93, 1.0) * 0.4;
+	col += g_flash * flash_col * 0.4;
 	COLOR = col * exposure_bias;
 }

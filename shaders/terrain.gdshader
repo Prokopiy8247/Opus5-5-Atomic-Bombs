@@ -160,7 +160,7 @@ void fragment() {
 	// macro variation (octaves faded by the footprint: finest wavelengths ~2.2 km and ~200 m)
 	float macro = t_fbm(xz * 0.00011 + vec2(5.2, 1.3), 4) * (1.0 - smoothstep(500.0, 2500.0, fp));
 	float meso = t_fbm(xz * 0.0019 + vec2(-2.0, 7.0), 3) * (1.0 - smoothstep(40.0, 160.0, fpa));
-	vec3 sand = vec3(0.60, 0.51, 0.40);
+	vec3 sand = vec3(0.60, 0.52, 0.40);
 	vec3 playa = vec3(0.74, 0.69, 0.61);
 	vec3 rock = vec3(0.36, 0.29, 0.23);
 	vec3 rock_dark = vec3(0.22, 0.19, 0.17);
@@ -266,8 +266,8 @@ void fragment() {
 		col = mix(col, col * 0.55, shore);
 	}
 
-	FOG = vec4(0.0);
-	ALBEDO = vec3(0.5);
+	FOG = atm_fog(CAMERA_POSITION_WORLD, wp);
+	ALBEDO = col;
 	ROUGHNESS = rough;
 	SPECULAR = 0.3;
 	EMISSION = emis;

@@ -42,9 +42,22 @@ vec3 atm_haze_color(vec3 v) {
 	return (g_fog_color.rgb + g_fog_sun.rgb * sun_k) * g_fog_color.w;
 }
 
+// Colour (unit luminance) of the fireball light scattered by the air: the incandescence
+// (sRGB-like Kelvin colour -> linear), reddened along the Rayleigh path to the ball. The scattered
+// light travels about twice that path, so it is redder than the ball itself (orange-brown glow in
+// the Tsar frame); this also keeps a faint glow on a blue sky from mixing into olive.
+// g_fireball_color.w already carries the grey transmittance, so the luminance is kept.
+vec3 atm_fireball_tint(vec3 cam) {
+	vec3 c = pow(max(g_fireball_color.rgb, vec3(0.0)), vec3(2.2));
+	float od_r = atm_layer_od(cam, g_fireball.xyz, g_fog.z, 8000.0);
+	vec3 tr = exp(-2.0 * od_r * vec3(0.43, 1.0, 2.45)) * c;
+	return tr / max(dot(tr, vec3(0.2126, 0.7152, 0.0722)), 1e-3);
+}
+
 // Light of the fireball scattered by the air, seen from `cam` in direction `v` (radiance, not
-// exposed). Normalised to the ball's own radiance: at the limb it is ~6-12 % of it (more in humid
-// air) and it falls off over several ball radii, as in the Tsar / Ivy Mike / Bravo photographs.
+// exposed). Normalised to the ball's own radiance: at the limb it is ~4.5 % of it in dry air and
+// ~7 % in saturated air, and it falls off over several ball radii (forward-scattering aureole),
+// as in the Tsar / Ivy Mike / Bravo photographs. Zero when g_fireball_color.w is 0.
 // near_w weights the near-field part (the glowing air around the ball): 1 for the sky and for
 // points at or beyond the fireball, 0 for points well in front of it.
 vec3 atm_fireball_glow(vec3 cam, vec3 v, float near_w) {
@@ -65,18 +78,12 @@ vec3 atm_fireball_glow(vec3 cam, vec3 v, float near_w) {
 	float aur = 1.0 / ((1.0 + x) * (1.0 + x));
 	// broad glow of the whole sky around the ball
 	float wide = exp(-ang / 0.45);
-	// limb: ~4.5 % of the ball at 35 % humidity, ~9 % in humid air; ~1 % one radius out,
+	// limb: ~4.5 % of the ball at 35 % humidity, ~7 % in saturated air; ~1 % one radius out,
 	// ~0.2 % three radii out (Tsar 1961 frame)
 	float rel = near_w * 0.03 * (0.7 + 0.9 * hum) * near_f
 			+ 0.012 * (0.6 + 1.2 * hum) * aur
 			+ 0.001 * (0.5 + 1.5 * hum) * wide;
-	// incandescence (sRGB-like Kelvin colour -> linear), reddened by the Rayleigh path to the ball;
-	// g_fireball_color.w already carries the grey transmittance, so keep the luminance
-	vec3 c = pow(max(g_fireball_color.rgb, vec3(0.0)), vec3(2.2));
-	float od_r = atm_layer_od(cam, g_fireball.xyz, g_fog.z, 8000.0);
-	vec3 tr = exp(-od_r * vec3(0.43, 1.0, 2.45));
-	tr /= max(dot(tr, vec3(0.2126, 0.7152, 0.0722)), 1e-3);
-	return c * tr * (g_fireball_color.w * ATM_FB_RADIANCE * rel);
+	return atm_fireball_tint(cam) * (g_fireball_color.w * ATM_FB_RADIANCE * rel);
 }
 
 // Returns vec4(fog colour, fog amount 0..1) for the segment camera -> point.
