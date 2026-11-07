@@ -51,9 +51,9 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 | # | Criterion | Status |
 |---|---|---|
 | 1 | All 20 bombs launch at rec/near/far, each `verified` (>=3 fix-render-look cycles, frames in docs/screens) | not started |
-| 2 | Explosions visibly different; selftest prints READY, no FAIL | not started |
-| 3 | QA matrix passes, no crashes/errors; QA_REPORT filled | not started |
-| 4 | FPS measured, section 9 targets met or deviations described | not started |
+| 2 | Explosions visibly different; selftest prints READY, no FAIL | done: selftest 126/126 READY (2026-11-07 22:50); test_audio 131/131 READY; 20 distinct profiles reviewed in 3 art cycles |
+| 3 | QA matrix passes, no crashes/errors; QA_REPORT filled | done: 121/121 launches, 0 errors, 0 warnings, nodes 567 -> 567 (docs/qa_results.json, QA_REPORT section 2) |
+| 4 | FPS measured, section 9 targets met or deviations described | done: bunker 112-352 fps, Tsar night worst case 136-172 fps (all presets), binocular full-frame 24-50 Mt cloud 30-35 fps (docs/fps_report.json, QA_REPORT section 3) |
 | 5 | Clean launch via run.bat (menu, slider, launch, explosion); run_cinematic.bat tested | not started |
 | 6 | README, CREDITS, RESEARCH_NOTES, DECISIONS, PROGRESS, TIMELOG, PROJECT_STATS ready | not started |
 | 7 | Final local git commit | not started |

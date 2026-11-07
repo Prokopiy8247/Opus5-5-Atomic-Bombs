@@ -157,8 +157,10 @@ static func _r_opt(w_kt: float, p_psi: float) -> float:
 		return k * pow(p_psi, -2.0 / 3.0)
 	# far field: DNA free-air shape spliced at 1 psi (falls as 1/(R sqrt(ln R)))
 	var lo := k
-	var hi := k * 2000.0
-	for i in 60:
+	# (bracket up to 1e5 k: with 2000 k the search saturated for small HE charges beyond ~170 km and
+	# overpressure() fell to its 1e-5 psi floor - a 25 dB step)
+	var hi := k * 1.0e5
+	for i in 70:
 		var mid := sqrt(lo * hi)
 		if _far_field(w_kt, mid) > p_psi:
 			lo = mid

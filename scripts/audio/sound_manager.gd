@@ -11,7 +11,8 @@ extends Node
 ##   p_psi > 2            "ringing in the ears": the Ears bus is low-passed and ducked for a few
 ##                        seconds while a 4 kHz tinnitus tone fades in and out (Master direct)
 ## Bus layout:  Master [HardLimiter -0.3 dB]  <-  Ears [LowPass, muffling]  <-  Blast [LowPass by
-## distance + Reverb], World (rocket, whistle), Bunker (ambience, tremor, debris);  UI -> Master.
+## distance + Reverb], BlastSyn (synthesized front + tail: they carry their own absorption and
+## echoes, no effects), World (rocket, whistle), Bunker (ambience, tremor, debris);  UI -> Master.
 ## Blast layers use non-positional AudioStreamPlayer (the sound is the observer's), the rocket
 ## uses AudioStreamPlayer3D. One-shot events never retrigger on backward scrubbing or at
 ## time_scale 0; a forward jump starts a layer at the matching offset or skips it if it is over.
@@ -102,6 +103,7 @@ var _syn_key := ""                 # key of the prepared event (bomb + distance)
 var _syn_task := -1
 var _syn_res: Dictionary = {}
 var _syn_res_key := ""
+var _syn_want := ""                # the newest request: an older task finishing late is discarded
 var _syn_mutex := Mutex.new()
 var _syn_pending: Array[int] = []  # finished-or-running task ids still to be waited for
 var _mode := ""                    # "", "synth" or "generic" (decided when the blast arrives)
@@ -216,6 +218,12 @@ func prepare_blast(params: Dictionary) -> void:
 	if not is_setup:
 		return
 	_syn_key = String(params.get("key", ""))
+	_syn_mutex.lock()
+	_syn_want = _syn_key
+	var have := _syn_res_key == _syn_key and not _syn_res.is_empty()
+	_syn_mutex.unlock()
+	if have:
+		return   # the same event (bomb, range, atmosphere) is already synthesized
 	if not use_threads:
 		_synth_job(params, _syn_key)
 		return
@@ -226,8 +234,9 @@ func prepare_blast(params: Dictionary) -> void:
 func _synth_job(params: Dictionary, key: String) -> void:
 	var r := BlastSynth.make_event(params)
 	_syn_mutex.lock()
-	_syn_res = r
-	_syn_res_key = key
+	if key == _syn_want:
+		_syn_res = r
+		_syn_res_key = key
 	_syn_mutex.unlock()
 
 
@@ -348,11 +357,6 @@ func on_detonation(p: Dictionary) -> void:
 	if skey != "" and skey == _syn_key:
 		_add_ev(_t_shock - BlastSynth.FRONT_PRE, "blast_front", "", _lvl + 2.0, 1.0)
 		_add_ev(_t_shock, "blast_tail", "", _lvl + 2.0, 1.0)
-		if mega:
-			# keep a felt, saturated infrasonic thump under the synthesized front for megatons
-			for ev: Dictionary in _events:
-				if ev["id"] == "infra":
-					ev["db"] = float(ev["db"]) - 5.0
 	else:
 		_mode = "generic"
 	for id: String in _loops:
@@ -488,6 +492,7 @@ func _setup_buses() -> void:
 	limiter.release = 0.15
 	_make_bus("Ears", "Master")
 	_make_bus("Blast", "Ears")
+	_make_bus("BlastSyn", "Ears")
 	_make_bus("World", "Ears")
 	_make_bus("Bunker", "Ears")
 	_make_bus("UI", "Master")
@@ -564,7 +569,7 @@ func _gen_job(i: int) -> void:
 
 func _make_players() -> void:
 	for id: String in BLAST_IDS:
-		_p[id] = _player("L_" + id, "Blast", 1)
+		_p[id] = _player("L_" + id, "BlastSyn" if id.begins_with("blast_") else "Blast", 1)
 	for id: String in BUNKER_IDS:
 		_p[id] = _player("L_" + id, "Bunker", 1)
 	_tinnitus = _player("Tinnitus", "Master", 1)
@@ -656,6 +661,11 @@ func _refresh_pause() -> void:
 ## Decides once per explosion (when the blast arrives) between the synthesized event and the
 ## generic layers; the synthesized one is used only if it finished in time.
 func _resolve_mode() -> void:
+	if not Engine.get_write_movie_path().is_empty() and _syn_task in _syn_pending:
+		# offline render: game time does not follow the wall clock, so wait for the synthesis
+		# (otherwise the same shot could get the synthesized or the generic sound)
+		WorkerThreadPool.wait_for_task_completion(_syn_task)
+		_syn_pending.erase(_syn_task)
 	var r := _synth_ready(_syn_key)
 	if r.is_empty() or r.get("front") == null:
 		_mode = "generic"
@@ -671,9 +681,11 @@ func _resolve_mode() -> void:
 			ev["db"] = fdb
 		elif ev["id"] == "blast_tail":
 			ev["db"] = fdb + float(r.get("tail_gain_db", -10.0))
-	# the synthesized streams already carry the air absorption and the echoes
-	lp_blast.cutoff_hz = 20000.0
-	reverb_blast.wet = 0.04
+		elif ev["id"] == "infra" and _w >= 1000.0:
+			# megatons: keep a felt, saturated infrasonic thump under the synthesized front, 5 dB down
+			ev["db"] = float(ev["db"]) - 5.0
+	# the synthesized streams play on their own effect-free bus (BlastSyn): the distance low-pass
+	# and reverb of the Blast bus stay as they are for the generic roar / wind / infra layers
 	if log_events:
 		print("AUDIO synth event used: tail %.1f dB, rise %.5f s" % [float(r.get("tail_gain_db", 0.0)), float(r.get("rise_s", 0.0))])
 

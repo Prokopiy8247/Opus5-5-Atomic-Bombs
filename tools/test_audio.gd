@@ -301,7 +301,10 @@ func _test(spec: bool) -> void:
 			"blast event synthesized on a worker thread (%d ms)" % (Time.get_ticks_msec() - t_syn))
 	ps["synth_key"] = "test_15kt"
 	_start(ps)
+	var cut0 := sm.lp_blast.cutoff_hz
 	await _advance(0.0, float(ps["t_shock"]) + 2.0, 0.25, 1.0)
+	_check((sm._p["blast_front"] as AudioStreamPlayer).bus == "BlastSyn" and is_equal_approx(sm.lp_blast.cutoff_hz, cut0),
+			"synth layers on their own bus, Blast-bus distance low-pass untouched (%.0f Hz)" % sm.lp_blast.cutoff_hz)
 	_check(sm._mode == "synth" and _fired("blast_front") and _fired("blast_tail") and not _fired("crack")
 			and not _fired("rumble"), "synthesized front + tail replace the generic layers (mode %s)" % sm._mode)
 	var pf := sm._p["blast_front"] as AudioStreamPlayer
@@ -313,6 +316,21 @@ func _test(spec: bool) -> void:
 	_start(ps)
 	await _advance(0.0, float(ps["t_shock"]) + 2.0, 0.25, 1.0)
 	_check(sm._mode == "generic" and _fired("crack") and not _fired("blast_front"), "unprepared event falls back to generic layers")
+	# a relaunch while a synthesis is running: only the newest request may store its result
+	var bp2 := bp.duplicate()
+	bp2["key"] = "test_a"
+	bp2["distance_m"] = 90000.0
+	var bp3 := bp.duplicate()
+	bp3["key"] = "test_b"
+	bp3["distance_m"] = 3000.0
+	sm.prepare_blast(bp2)
+	sm.prepare_blast(bp3)
+	var t_r := Time.get_ticks_msec()
+	while not sm._syn_pending.is_empty() and Time.get_ticks_msec() - t_r < 90000:
+		sm._process(1.0 / 30.0)
+		await process_frame
+	_check(not sm._synth_ready("test_b").is_empty() and sm._syn_res_key == "test_b",
+			"relaunch: the newest synthesis wins even if an older task finishes later")
 	sm.stop_all()
 	# no node growth over repeated launches
 	var nodes0 := sm.get_child_count()

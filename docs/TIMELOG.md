@@ -11,3 +11,9 @@ START 2026-11-07T05:33:02.3679849+01:00
 - 2026-11-07T09:22:04.1195018+01:00 Cycle-2 fixes applied (systemic shader/profile/metering, per-bomb batches, framing, dome); run.bat/run_cinematic.bat path-quoting bug and movie resolution fixed; env + layers agents running
 - 2026-11-07T09:41:24.2858342+01:00 PAUSED by the user (state and next steps recorded at the end of docs/PROGRESS.md)
 - 2026-11-07T20:08:44+01:00 RESUMED (new session e7610a78): continuing stage 9/10 from the pause notes in PROGRESS.md
+- 2026-11-07T20:25:38+01:00 Cycle-3 render (r7) reviewed by 5 art-director agents; systemic fixes committed (c60c3a6, a8cc557, 40e0477, 9d327d3, 92b3e5c, e81ef26)
+- 2026-11-07T21:24:21+01:00 Cycle-3 per-bomb tuning by 5 parallel technical-artist agents committed (5468990, d001659); final render r8 looked at; independent verification review avg 4.85/10
+- 2026-11-07T21:33:49+01:00 USER REQUEST: realistic launch and explosion sounds researched from real events -> AUDIO REWORK START (research workflow: nuclear accounts/recordings, conventional blasts, rockets/falling bombs, synthesis techniques)
+- 2026-11-07T22:00:47+01:00 Per-event blast synthesis v1 committed (ecf9152): BlastSynth/BlastDSP, rocket ignition/roar, preview + spectrogram tools
+- 2026-11-07T22:43:50+01:00 Audio calibrated against the research and committed (cd3ac7d, 7950b12): shadow zone/inversion presets, SPL map, absorbed smeared echoes, rolling coda, rocket crackle statistics, falling-bomb rush; test_audio extended (synth path) fails=0; selftest 126/126 READY
+- 2026-11-07T22:52:00+01:00 STAGE 10 final QA matrix (2560x1440) START; independent audio code review workflow running

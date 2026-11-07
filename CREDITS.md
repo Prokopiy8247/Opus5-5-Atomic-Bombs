@@ -30,5 +30,8 @@ Public-domain / CC0 images used only to compare renders against reality during d
 - `19_test219`: 4 images (dominic_bighorn_001.jpg, dominic_housatonic_001.jpg, dominic_housatonic_002.jpg, novaya_zemlya_modis_2020.jpg). Licenses: Public domain (NASA, PD-USGov); Public domain, US federal government work; Public domain, US federal government work (LANL via atomicarchive.com); Public domain, US federal government work (cropped/colour-corrected by uploader)
 - `20_tsar_bomba`: 3 images (fireball_size_comparison.png, tsar_fireball_1961.jpg, tu95_bear_1963_usn.jpg). Licenses: CC0): an artistic to-scale animation (cloud; PD-1978; PD-RU-exempt; Public domain (US Navy, NHHC photo USN 711248); Public domain (released by author Fastfission, PD-user)
 
+## Sound
+All sound is synthesized at runtime (`scripts/audio/`); no recordings or sample libraries were downloaded or used. The blast, rocket and falling-bomb models are based on published acoustics and eyewitness accounts summarised with sources in `docs/RESEARCH_NOTES.md` section 7 (Glasstone & Dolan, DTIC/NASA reports, arXiv papers on long-range blast propagation, BYU rocket-noise and crackle research, ISO 9613-1, Atomic Heritage Foundation eyewitness documents, A. Wellerstein's notes on dubbed test films).
+
 ## Data sources
 Historical and scientific data come from public sources listed in `docs/RESEARCH_NOTES.md` (Glasstone & Dolan *The Effects of Nuclear Weapons*, Fletcher 1963, DNA/DTRA reports, LANL/LLNL/DOE/NNSA publications, Sublette's Nuclear Weapons Archive, NUKEMAP methodology, Wikipedia and others). No weapon-design information is included.

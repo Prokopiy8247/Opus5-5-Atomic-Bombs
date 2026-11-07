@@ -101,6 +101,8 @@ func _load_optional_modules() -> void:
 			sound.name = "Sound"
 			add_child(sound)
 			sound.setup()
+			# --audio_log: print every scheduled sound layer (and whether the synthesized event was used)
+			sound.log_events = Args.has("audio_log")
 	if ResourceLoader.exists(UI_PATH) and not Args.has("shots"):
 		var us: Script = load(UI_PATH)
 		if us:
@@ -182,6 +184,10 @@ func _menu_drive() -> void:
 	await _menu_shot(out, "4_explosion")
 	var good := explosion != null and explosion.age > 5.0
 	print("MENU_DRIVE launched=", explosion != null, " age=", snappedf(explosion.age if explosion else -1.0, 0.1))
+	if sound:
+		# the blast usually arrives later than 8 s: report whether its synthesized event is ready
+		var syn: Dictionary = sound.call("_synth_ready", sound.get("_syn_key"))
+		print("MENU_DRIVE audio synth_ready=", not syn.is_empty(), " mode=", sound.get("_mode"))
 	print("READY" if good else "FAIL")
 	get_tree().quit()
 

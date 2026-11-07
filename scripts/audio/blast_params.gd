@@ -23,7 +23,9 @@ static func params_for(b: Dictionary, ground_m: float, humidity: float, tod: Str
 		"distance_m": slant, "hob_m": hob, "p_psi": psi, "t_plus": tp, "humidity": humidity,
 		"seed": int(b.get("num", 1)) * 7919 + int(ground_m), "tod": String(prof.a("sound_atmos", tod)),
 		"over_water": bool(prof.art.get("humid_site", false)) and prof.nuclear,
-		"thermobaric_delay_s": float(prof.a("fae_delay", 0.15)),
+		# same default as the visuals (ExplosionProfile reads fae_delay with 0.0): the cloud detonation
+		# is heard when the fireball is seen
+		"thermobaric_delay_s": float(prof.a("fae_delay", 0.0)),
 		"r1psi_m": BlastPhysics.radius_for_pressure(wb, 1.0, prof.surface, prof.conventional),
 		"eruption_s": float(prof.a("col_delay", 0.6)),
 		"eruption_dur_s": float(prof.a("col_rise", 5.0)) + float(prof.a("col_fall_time", 5.0))}

@@ -98,9 +98,10 @@ static func make_event(p: Dictionary) -> Dictionary:
 	var zs := d / pow(w * 1.0e6, 1.0 / 3.0)
 	var nwave_k := smoothstep(log(100.0), log(500.0), log(maxf(zs, 1.0))) if not (buried or underwater) else 0.0
 	if thermobaric:
-		# FAE: a faint dispersal pop (-30 dB), then the cloud detonation 0.15 s later whose onset is
-		# smeared over ~0.1 s (cloud size / c): a 'whoomph' with a long positive phase
-		var dly := float(p.get("thermobaric_delay_s", 0.15))
+		# FAE: a faint dispersal pop (-30 dB), then the cloud detonation (fae_delay later, as in the
+		# visuals) whose onset is smeared over ~0.1 s (cloud size / c): a 'whoomph' with a long
+		# positive phase
+		var dly := maxf(float(p.get("thermobaric_delay_s", 0.0)), 0.0)
 		_add_pulse(press, t0, FRONT_RATE, tp * 0.2, 0.032, rise, 0.0)
 		_add_pulse(press, t0 + int(dly * FRONT_RATE), FRONT_RATE, tpp, 1.0, maxf(rise, 0.03), nwave_k * 0.5)
 	else:
@@ -114,7 +115,10 @@ static func make_event(p: Dictionary) -> Dictionary:
 	# (research: apply absorption fully to weak fronts, cap it at ~6 dB while dp > 150 Pa; a
 	# shadowed, diffracted front gets the full absorption)
 	var floor_g := db_to_linear(-6.0) * smoothstep(100.0, 150.0, dp) * (1.0 - shadow / 0.6)
-	var direct := BlastDSP.absorb(press, FRONT_RATE, d, rh, 15.0, 16.0, 0.0, floor_g)
+	var direct := BlastDSP.absorb(press, FRONT_RATE, d, rh, 15.0, 0.0, 0.0, floor_g)
+	# the loudspeaker roll-off is causal: a zero-phase 16 Hz high-pass would put a large acausal
+	# pre-swing before the shock (a DC step at the start of the stream)
+	AudioSynth.hp1(direct, 16.0, FRONT_RATE)
 	if nuclear and not (buried or underwater):
 		# the heavy 'body' of a nuclear report on loudspeakers: a 55 -> 32 Hz thump that lasts about
 		# min(t+, 0.5 s), riding on the front (research: designed 30-60 Hz burst for nuclear)
@@ -134,7 +138,8 @@ static func make_event(p: Dictionary) -> Dictionary:
 		var dt := -spread * log(1.0 - 0.999 * rng.f()) * 0.6
 		var a := rng.range(0.03, 0.16) * exp(-dt / (spread * 1.5)) * (1.0 if rng.f() > 0.3 else -0.6)
 		AudioSynth.add(scat, sk_a if rng.f() < 0.5 else sk_b, t0 + int(dt * FRONT_RATE), a)
-	scat = BlastDSP.absorb(scat, FRONT_RATE, d * 1.05, rh, 15.0, 30.0)
+	scat = BlastDSP.absorb(scat, FRONT_RATE, d * 1.05, rh, 15.0, 0.0)
+	AudioSynth.hp1(scat, 30.0, FRONT_RATE)
 	var fl := direct.duplicate()
 	var fr := direct.duplicate()
 	var sg := 0.55 + 0.25 * clampf(d / 50000.0, 0.0, 1.0)
@@ -165,6 +170,9 @@ static func make_event(p: Dictionary) -> Dictionary:
 			fr[i] += bn[i] * e * 0.9
 			ea *= att
 			ed *= dec
+	# the stream starts from silence (the absorption filter's short pre-response is faded in)
+	_taper(fl, FRONT_RATE, 0.02, 0.0)
+	_taper(fr, FRONT_RATE, 0.02, 0.0)
 	_fade(fl, FRONT_RATE, 0.25)
 	_fade(fr, FRONT_RATE, 0.25)
 	var pk := maxf(AudioSynth.peak(fl), AudioSynth.peak(fr))
@@ -232,7 +240,9 @@ static func make_event(p: Dictionary) -> Dictionary:
 	# direct-to-rumble ratio (research): about -25 dB within 2 km, -6..-15 dB beyond 20 km
 	var loc_db := clampf(-25.0 + 12.0 * log(maxf(d / 2000.0, 1.0)) / log(10.0), -25.0, -9.0)
 	loc_db += 2.0 * clampf(log(maxf(w, 1.0)) / log(10.0) / 4.7, 0.0, 1.0) + 4.0 * shadow + float(p.get("rumble_db", 0.0))
-	_mix_scaled(tl, tr, loc_l, loc_r, d_ref_rms * db_to_linear(loc_db), TAIL_RATE, 0.2, 4.0)
+	# no single echo may be louder than half the (absorbed) direct pulse
+	var echo_cap := 0.5 * AudioSynth.peak(kernels[0])
+	_mix_scaled(tl, tr, loc_l, loc_r, d_ref_rms * db_to_linear(loc_db), TAIL_RATE, 0.2, 4.0, echo_cap)
 	var rid_l := PackedFloat32Array()
 	rid_l.resize(nt)
 	var rid_r := PackedFloat32Array()
@@ -255,6 +265,8 @@ static func make_event(p: Dictionary) -> Dictionary:
 		smears.append(sk)
 		smear_gs.append(_rms(kernels[kk], kpre, kpre + int(maxf(tp, 0.05) * TAIL_RATE)) / maxf(_rms(sk, 0, int(0.8 * TAIL_RATE)), 1e-9) * 0.5)
 	var got := 0
+	var t_first := 1.0e9
+	var t_last := 0.0
 	for k in n_ref:
 		var rr := 8000.0 + 62000.0 * pow(rng.f(), 0.8)
 		var th := rng.f() * TAU
@@ -266,7 +278,11 @@ static func make_event(p: Dictionary) -> Dictionary:
 		if dly > tail_dur - 1.0:
 			continue
 		got += 1
-		var a := dg / maxf(r1 * rr, 1.0) * 1.0e4 * rng.range(0.4, 1.2)
+		t_first = minf(t_first, dly)
+		t_last = maxf(t_last, dly)
+		# a ridge right next to ground zero is not a point mirror 1 m away: bound the geometry (a
+		# ridge is kilometres long), otherwise 1 / r1 makes one echo louder than the blast
+		var a := dg / (maxf(r1, maxf(2000.0, 0.1 * rr)) * rr) * 1.0e4 * rng.range(0.4, 1.2)
 		var kidx := 1 if extra < 50000.0 else 2
 		var pan := clampf(ry / rr, -1.0, 1.0)
 		_add_scaled(rid_l, rid_r, kernels[kidx], int(dly * TAIL_RATE) - kpre, a * 0.6 * sqrt(0.5 * (1.0 + pan)), a * 0.6 * sqrt(0.5 * (1.0 - pan)))
@@ -275,7 +291,11 @@ static func make_event(p: Dictionary) -> Dictionary:
 		_add_scaled(rid_l, rid_r, smears[kidx], int(dly * TAIL_RATE), a * sqrt(0.5 * (1.0 + pan)) * smg, a * sqrt(0.5 * (1.0 - pan)) * smg)
 	if got > 0:
 		var rid_db := clampf(-21.0 + 3.0 * dkm + 1.5 * lg, -26.0, -10.0) + float(p.get("echo_db", 0.0))
-		_mix_scaled(tl, tr, rid_l, rid_r, d_ref_rms * db_to_linear(rid_db), TAIL_RATE, 20.0, 90.0)
+		# level set over the span the echoes actually occupy (a fixed 20-90 s window was empty for
+		# short tails: its tiny residue blew the gain up by 1e5), capped like the local echoes
+		var w0 := maxf(t_first, 0.0)
+		var w1 := clampf(t_last + 2.5, w0 + 1.0, tail_dur)
+		_mix_scaled(tl, tr, rid_l, rid_r, d_ref_rms * db_to_linear(rid_db), TAIL_RATE, w0, w1, echo_cap)
 	# diffuse late reverberation: noise whose envelope follows the echo energy, darker with time
 	var env_l := _envelope(tl, TAIL_RATE, 2.5)
 	var env_r := _envelope(tr, TAIL_RATE, 2.5)
@@ -441,14 +461,19 @@ static func _map_spl(spl: float) -> float:
 	return -1.0
 
 
-## Adds (sl, sr) to (l, r) scaled so that its RMS over [t0, t1] equals target_rms.
-static func _mix_scaled(l: PackedFloat32Array, r: PackedFloat32Array, sl: PackedFloat32Array, sr: PackedFloat32Array, target_rms: float, rate: float, t0: float, t1: float) -> void:
+## Adds (sl, sr) to (l, r) scaled so that its RMS over [t0, t1] equals target_rms; with
+## max_peak > 0 the gain is also limited so that the added signal's peak stays <= max_peak.
+static func _mix_scaled(l: PackedFloat32Array, r: PackedFloat32Array, sl: PackedFloat32Array, sr: PackedFloat32Array, target_rms: float, rate: float, t0: float, t1: float, max_peak: float = 0.0) -> void:
 	var a := int(t0 * rate)
 	var b := mini(int(t1 * rate), sl.size())
 	var cur := maxf(_rms(sl, a, b), _rms(sr, a, b))
 	if cur <= 1e-12:
 		return
 	var g := target_rms / cur
+	if max_peak > 0.0:
+		var sp := maxf(AudioSynth.peak(sl), AudioSynth.peak(sr))
+		if sp > 1e-12:
+			g = minf(g, max_peak / sp)
 	for i in l.size():
 		l[i] += sl[i] * g
 		r[i] += sr[i] * g
