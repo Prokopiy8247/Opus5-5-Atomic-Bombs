@@ -394,6 +394,15 @@ static func fmt_dist_m(m: float) -> String:
 	return fmt_km(m / 1000.0)
 
 
+## Round distances for scale bars and ring legends, trailing zeros trimmed: "500 м", "5 км", "2,5 км".
+static func fmt_dist_round(m: float) -> String:
+	if is_nan(m) or is_inf(m):
+		return "—"
+	if m < 1000.0:
+		return fmt_sig(m, 3) + " " + tr_key("unit.m")
+	return fmt_sig(m / 1000.0, 3) + " " + tr_key("unit.km")
+
+
 static func fmt_km(km: float) -> String:
 	var dec := 2
 	if km >= 100.0:

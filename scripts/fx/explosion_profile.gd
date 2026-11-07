@@ -137,10 +137,14 @@ func fireball_state(t: float) -> Dictionary:
 	st["temp"] = temp
 	# the ball IS the base of the rising head (same centre): no stacked "egg" of two spheres.
 	# Surface bursts start as a hemisphere centred on the ground and lift off later.
-	st["center_y"] = head_center_y(t)
-	# opacity: cools below ~2100 K, and in any case dissolves into the cloud between 4 and 12 t_max
+	st["center_y"] = head_center_eff(t)
+	# opacity: cools below ~2100 K, and in any case dissolves into the cloud between 1.5 and 6 t_max
+	# (cycle-2 review: megaton balls stayed bare and opaque for minutes)
 	var fade_temp := clampf((temp - 1250.0) / 900.0, 0.0, 1.0)
-	var fade_time := 1.0 - smoothstep(4.0 * t_fb_max, 12.0 * t_fb_max, t)
+	var fade_time := 1.0 - smoothstep(1.5 * t_fb_max, 6.0 * t_fb_max, t)
+	if art.has("fb_fade_s"):
+		var fw: Array = art["fb_fade_s"]
+		fade_time = 1.0 - smoothstep(float(fw[0]), float(fw[1]), t)
 	st["opacity"] = minf(fade_temp, fade_time)
 	st["emis"] = emission_scale * float(a("fireball_brightness", 1.0))
 	st["mottle"] = clampf(1.0 - t / maxf(t2 * float(a("mottle_t2", 2.5)), 1e-4), 0.0, 1.0)
@@ -189,7 +193,7 @@ func _conventional_fireball(t: float) -> Dictionary:
 	st["skin"] = clampf((life - 0.2) / 0.6, 0.0, 1.0) * float(a("skin", 1.0))
 	var base_y := maxf(hob, 0.0) + r_fb_max * 0.55 * (0.4 + 0.6 * grow)
 	# the burning ball rises with (and into) the smoke head
-	st["center_y"] = lerpf(base_y, head_center_y(t), smoothstep(0.0, 1.0, life * 0.7))
+	st["center_y"] = lerpf(base_y, head_center_eff(t), smoothstep(0.0, 1.0, life * 0.7))
 	st["squash"] = float(a("fireball_squash", 0.85 if kind != Kind.THERMOBARIC else 0.75))
 	return st
 
@@ -263,6 +267,39 @@ func head_center_y(t: float) -> float:
 	return y
 
 
+## Head radius / half-thickness (x, y) and the "current fireball" radius it grows from (z).
+func _head_rh(t: float) -> Vector3:
+	var x := t / maxf(t_stab, 1.0)
+	var r_now := r_fb_max
+	if nuclear:
+		# the cloud grows OUT of the ball: start inside it so the shell never swallows the fireball
+		r_now = minf(BlastPhysics.fireball_radius(w_kt, t, surface or hob < fb_formula_max) * fb_scale, r_fb_max) * 0.9
+	else:
+		r_now = r_fb_max * 0.9
+	var g := clampf(pow(x, 0.8), 0.0, 1.0)
+	var r := lerpf(r_now, cap_r, g)
+	if x > 1.0:
+		r *= 1.0 + float(a("late_spread", 0.12)) * minf(x - 1.0, 3.0)
+	if art.has("cap_d_keys"):
+		r = maxf(r_now, _keys_log(art["cap_d_keys"], t) * 0.5)
+	var h_final := minf(cap_half, cap_r * float(a("cap_aspect_max", 0.75)))
+	var h := lerpf(r_now * 0.95, h_final, g)
+	if art.has("cap_d_keys"):
+		h = minf(h, r * float(a("cap_aspect_max", 0.75)))
+	return Vector3(r, h, r_now)
+
+
+## One centre for the fireball, the head, the stem top, rings, ice caps and the camera framing:
+## the tanh rise, blended into the measured cloud-top keyframes after the fireball phase.
+func head_center_eff(t: float) -> float:
+	var y := head_center_y(t)
+	if art.has("top_keys") and t > t_fb_max and not is_column_kind():
+		var h := _head_rh(t).y
+		var yk := maxf(_keys_log(art["top_keys"], t) - h, y * 0.5)
+		y = lerpf(y, yk, smoothstep(t_fb_max, 2.0 * t_fb_max, t))
+	return y
+
+
 ## Returns {center_y, radius, half, torus, density, roll, col_mix, heat_temp, heat_glow}
 func head_state(t: float) -> Dictionary:
 	var st := {"center_y": -1e6, "radius": 0.0, "half": 1.0, "torus": 0.0, "density": 0.0, "roll": 0.0,
@@ -273,29 +310,21 @@ func head_state(t: float) -> Dictionary:
 		return _column_head(t, st)
 	var x := t / maxf(t_stab, 1.0)
 	var appear := 0.0
-	var r_now := r_fb_max
 	if nuclear:
-		appear = clampf((t / t2 - 10.0) / 30.0, 0.0, 1.0)
-		r_now = minf(BlastPhysics.fireball_radius(w_kt, t, surface or hob < fb_formula_max) * fb_scale, r_fb_max) * 1.04
+		# the cooling ball turns into the cloud head between ~4 and ~18 t2 (Tsar: 20-90 s)
+		appear = clampf((t / t2 - 4.0) / 14.0, 0.0, 1.0)
+		if art.has("head_appear_s"):
+			var aw: Array = art["head_appear_s"]
+			appear = clampf((t - float(aw[0])) / maxf(float(aw[1]) - float(aw[0]), 0.1), 0.0, 1.0)
 	else:
 		var dur := conventional_fb_duration()
-		appear = clampf((t - dur * 0.15) / maxf(dur * 0.5, 0.05), 0.0, 1.0)
-		r_now = r_fb_max * 1.05
-	# lateral growth: power law in time (King: ~3.4 km at 60 s of a 13.5 km final cap)
-	var g := clampf(pow(x, 0.8), 0.0, 1.0)
-	var r := lerpf(r_now, cap_r, g)
-	if x > 1.0:
-		r *= 1.0 + float(a("late_spread", 0.12)) * minf(x - 1.0, 3.0)
-	if art.has("cap_d_keys"):
-		# measured cap diameters (dossier), log-time interpolation
-		r = maxf(r_now, _keys_log(art["cap_d_keys"], t) * 0.5)
-	var h_final := minf(cap_half, cap_r * float(a("cap_aspect_max", 0.75)))
-	var h := lerpf(r_now * 0.95, h_final, g)
-	if art.has("cap_d_keys"):
-		h = minf(h, r * float(a("cap_aspect_max", 0.75)))
-	st["center_y"] = head_center_y(t)
-	if art.has("top_keys") and t > t_fb_max:
-		st["center_y"] = maxf(_keys_log(art["top_keys"], t) - h, float(st["center_y"]) * 0.5)
+		appear = clampf((t - dur * 0.45) / maxf(dur * 0.5, 0.05), 0.0, 1.0)
+	# lateral growth: power law in time (King: ~3.4 km at 60 s of a 13.5 km final cap),
+	# or the measured cap diameters (dossier keyframes)
+	var rh := _head_rh(t)
+	var r := rh.x
+	var h := rh.y
+	st["center_y"] = head_center_eff(t)
 	st["radius"] = r
 	st["half"] = h
 	st["torus"] = clampf((x - 0.008) / 0.06, 0.0, 1.0) * float(a("torus", 1.0))
@@ -307,7 +336,8 @@ func head_state(t: float) -> Dictionary:
 		var tt := BlastPhysics.fireball_temperature(w_kt, t, surface)
 		var cool := float(a("core_cool_s", 2.5 * pow(w_kt, 0.35)))
 		var core_t := lerpf(2300.0, 950.0, smoothstep(0.0, 1.0, t / cool))
-		var tc := maxf(tt, core_t)
+		var fo := float(fireball_state(t)["opacity"])
+		var tc := maxf(lerpf(core_t, tt, clampf(fo, 0.0, 1.0)), core_t)
 		st["heat_temp"] = tc
 		st["heat_glow"] = emission_scale * 0.9 * clampf((tc - 950.0) / 500.0, 0.0, 1.0) * float(a("core_glow", 0.7))
 	elif not nuclear and kind != Kind.CONVENTIONAL_BURIED:
@@ -338,19 +368,36 @@ func stem_state(t: float) -> Dictionary:
 		else:
 			# dust starts rising after the shock reflects from the ground
 			t_start = BlastPhysics.arrival_time(w_kt, maxf(hob, 1.0), false, conventional) + t_fb_max
-	if t < t_start:
-		return st
 	var v := float(a("stem_speed_rel", 0.75))
 	var avg_speed := head_center_final() / maxf(t_stab * 0.35, 1.0)
 	var rising := (t - t_start) * avg_speed * v + r_fb_max * 0.3
-	var top := minf(head_bottom + float(hs["half"]) * 0.45, rising)
-	if bool(a("stem_detached", false)):
+	var connected := head_bottom + float(hs["half"]) * 0.45
+	var top := minf(connected, rising)
+	var dust_ramp := clampf((t - t_start) / maxf(t_fb_max * 2.0, 0.5), 0.0, 1.0)
+	var fade_late := 1.0 - clampf((t / t_stab - 2.0) / 3.0, 0.0, 0.8)
+	# wake chimney: the rising fireball/torus drags a thin column of smoke and condensed debris behind
+	# it right from the start, so the cap is never a free-floating ball; the ground dust climbs it later
+	var wake := float(a("stem_wake", 0.45))
+	var detached := bool(a("stem_detached", false))
+	if detached:
 		top = minf(rising, head_bottom * float(a("stem_detached_frac", 0.6)))
+		wake = 0.0
+	var wake_bottom := maxf(hob - r_fb_max * 0.4, 0.0)
+	var wake_on := wake > 0.0 and connected > wake_bottom + r_fb_max * 0.5
+	if t < t_start and not wake_on:
+		return st
+	if wake_on:
+		top = connected
 	var rx := clampf(t / maxf(t_stab * 0.4, 1.0), 0.0, 1.0)
 	st["bottom"] = -5.0
 	st["top"] = maxf(top, 0.0)
-	st["radius"] = lerpf(maxf(r_fb_max * 0.35, stem_r * 0.35), stem_r, sqrt(rx))
-	st["density"] = dens * clampf((t - t_start) / maxf(t_fb_max * 2.0, 0.5), 0.0, 1.0) * (1.0 - clampf((t / t_stab - 2.0) / 3.0, 0.0, 0.8))
+	st["radius"] = minf(lerpf(maxf(r_fb_max * 0.35, stem_r * 0.35), stem_r, sqrt(rx)),
+		float(hs["radius"]) * float(a("stem_cap_ratio", 0.3)))
+	st["density"] = dens * fade_late * (1.0 if wake_on else dust_ramp)
+	st["front"] = maxf(rising, 0.0) if t >= t_start else -1.0e4
+	st["wake_bottom"] = wake_bottom
+	st["wake"] = wake * clampf((t - t_fb_max) / maxf(t_fb_max * 4.0, 0.5), 0.0, 1.0) if wake_on else 0.0
+	st["dust_ramp"] = dust_ramp
 	st["flare"] = float(a("stem_flare", 1.6 if (surface or dusty) else 1.3))
 	st["waist"] = float(a("stem_waist", 0.3))
 	st["rise"] = avg_speed * 0.4
@@ -440,6 +487,16 @@ func column_height(t: float) -> float:
 	return h
 
 
+## Column height without the collapse: the cloud keeps the height the ejecta reached.
+func column_peak(t: float) -> float:
+	var hmax := float(a("col_height", 100.0))
+	var t0 := float(a("col_delay", 0.05))
+	if t < t0:
+		return 0.0
+	var x := (t - t0) / float(a("col_rise", 2.0))
+	return minf(hmax * (1.0 - exp(-3.0 * x)) / (1.0 - exp(-3.0)), hmax * (1.0 + 0.04 * maxf(x - 1.0, 0.0)))
+
+
 func _column_stem(t: float, st: Dictionary) -> Dictionary:
 	var h := column_height(t)
 	if h <= 1.0:
@@ -465,7 +522,7 @@ func _column_stem(t: float, st: Dictionary) -> Dictionary:
 
 
 func _column_head(t: float, st: Dictionary) -> Dictionary:
-	var h := column_height(t)
+	var h := column_peak(t)
 	if h <= 1.0:
 		return st
 	var cap := float(a("col_cap_r", float(a("col_radius", 20.0)) * 1.6))
@@ -474,12 +531,13 @@ func _column_head(t: float, st: Dictionary) -> Dictionary:
 	var r := cap * (0.35 + 0.65 * grow) * (1.0 + float(a("cap_late_grow", 0.6)) * late)
 	var rise_extra := float(a("cap_rise", 0.0)) * late
 	# the cloud keeps the height the ejecta reached (it does not sink with the collapsing column)
-	var h_ref := float(a("col_height", 100.0)) * clampf(grow * 3.0, 0.0, 1.0) if bool(a("cap_hold_peak", false)) else h
-	st["center_y"] = maxf(h, h_ref) * float(a("cap_center_k", 0.92)) + rise_extra
+	st["center_y"] = h * float(a("cap_center_k", 0.92)) + rise_extra
 	st["radius"] = r
 	st["half"] = r * float(a("cap_aspect", 0.55))
 	st["torus"] = float(a("torus", 0.0)) * late
 	var dens := float(a("head_density", 1.0)) * clampf(grow * 1.5, 0.0, 1.0)
+	# the puff dilutes as it entrains air while growing
+	dens *= clampf(pow(1.0 / (1.0 + float(a("cap_late_grow", 0.6)) * late), 1.2), 0.3, 1.0)
 	var app := float(a("cap_appear", 0.0))
 	if app > 0.0:
 		# smoke/dust condenses out of the crown instead of popping in as a ball
@@ -510,7 +568,7 @@ func _base_surge(t: float, st: Dictionary) -> Dictionary:
 	var r := rmax * (1.0 - exp(-x / tau)) + float(a("col_radius", 20.0))
 	st["radius"] = r
 	st["height"] = lerpf(float(a("surge_h0", 50.0)), float(a("surge_h1", 150.0)), clampf(x / (tau * 3.0), 0.0, 1.0))
-	st["density"] = float(a("surge_density", 0.9)) * clampf(x / 3.0, 0.0, 1.0) * clampf(1.0 - (x - tau * 4.0) / (tau * 4.0), 0.1, 1.0)
+	st["density"] = float(a("surge_density", 0.9)) * clampf(x / 3.0, 0.0, 1.0) * clampf(1.0 - (x - tau * 4.0) / (tau * 4.0), 0.0, 1.0)
 	st["inner"] = float(a("surge_inner", 0.0)) * clampf(x / (tau * 2.0), 0.0, 1.0)
 	return st
 

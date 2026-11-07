@@ -62,44 +62,44 @@
     "tod_hist": "noon",
     "explosive": "aluminized",
     "fb_duration_s": 0.5,
-    "fb_temp_peak": 3300.0,
-    "emission": 220.0,
-    "fireball_noise": 0.35,
-    "fireball_noise_scale": 3.0,
+    "fb_temp_peak": 3700.0,
+    "emission": 700.0,
+    "fireball_noise": 0.5,
+    "fireball_noise_scale": 1.4,
     "col_height": 26.0,
     "col_radius": 4.5,
-    "col_cone": 5.0,
+    "col_cone": 2.0,
     "col_rise": 0.35,
-    "col_delay": 0.02,
+    "col_delay": 0.08,
     "col_fall": 0.8,
     "col_fall_time": 1.5,
-    "col_density": 1.3,
-    "col_flare": 1.6,
+    "col_density": 1.0,
+    "col_flare": 1.2,
     "col_waist": -0.2,
     "col_cap_r": 11.0,
     "cap_aspect": 0.7,
     "cap_rise": 230.0,
     "cap_grow_time": 120.0,
-    "cap_late_grow": 2.5,
-    "cap_fade": 70.0,
+    "cap_late_grow": 5.0,
+    "cap_fade": 40.0,
     "cap_hold_peak": true,
-    "whiten_s": 60.0,
+    "whiten_s": 25.0,
     "cap_appear": 0.7,
     "cap_center_k": 0.72,
-    "head_density": 0.75,
+    "head_density": 0.45,
     "head_noise_amp": 0.75,
     "head_noise_scale": 0.45,
     "billow_sharp": 0.8,
     "torus": 0.0,
     "head_color_early": [
-     0.05,
-     0.045,
-     0.04
+     0.09,
+     0.085,
+     0.08
     ],
     "head_color_late": [
-     0.2,
-     0.18,
-     0.16
+     0.27,
+     0.25,
+     0.23
     ],
     "stem_color": [
      0.2,
@@ -204,15 +204,15 @@
     "tod_hist": "noon",
     "explosive": "aluminized",
     "fb_duration_s": 0.9,
-    "fb_temp_peak": 3300.0,
-    "emission": 220.0,
-    "fireball_noise": 0.35,
-    "fireball_noise_scale": 3.0,
-    "col_height": 48.0,
-    "col_radius": 8.0,
-    "col_cone": 4.5,
+    "fb_temp_peak": 3600.0,
+    "emission": 800.0,
+    "fireball_noise": 0.5,
+    "fireball_noise_scale": 1.4,
+    "col_height": 55.0,
+    "col_radius": 6.0,
+    "col_cone": 1.5,
     "col_rise": 0.6,
-    "col_delay": 0.03,
+    "col_delay": 0.2,
     "col_fall": 1.2,
     "col_fall_time": 2.2,
     "col_density": 1.3,
@@ -222,13 +222,13 @@
     "cap_aspect": 0.7,
     "cap_rise": 380.0,
     "cap_grow_time": 120.0,
-    "cap_late_grow": 2.3,
-    "cap_fade": 90.0,
+    "cap_late_grow": 5.0,
+    "cap_fade": 60.0,
     "cap_hold_peak": true,
-    "whiten_s": 80.0,
-    "cap_appear": 1.0,
+    "whiten_s": 20.0,
+    "cap_appear": 0.3,
     "cap_center_k": 0.72,
-    "head_density": 0.8,
+    "head_density": 0.5,
     "head_noise_amp": 0.75,
     "head_noise_scale": 0.45,
     "billow_sharp": 0.8,
@@ -239,9 +239,9 @@
      0.04
     ],
     "head_color_late": [
-     0.22,
-     0.19,
-     0.16
+     0.46,
+     0.41,
+     0.35
     ],
     "stem_color": [
      0.18,
@@ -349,23 +349,23 @@
     "dome_h": 4.0,
     "dome_time": 0.25,
     "dome_burst": 0.35,
-    "col_height": 210.0,
-    "col_radius": 14.0,
+    "col_height": 110.0,
+    "col_radius": 10.0,
     "col_cone": 3.2,
-    "col_rise": 1.4,
+    "col_rise": 2.8,
     "col_delay": 0.32,
     "col_spread": 0.6,
     "col_fall": 2.6,
     "col_fall_time": 5.0,
-    "col_cap_r": 60.0,
-    "cap_aspect": 0.55,
-    "cap_late_grow": 1.4,
+    "col_cap_r": 40.0,
+    "cap_aspect": 0.85,
+    "cap_late_grow": 1.0,
     "cap_grow_time": 60.0,
-    "cap_rise": 60.0,
+    "cap_rise": 150.0,
     "cap_fade": 45.0,
     "cap_hold_peak": false,
     "head_density": 0.6,
-    "head_noise_amp": 0.7,
+    "head_noise_amp": 0.85,
     "col_density": 1.1,
     "col_flare": 2.2,
     "col_waist": -0.3,
@@ -377,9 +377,9 @@
      0.14
     ],
     "head_color_late": [
-     0.36,
-     0.32,
-     0.28
+     0.44,
+     0.39,
+     0.33
     ],
     "stem_color": [
      0.22,
@@ -391,7 +391,7 @@
      0.34,
      0.27
     ],
-    "surge_start": 0.03,
+    "surge_start": 1.5,
     "surge_r": 60.0,
     "surge_h0": 3.0,
     "surge_h1": 12.0,
@@ -416,6 +416,7 @@
      -0.5
     ],
     "churn": 2.0,
+    "site_humidity": 0.6,
     "cloud_top_m": 300.0,
     "cap_radius_m": 100.0,
     "crater_r_m": 15.0,
@@ -499,11 +500,11 @@
     "col_spread": 0.7,
     "col_fall": 3.0,
     "col_fall_time": 6.0,
-    "col_cap_r": 80.0,
-    "cap_aspect": 0.6,
-    "cap_late_grow": 1.3,
+    "col_cap_r": 65.0,
+    "cap_aspect": 0.85,
+    "cap_late_grow": 0.9,
     "cap_grow_time": 80.0,
-    "cap_rise": 120.0,
+    "cap_rise": 260.0,
     "cap_fade": 60.0,
     "cap_hold_peak": false,
     "head_density": 0.65,
@@ -513,21 +514,21 @@
     "col_fade": 120.0,
     "whiten_s": 150.0,
     "torus": 0.0,
-    "head_noise_amp": 0.5,
+    "head_noise_amp": 0.85,
     "head_color_early": [
-     0.2,
-     0.16,
-     0.13
+     0.44,
+     0.42,
+     0.39
     ],
     "head_color_late": [
-     0.36,
-     0.31,
-     0.26
+     0.48,
+     0.42,
+     0.35
     ],
     "stem_color": [
-     0.18,
-     0.15,
-     0.12
+     0.13,
+     0.1,
+     0.08
     ],
     "skirt_color": [
      0.4,
@@ -559,6 +560,7 @@
      -0.5
     ],
     "churn": 2.0,
+    "site_humidity": 0.6,
     "fireball_r_m": 8.0,
     "cloud_top_m": 350.0,
     "cap_radius_m": 75.0,
@@ -628,36 +630,36 @@
     "explosive": "aluminized",
     "fb_duration_s": 2.4,
     "fb_temp_peak": 3800.0,
-    "fireball_squash": 0.5,
-    "emission": 260.0,
-    "fireball_noise": 0.4,
-    "fireball_noise_scale": 3.5,
-    "rise_k": 130.0,
+    "fireball_squash": 0.3,
+    "emission": 350.0,
+    "fireball_noise": 0.3,
+    "fireball_noise_scale": 6.0,
+    "rise_k": 35.0,
     "cap_radius_m": 250.0,
     "cap_half_m": 260.0,
     "t_stab_s": 150.0,
     "stem_radius_m": 120.0,
     "head_color_early": [
-     0.05,
-     0.045,
-     0.04
+     0.3,
+     0.27,
+     0.24
     ],
     "head_color_late": [
-     0.2,
-     0.19,
-     0.18
+     0.74,
+     0.72,
+     0.69
     ],
     "stem_color": [
-     0.16,
-     0.14,
-     0.12
+     0.45,
+     0.39,
+     0.31
     ],
     "skirt_color": [
      0.4,
      0.34,
      0.27
     ],
-    "dark_base": 0.5,
+    "dark_base": 0.7,
     "torus": 0.8,
     "head_noise_amp": 0.55,
     "billow_sharp": 0.75,
@@ -683,6 +685,9 @@
      -1.0
     ],
     "churn": 3.0,
+    "whiten_time": 0.02,
+    "rise_delay": 2.0,
+    "site_humidity": 0.6,
     "fireball_r_m": 70.0,
     "cloud_top_m": 1500.0
    }
@@ -745,20 +750,20 @@
    "snow": false,
    "charge_kg": 0,
    "profile": {
-    "tod_hist": "dawn",
+    "tod_hist": "noon",
     "t_stab_s": 200.0,
     "stem_radius_m": 45.0,
     "torus": 0.3,
     "stem_waist": 0.1,
     "head_color_early": [
-     0.34,
-     0.19,
-     0.1
+     0.66,
+     0.62,
+     0.57
     ],
     "head_color_late": [
-     0.48,
-     0.41,
-     0.33
+     0.78,
+     0.76,
+     0.73
     ],
     "stem_color": [
      0.42,
@@ -786,6 +791,9 @@
      -3.25
     ],
     "churn": 2.0,
+    "whiten_time": 0.05,
+    "dark_base": 0.6,
+    "site_humidity": 0.25,
     "fireball_r_m": 17.0,
     "cloud_top_m": 1800.0,
     "cap_radius_m": 350.0,
@@ -975,8 +983,8 @@
     ],
     "whiten_time": 1.5,
     "dark_base": 0.5,
-    "head_noise_amp": 0.5,
-    "billow_sharp": 1.0,
+    "head_noise_amp": 0.7,
+    "billow_sharp": 1.6,
     "torus": 0.5,
     "core_cool_s": 1.0,
     "core_glow": 0.3,
@@ -1000,6 +1008,8 @@
      -1.5
     ],
     "churn": 1.5,
+    "head_noise_scale": 0.35,
+    "cap_aspect_max": 0.5,
     "fireball_r_m": 38.0,
     "cloud_top_m": 2150.0,
     "cap_radius_m": 450.0
@@ -1063,7 +1073,7 @@
    "snow": false,
    "charge_kg": 0,
    "profile": {
-    "tod_hist": "dawn",
+    "tod_hist": "noon",
     "precursor": true,
     "head_color_early": [
      0.34,
@@ -1085,7 +1095,7 @@
     ],
     "stem_density": 2.5,
     "stem_stretch": 1.0,
-    "stem_flare": 2.4,
+    "stem_flare": 1.7,
     "skirt": 1.4,
     "skirt_height": 1.6,
     "skirt_color": [
@@ -1106,6 +1116,7 @@
      -3.0
     ],
     "churn": 1.5,
+    "site_humidity": 0.25,
     "fireball_r_m": 175.0,
     "cloud_top_m": 9700.0,
     "cap_radius_m": 1750.0
@@ -1171,16 +1182,16 @@
    "profile": {
     "tod_hist": "noon",
     "head_color_early": [
-     0.2,
-     0.11,
-     0.13
+     0.62,
+     0.55,
+     0.55
     ],
     "head_color_late": [
-     0.84,
-     0.82,
-     0.8
+     0.88,
+     0.87,
+     0.86
     ],
-    "whiten_time": 1.0,
+    "whiten_time": 0.12,
     "stem_color": [
      0.3,
      0.28,
@@ -1202,13 +1213,17 @@
     ],
     "wilson": 1.0,
     "crater": false,
-    "core_glow": 0.6,
+    "core_glow": 0.8,
     "dark_base": 0.7,
     "wind": [
      -2.0,
      -2.0
     ],
     "churn": 1.5,
+    "core_radius": 0.25,
+    "core_cool_s": 20.0,
+    "site_humidity": 0.8,
+    "wilson_duration": 0.7,
     "fireball_r_m": 190.0,
     "cloud_top_m": 12500.0,
     "cap_radius_m": 2250.0
@@ -1279,13 +1294,13 @@
      0.95,
      0.5
     ],
-    "tint_time": 4.0,
+    "tint_time": 1.0,
     "skirt_early": true,
     "mottle_t2": 6.0,
     "head_color_early": [
-     0.4,
-     0.18,
-     0.09
+     0.42,
+     0.17,
+     0.07
     ],
     "head_color_late": [
      0.62,
@@ -1311,13 +1326,19 @@
     ],
     "wilson": 0.0,
     "dust_wall": 1.3,
-    "core_glow": 0.6,
+    "core_glow": 1.5,
     "whiten_time": 0.9,
     "wind": [
      2.0,
      -2.5
     ],
     "churn": 1.5,
+    "core_radius": 0.6,
+    "core_cool_s": 30.0,
+    "head_noise_amp": 0.55,
+    "billow_sharp": 1.4,
+    "roll": 0.6,
+    "site_humidity": 0.45,
     "fireball_r_m": 300.0,
     "cloud_top_m": 10500.0,
     "cap_radius_m": 2250.0,
@@ -1364,7 +1385,7 @@
      0.2
     ]
    },
-   "rec_km": 25.0,
+   "rec_km": 8.0,
    "num": 12,
    "blurb": {
     "ru": "25 июля 1946 года в лагуне атолла Бикини заряд типа «Толстяк» мощностью 23 кт взорвали на глубине 27 м под десантным кораблём LSM-60. Взрыв выбросил полый столб воды шириной около 600 м и высотой до ~1,8 км; на пару секунд его скрыло белое конденсационное облако Вильсона диаметром около 1,6 км. Волна высотой 29 м (от подошвы до гребня) и радиоактивная «базисная волна» водяного тумана накрыли флот-мишень. Затонули линкор «Арканзас», авианосец «Саратога» и ещё несколько кораблей.",
@@ -1390,7 +1411,7 @@
     "col_height": 1800.0,
     "col_radius": 300.0,
     "col_wall": 0.3,
-    "col_rise": 7.0,
+    "col_rise": 5.5,
     "col_spread": 0.15,
     "col_delay": 0.02,
     "col_fall": 14.0,
@@ -1445,6 +1466,8 @@
      -1.0
     ],
     "churn": 1.0,
+    "site_humidity": 0.85,
+    "cap_appear": 3.0,
     "cloud_top_m": 3000.0,
     "cap_radius_m": 1300.0
    }
@@ -1516,25 +1539,25 @@
     "vent_glow": 1.0,
     "vent_time": 3.1,
     "vent_duration": 1.2,
-    "vent_radius": 70.0,
+    "vent_radius": 45.0,
     "vent_height": 90.0,
     "col_height": 3700.0,
     "col_radius": 420.0,
-    "col_cone": 1.2,
-    "col_rise": 28.0,
+    "col_cone": 0.25,
+    "col_rise": 60.0,
     "col_spread": 0.6,
-    "col_delay": 3.0,
+    "col_delay": 3.4,
     "col_cap_r": 450.0,
-    "cap_aspect": 0.5,
+    "cap_aspect": 0.9,
     "cap_late_grow": 0.35,
     "cap_grow_time": 60.0,
     "col_density": 1.0,
-    "col_flare": 2.0,
+    "col_flare": 1.3,
     "col_waist": 0.05,
     "whiten_s": 400.0,
     "torus": 0.0,
-    "head_noise_amp": 0.5,
-    "head_noise_scale": 0.9,
+    "head_noise_amp": 0.8,
+    "head_noise_scale": 0.3,
     "head_color_early": [
      0.17,
      0.14,
@@ -1563,7 +1586,7 @@
     "surge_inner": 0.3,
     "crater": true,
     "crater_time": 6.0,
-    "debris_count": 5000,
+    "debris_count": 150,
     "debris_speed": 140.0,
     "debris_size": 3.0,
     "debris_cone": 35.0,
@@ -1579,6 +1602,7 @@
      -1.5
     ],
     "churn": 1.0,
+    "site_humidity": 0.25,
     "cloud_top_m": 3700.0,
     "cap_radius_m": 1000.0,
     "crater_r_m": 185.0,
@@ -1689,11 +1713,15 @@
      "opacity": 0.7
     },
     "rings": 1,
-    "core_cool_s": 40.0,
+    "core_cool_s": 90.0,
     "wind": [
      1.5,
      -1.0
     ],
+    "core_glow": 1.4,
+    "core_radius": 0.35,
+    "wilson_force": true,
+    "site_humidity": 0.8,
     "fireball_r_m": 650.0,
     "cloud_top_m": 23000.0,
     "cap_radius_m": 13500.0
@@ -1759,16 +1787,16 @@
    "profile": {
     "tod_hist": "noon",
     "head_color_early": [
-     0.28,
-     0.15,
-     0.08
+     0.26,
+     0.18,
+     0.12
     ],
     "head_color_late": [
-     0.38,
-     0.31,
-     0.25
+     0.36,
+     0.33,
+     0.3
     ],
-    "whiten_time": 2.0,
+    "whiten_time": 1.0,
     "stem_color": [
      0.16,
      0.12,
@@ -1808,6 +1836,8 @@
      2.5,
      -1.5
     ],
+    "head_noise_amp": 0.55,
+    "billow_sharp": 1.0,
     "fireball_r_m": 1250.0,
     "cloud_top_m": 21000.0,
     "cap_radius_m": 17500.0,
@@ -1885,13 +1915,13 @@
      0.82
     ],
     "stem_color": [
-     0.3,
-     0.27,
-     0.25
+     0.2,
+     0.16,
+     0.13
     ],
-    "stem_density": 0.45,
+    "stem_density": 0.9,
     "stem_radius_m": 1300.0,
-    "skirt": 0.3,
+    "skirt": 0.9,
     "wilson": 0.8,
     "crater": false,
     "ring_list": [
@@ -1931,6 +1961,15 @@
      1.5,
      -1.0
     ],
+    "reflect_cut_t": 2.5,
+    "skirt_color": [
+     0.5,
+     0.43,
+     0.35
+    ],
+    "skirt_height": 1.5,
+    "stem_flare": 3.0,
+    "wilson_force": true,
     "fireball_r_m": 1000.0,
     "cloud_top_m": 20000.0,
     "cap_radius_m": 14000.0
@@ -2087,11 +2126,23 @@
     },
     "overshoot": 0.08,
     "whiten_time": 0.4,
-    "core_cool_s": 80.0,
+    "core_cool_s": 45.0,
     "wind": [
      2.0,
      -1.0
     ],
+    "fireball_noise": 0.05,
+    "fireball_noise_scale": 3.5,
+    "mottle_t2": 5.0,
+    "fb_fade_s": [
+     15.0,
+     45.0
+    ],
+    "head_appear_s": [
+     6.0,
+     25.0
+    ],
+    "site_humidity": 0.85,
     "fireball_r_m": 2600.0,
     "cloud_top_m": 37000.0,
     "cap_radius_m": 30500.0,
@@ -2240,6 +2291,18 @@
     ],
     "top_keys": [
      [
+      10.0,
+      3500.0
+     ],
+     [
+      20.0,
+      7000.0
+     ],
+     [
+      40.0,
+      11000.0
+     ],
+     [
       60.0,
       14300.0
      ],
@@ -2292,11 +2355,22 @@
     "overshoot": 0.08,
     "whiten_time": 0.4,
     "crimson": 1.0,
-    "core_cool_s": 90.0,
+    "core_cool_s": 55.0,
     "wind": [
      2.0,
      -1.5
     ],
+    "fb_fade_s": [
+     20.0,
+     60.0
+    ],
+    "head_appear_s": [
+     8.0,
+     30.0
+    ],
+    "site_humidity": 0.85,
+    "fireball_noise": 0.05,
+    "fireball_noise_scale": 3.5,
     "fireball_r_m": 3500.0,
     "cloud_top_m": 40000.0,
     "cap_radius_m": 56500.0,
@@ -2422,10 +2496,42 @@
     },
     "overshoot": 0.1,
     "whiten_time": 0.35,
-    "core_cool_s": 120.0,
+    "core_cool_s": 40.0,
     "wind": [
      3.0,
      -1.5
+    ],
+    "head_appear_s": [
+     6.0,
+     25.0
+    ],
+    "fb_fade_s": [
+     20.0,
+     55.0
+    ],
+    "fireball_noise": 0.05,
+    "fireball_noise_scale": 3.5,
+    "top_keys": [
+     [
+      15.0,
+      9000.0
+     ],
+     [
+      40.0,
+      25000.0
+     ],
+     [
+      90.0,
+      35000.0
+     ],
+     [
+      300.0,
+      50000.0
+     ],
+     [
+      540.0,
+      53000.0
+     ]
     ],
     "fireball_r_m": 3000.0,
     "cloud_top_m": 53000.0,
@@ -2544,19 +2650,53 @@
      "opacity": 0.8
     },
     "tier2": {
-     "t_on": 0.25,
-     "dur": 1.2,
+     "t_on": 0.35,
+     "dur": 0.5,
      "opacity": 0.6,
      "radius_m": 47500.0,
-     "height_rel": 0.64,
-     "half_m": 4000.0
+     "height_rel": 0.92,
+     "half_m": 2500.0
     },
     "overshoot": 0.12,
     "whiten_time": 0.35,
-    "core_cool_s": 150.0,
+    "core_cool_s": 60.0,
     "wind": [
      3.0,
      -1.5
+    ],
+    "fireball_noise": 0.05,
+    "fireball_noise_scale": 3.0,
+    "head_appear_s": [
+     8.0,
+     30.0
+    ],
+    "fb_fade_s": [
+     20.0,
+     60.0
+    ],
+    "core_radius": 0.25,
+    "stem_delay": 12.0,
+    "top_keys": [
+     [
+      18.0,
+      10500.0
+     ],
+     [
+      40.0,
+      30000.0
+     ],
+     [
+      120.0,
+      42000.0
+     ],
+     [
+      480.0,
+      67000.0
+     ],
+     [
+      700.0,
+      64000.0
+     ]
     ],
     "fireball_r_m": 4000.0,
     "cloud_top_m": 65000.0

@@ -41,11 +41,17 @@ func _initialize() -> void:
 	_check_api()
 	_check_geometry()
 	_check_robustness()
-	_check_leaks()
+	_run_async()
+
+
+## The leak check spans real frames (the rendering server frees mesh
+## buffers on its own sync), then either quits or takes the screenshots.
+func _run_async() -> void:
+	await _check_leaks()
 	if DisplayServer.get_name() == "headless":
 		_finish()
 	else:
-		_shoot()
+		await _shoot()
 
 
 func _finish() -> void:
@@ -489,7 +495,8 @@ func _check_robustness() -> void:
 
 
 ## Builds and frees everything 20 times (also the launcher's payload
-## separation); object, node and resource counts must not grow.
+## separation), one cycle per frame so the rendering server can release the
+## freed meshes; object counts and memory must not grow.
 func _check_leaks() -> void:
 	var holder := Node3D.new()
 	root.add_child(holder)
@@ -515,8 +522,7 @@ func _check_leaks() -> void:
 			holder.add_child(m)
 			holder.add_child(ms)
 			holder.add_child(pc)
-			# Payload separation: reparent keeping its transform (the tree is
-			# not live during _initialize, so compose the transforms by hand).
+			# Payload separation: reparent keeping the world transform.
 			var p: Node3D = ms.get_node("Payload")
 			var gt := ms.transform * p.transform
 			ms.remove_child(p)
@@ -526,16 +532,28 @@ func _check_leaks() -> void:
 			ms.free()
 			p.free()
 			pc.free()
+		await process_frame
 		if cycle == 0 or cycle == 20:
-			counts.append([Performance.get_monitor(Performance.OBJECT_COUNT), Performance.get_monitor(Performance.OBJECT_NODE_COUNT), Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT), Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT), Performance.get_monitor(Performance.MEMORY_STATIC)])
+			for k in 6:
+				await process_frame
+			counts.append([
+				Performance.get_monitor(Performance.OBJECT_COUNT),
+				Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT),
+				Performance.get_monitor(Performance.MEMORY_STATIC),
+				Performance.get_monitor(Performance.RENDER_BUFFER_MEM_USED),
+				Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED),
+			])
 	holder.free()
 	var a: Array = counts[0]
 	var z: Array = counts[1]
-	print("leak check (after cycle 1 -> after cycle 21): objects %d -> %d, nodes %d -> %d, resources %d -> %d, orphans %d -> %d, static mem %.2f -> %.2f MB" % [int(a[0]), int(z[0]), int(a[1]), int(z[1]), int(a[2]), int(z[2]), int(a[3]), int(z[3]), float(a[4]) / 1048576.0, float(z[4]) / 1048576.0])
-	if int(z[0]) > int(a[0]) or int(z[1]) > int(a[1]) or int(z[2]) > int(a[2]) or int(z[3]) > int(a[3]):
-		_fail("leak: object/node/resource counts grew over 20 cycles")
-	if float(z[4]) - float(a[4]) > 8.0 * 1048576.0:
-		_fail("leak: static memory grew by %.1f MB" % ((float(z[4]) - float(a[4])) / 1048576.0))
+	var mb := 1048576.0
+	print("leak check (after cycle 1 -> after cycle 21): objects %d -> %d, orphan nodes %d -> %d, static mem %.2f -> %.2f MB, render buffers %.2f -> %.2f MB, video mem %.2f -> %.2f MB" % [int(a[0]), int(z[0]), int(a[1]), int(z[1]), float(a[2]) / mb, float(z[2]) / mb, float(a[3]) / mb, float(z[3]) / mb, float(a[4]) / mb, float(z[4]) / mb])
+	if int(z[0]) > int(a[0]) or int(z[1]) > int(a[1]):
+		_fail("leak: object/orphan node counts grew over 20 cycles")
+	if float(z[2]) - float(a[2]) > 2.0 * mb:
+		_fail("leak: static memory grew by %.1f MB" % ((float(z[2]) - float(a[2])) / mb))
+	if float(z[3]) - float(a[3]) > 2.0 * mb or float(z[4]) - float(a[4]) > 2.0 * mb:
+		_fail("leak: render memory grew")
 	var nb := float(maxi(n_calls, 1))
 	print("timing per call: build %.2f ms, build_missile %.2f ms, build_parachute %.2f ms" % [t_build / nb / 1000.0, t_missile / nb / 1000.0, t_chute / nb / 1000.0])
 	if t_build / nb > 20000.0 or t_missile / nb > 40000.0 or t_chute / nb > 20000.0:

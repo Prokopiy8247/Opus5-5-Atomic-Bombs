@@ -20,6 +20,7 @@ var distance_km := 25.0
 var azimuth_deg := 0.0
 var tod: int = TimeOfDay.NOON
 var humidity := 0.35              # dry desert default (Wilson clouds need humid presets)
+var humidity_manual := false      # true once the player picks a humidity (H key / menu): no site default
 var quality: int = Quality.HIGH
 var auto_quality := true
 var time_scale := 1.0
@@ -53,6 +54,11 @@ func _load_data() -> void:
 			locale = lp
 	else:
 		push_error("Cannot open res://data/locale.json")
+
+
+## Historical humidity of the bomb's test site (Pacific atolls / Hiroshima humid, Nevada dry).
+func site_humidity(b: Dictionary) -> float:
+	return float(b.get("profile", {}).get("site_humidity", 0.35))
 
 
 func bomb(i: int = -1) -> Dictionary:

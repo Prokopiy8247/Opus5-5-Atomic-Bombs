@@ -129,6 +129,77 @@ func _preview_sheet() -> void:
 	print("SHOT ", p, " err=", sheet.save_png(p))
 
 
+## The menu's warning must agree with the game: same coupling as ExplosionProfile, same
+## p_obs / t_shock_obs formula as Explosion.setup(), same flight time as the Launcher.
+func _check_against_explosion() -> void:
+	var EP: GDScript = load("res://scripts/fx/explosion_profile.gd")
+	var LA: GDScript = load("res://scripts/fx/launcher.gd")
+	var worst_p := 0.0
+	var worst_t := 0.0
+	var coup_ok := true
+	for i in G.bombs.size():
+		var b: Dictionary = G.bombs[i]
+		var prof = EP.new(b)
+		var c: Dictionary = TerminalMenu.coupling(b)
+		if bool(c["surface"]) != bool(prof.surface) or bool(c["conventional"]) != bool(prof.conventional) \
+				or bool(c["nuclear"]) != bool(prof.nuclear) or absf(float(c["w_air"]) - float(prof.blast_yield())) > 1e-9 * maxf(1.0, float(prof.w_kt)):
+			coup_ok = false
+			printerr("  coupling mismatch #%d: ui %s vs profile surface=%s conv=%s w_air=%f" % [i + 1, str(c), prof.surface, prof.conventional, prof.blast_yield()])
+		var rec := float(b.get("rec_km", 25.0))
+		for d in [rec / 3.0, rec, minf(rec * 3.0, 200.0)]:
+			var e: Dictionary = TerminalMenu.estimate(b, d, 7.0, 0.5)
+			# Explosion.setup(): burst = gz + max(hob, 0) up; observer at the origin
+			var x: float = sin(deg_to_rad(7.0)) * float(d) * 1000.0
+			var z: float = -cos(deg_to_rad(7.0)) * float(d) * 1000.0
+			var burst := Vector3(x, TerrainMath.height(x, z) + maxf(float(prof.hob), 0.0), z)
+			var obs := burst.length()
+			var p_ref := BlastPhysics.overpressure(prof.blast_yield(), obs, prof.surface, prof.conventional)
+			var t_ref := BlastPhysics.arrival_time(prof.w_kt, obs, prof.surface, prof.conventional)
+			worst_p = maxf(worst_p, absf(float(e["p"]) / p_ref - 1.0))
+			worst_t = maxf(worst_t, absf(float(e["t_shock"]) / t_ref - 1.0))
+	check(coup_ok, "coupling == ExplosionProfile (surface/conventional/nuclear/blast_yield) for all bombs")
+	check(worst_p < 1e-4 and worst_t < 1e-4, "bunker p / t_shock == Explosion.setup() formula (worst rel err p %.7f, t %.7f)" % [worst_p, worst_t])
+	var ft_ok := true
+	for d in [0.5, 1.0, 7.3, 25.0, 120.0, 200.0]:
+		if absf(TerminalMenu.flight_time(d) - LA.flight_time_for(d)) > 1e-6:
+			ft_ok = false
+	check(ft_ok, "flight_time == Launcher.flight_time_for")
+	var tsar: Dictionary = G.bombs[19]
+	var ch: float = TerminalMenu.chute_time(tsar)
+	check(ch > 2.9 and is_equal_approx(float(TerminalMenu.estimate(tsar, 50.0, 0.0, 0.5)["flight"]), TerminalMenu.flight_time(50.0) + ch), "Tsar flight includes the %.1f s parachute phase" % ch)
+	check(TerminalMenu.chute_time(G.bombs[14]) == 0.0, "B83 (contact burst) has no parachute phase")
+
+
+## danger_range() is the exact boundary of the p / q predicate, and the menu is fast enough.
+func _check_danger_and_speed() -> void:
+	var ok := true
+	var worst_d := 0.0
+	var worst_e := 0.0
+	for i in G.bombs.size():
+		var b: Dictionary = G.bombs[i]
+		for spec in [[10.0, true], [25.0, false]]:
+			var lim: float = spec[0]
+			var use_q: bool = spec[1]
+			var t0 := Time.get_ticks_usec()
+			var dr: float = TerminalMenu.danger_range(b, 5.0, 0.5, lim, use_q)
+			worst_d = maxf(worst_d, float(Time.get_ticks_usec() - t0) / 1000.0)
+			if dr > 0.6 and dr < 190.0:
+				var ein: Dictionary = TerminalMenu.estimate_fast(b, dr * 0.99, 5.0, 0.5)
+				var eout: Dictionary = TerminalMenu.estimate_fast(b, dr * 1.01, 5.0, 0.5)
+				var din := float(ein["p"]) >= lim or (use_q and float(ein["q"]) >= 10.0)
+				var dout := float(eout["p"]) >= lim or (use_q and float(eout["q"]) >= 10.0)
+				if not din or dout:
+					ok = false
+					printerr("  danger boundary wrong #%d lim %.0f: %.3f km (in %s out %s)" % [i + 1, lim, dr, din, dout])
+		var t1 := Time.get_ticks_usec()
+		for d in [0.5, 3.0, 30.0, 200.0]:
+			TerminalMenu.estimate(b, d, 0.0, 0.5)
+		worst_e = maxf(worst_e, float(Time.get_ticks_usec() - t1) / 4000.0)
+	check(ok, "danger_range is the boundary of p >= lim / q >= 10 cal for all bombs")
+	check(worst_d < 25.0, "danger_range worst %.2f ms (< 25 ms)" % worst_d)
+	check(worst_e < 15.0, "estimate worst %.2f ms per call (< 15 ms)" % worst_e)
+
+
 ## Timing of the menu's physics estimates (headless is fine).
 func _bench() -> void:
 	var TM: GDScript = load("res://scripts/ui/terminal_menu.gd")
@@ -233,6 +304,8 @@ func _run() -> void:
 			i + 1, G.bomb_text(b, "name"), float(b.get("rec_km", 0.0)), e["p"], e["q"], e["r_glass"], e["r_house"], e["r_burn"], e["r_concrete"], e["t_shock"]])
 		var dz: float = TerminalMenu.danger_range(b, 0.0, 0.55, 10.0, true)
 		print("  danger range (10 psi / 10 cal): %.2f km, rec %.1f km%s" % [dz, float(b.get("rec_km", 0.0)), "  <-- REC INSIDE DANGER" if dz > float(b.get("rec_km", 0.0)) else ""])
+	_check_against_explosion()
+	_check_danger_and_speed()
 	for i in [0, 8, 16, 19]:
 		menu.select_bomb(i)
 		check(menu.sel == i and G.selected_bomb == i, "select bomb %d" % i)
@@ -374,9 +447,60 @@ func _run() -> void:
 	check(ui.is_destroyed_visible(), "destroyed visible")
 	await wait_sec(0.5)
 	await shot("destroyed_ru.png")
+	check(ui._dest_peak.text.contains("31,2"), "destroyed peak from update_hud '%s'" % ui._dest_peak.text)
 	resets = 0
 	ui._destroyed.find_children("*", "Button", true, false)[0].pressed.emit()
 	check(resets == 1 and not ui.is_destroyed_visible(), "retry emits reset_requested and hides")
+	ui.update_hud(_fake_info("idle", 0.0, "", false, 1.0, 19, 5.0, 0.0))
+	ui.show_destroyed(true, 40.0)
+	check(ui._dest_peak.visible and ui._dest_peak.text.contains("40,0"), "show_destroyed(true, peak) '%s'" % ui._dest_peak.text)
+	ui.show_destroyed(false)
+	ui.update_hud(_fake_info("explosion", 1.0, "flash", false, 1.0, 19, 5.0, NAN))
+	check(is_finite(ui._peak_p), "NaN p_psi ignored by the peak tracker")
+	var est: Dictionary = ui.get_estimate()
+	est["p"] = -1.0
+	check(float(menu.est["p"]) >= 0.0, "get_estimate() returns a copy")
+
+	# ---- settings poll: values the controls cannot show exactly must not re-sync forever
+	ui.show_menu(true)
+	G.humidity = 1.1          # e.g. an out-of-range preset
+	G.distance_km = 400.0     # outside the 0.5..200 km slider
+	menu._poll_game()
+	check(menu._game_snap == menu._game_snapshot(), "poll re-synced once to the new Game values")
+	check(is_equal_approx(menu.dist_km, 200.0) and is_equal_approx(menu._hum_slider.value, 1.0), "out-of-range Game values clamped in the controls")
+	var snap_before: Array = menu._game_snap
+	menu._poll_game()
+	check(menu._game_snap == snap_before, "no re-sync while nothing changes")
+	G.humidity = 0.55
+	G.distance_km = 25.0
+	menu.sync_from_game()
+
+	# ---- preview / model rebuild cycles do not leak nodes or objects
+	await wait_frames(3)
+	var n0 := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	var o0 := Performance.get_monitor(Performance.OBJECT_COUNT)
+	for cyc in 3:
+		for i in G.bombs.size():
+			menu.select_bomb(i)
+			await process_frame
+	menu.select_bomb(10)
+	await wait_frames(4)
+	var n1 := Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
+	var o1 := Performance.get_monitor(Performance.OBJECT_COUNT)
+	check(absf(n1 - n0) < 40.0 and absf(o1 - o0) < 200.0, "no leak over 60 model rebuilds (nodes %d -> %d, objects %d -> %d)" % [n0, n1, o0, o1])
+	for i in 12:
+		ui.show_toast("toast %d" % i)
+	check(ui._toasts.get_child_count() <= 4, "toasts capped at 4")
+	ui.show_menu(false)
+	await process_frame
+	check(menu._sv.render_target_update_mode == SubViewport.UPDATE_DISABLED, "preview stops rendering when the menu is hidden")
+	ui.show_menu(true)
+	ui.visible = false
+	await wait_frames(2)
+	check(menu._sv.render_target_update_mode == SubViewport.UPDATE_DISABLED, "preview stops rendering when the whole UI layer is hidden")
+	ui.visible = true
+	await wait_frames(2)
+	check(menu._sv.render_target_update_mode == SubViewport.UPDATE_ALWAYS, "preview renders again when shown")
 
 	# ---- 20 previews (exercises bomb_models.gd if present)
 	check(ResourceLoader.exists(MODELS_PATH) == (menu._models_script != null), "bomb_models.gd used if present (%s)" % str(menu._models_script != null))

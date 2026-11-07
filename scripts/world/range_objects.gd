@@ -17,8 +17,9 @@ extends Node3D
 ##   damage_summary(age) -> Dictionary                      CPU mirror of the main thresholds
 ##   instance_total() -> int
 ## opts (all optional): nuclear (bool, default w_kt >= 0.05), conventional (bool, default
-##   not nuclear; selects the HE blast fits), blast_scale (air-blast coupling, e.g. 0.1 buried /
-##   0.3 underwater), fireball_r (m), crater_r (m), exclude_r (m, keep-out radius around ground
+##   not nuclear; selects the HE blast fits), blast_scale (air-blast coupling on the overpressure,
+##   e.g. ExplosionProfile.blast_yield() / w_kt; arrival times always use the full w_kt, as in
+##   explosion.gd), fireball_r (m), crater_r (m), exclude_r (m, keep-out radius around ground
 ##   zero, e.g. the Baker lagoon), density (0.2..2), seed (int).
 ## The node must stay at the world origin (it is top_level; instance transforms are world).
 
@@ -400,9 +401,11 @@ func psi_at(slant: float) -> float:
 	return exp(lerpf(_psi_lp[lo], _psi_lp[hi], f))
 
 
-## Shock arrival time (s) at a slant distance from the burst point (same fit as the explosion).
+## Shock arrival time (s) at a slant distance from the burst point. Uses the full yield, exactly
+## like explosion.gd (bunker shock time, visible ground shock ring); blast_scale only reduces
+## the overpressure, so objects fail exactly when the visible front passes them.
 func arrival_at(slant: float) -> float:
-	return BlastPhysics.arrival_time(_w_blast, maxf(slant, 0.01), _surface, _conventional)
+	return BlastPhysics.arrival_time(_w, maxf(slant, 0.01), _surface, _conventional)
 
 
 ## Ground distance from ground zero at which the given overpressure is reached (-1: never).
@@ -1987,6 +1990,7 @@ global uniform vec4 g_sun_light;
 global uniform vec4 g_ambient;
 uniform vec3 burst_pos = vec3(0.0, -10000.0, 0.0);
 uniform float w13 = 1.0;
+uniform sampler2D depth_tex : hint_depth_texture, filter_nearest, repeat_disable;
 varying float v_a;
 varying float v_h;
 varying float v_fire;
@@ -2054,10 +2058,13 @@ void vertex() {
 				float D = min(u * tp * 0.8 * (1.0 - exp(-tb / tp)), 600.0);
 				float ynew = rise * tb;
 				float old = smoothstep(ynew - 0.1 * H - 2.0, ynew + 0.1 * H + 2.0, y);
-				drift += push * D * old;
-				v_brk = 4.0 * old * (1.0 - old) * sat(D / max(size * 2.0, 1.0));
-				v_old = old * sat(tb / 1.2);
-				drift -= push * min(D * 0.15, 40.0) * old * sat((tb - tp) / (3.0 * tp));
+				// The smoke above the fresh column is torn off and swept downwind while it disperses
+				// (about a second). Afterwards those vertices are fully transparent and drop back
+				// onto the column, so no stretched strip is left lying across the sky.
+				float carry = 1.0 - smoothstep(0.9, 1.3, tb);
+				drift += push * D * old * carry;
+				v_brk = 4.0 * old * (1.0 - old) * sat(D / max(size * 2.0, 1.0)) * carry;
+				v_old = old * (sat(tb / 1.0) + 4.0 * smoothstep(0.8, 0.9, tb));
 			}
 			wpos = o + right * (UV.x - 0.5) * w + vec3(0.0, y, 0.0) + drift;
 			v_h = y;
@@ -2120,8 +2127,9 @@ void fragment() {
 		float bottom = smoothstep(0.0, max(v_size * 0.6, 1.5), v_h);
 		float dil = mix(1.0, 0.45, uv.y);
 		a = sat(edge * top * bottom * dil * (0.3 + 1.2 * nn)) * v_a * (v_mode > 0.5 ? 0.55 : 0.9) * (1.0 - 0.9 * v_brk);
-		// smoke torn off by the blast wind is mixed away within about a second
-		a *= 1.0 - smoothstep(0.0, 0.5, v_old);
+		// smoke torn off by the blast wind is mixed away within about a second (ragged edge)
+		float vo = v_old > 0.0 ? v_old + (nn - 0.5) * 0.2 : 0.0;
+		a *= 1.0 - smoothstep(0.0, 0.6, vo);
 		vec3 base = v_mode > 0.5 ? vec3(0.36, 0.34, 0.31) : vec3(0.07, 0.065, 0.06);
 		col = base * lit * (0.65 + 0.7 * nn);
 		float glow = v_fire * exp(-v_h / max(v_size * 0.4, 0.4));
@@ -2134,6 +2142,11 @@ void fragment() {
 		float k = pow(g_fireball.w / max(d, g_fireball.w), 2.0);
 		col += col * g_fireball_color.rgb * min(g_fireball_color.w * k * 0.5, 3.0);
 	}
+	// soft intersection with the ground and the wrecks (no hard cut where the strip meets them)
+	float zd = textureLod(depth_tex, SCREEN_UV, 0.0).r;
+	vec4 sv = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, zd, 1.0);
+	float scene_d = -sv.z / sv.w;
+	a *= sat((scene_d + VERTEX.z) / max(v_size * 0.7, 1.5));
 	ALBEDO = col;
 	ALPHA = sat(a);
 	FOG = atm_fog(CAMERA_POSITION_WORLD, v_wp);

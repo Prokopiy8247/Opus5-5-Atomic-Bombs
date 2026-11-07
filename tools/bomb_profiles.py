@@ -222,3 +222,61 @@ PROFILES = {
         overshoot=0.12, whiten_time=0.35, core_cool_s=150.0, wind=[3.00, -1.50],
     ),
 }
+
+
+# ---------------------------------------------------------------------------------------------
+# Revision: art-director review cycle 2 (docs/reviews/cycle2_art_review.json). Per-bomb overrides
+# merged over the cycle-1 values above; site_humidity = historical site humidity used by default
+# (Pacific shots, Hiroshima), fb_fade_s / head_appear_s = explicit fireball-to-cloud windows (s).
+CYCLE2 = {
+    "mk82": dict(cap_late_grow=5.0, head_density=0.45, head_color_early=[0.09, 0.085, 0.08],
+                 head_color_late=[0.27, 0.25, 0.23], whiten_s=25.0, cap_fade=40.0, col_cone=2.0, col_flare=1.2,
+                 col_density=1.0, emission=700.0, fb_temp_peak=3700.0, fireball_noise=0.5,
+                 fireball_noise_scale=1.4, col_delay=0.08),
+    "mk84": dict(col_delay=0.2, col_radius=6.0, col_cone=1.5, col_height=55.0, cap_appear=0.3,
+                 head_color_late=[0.46, 0.41, 0.35], whiten_s=20.0, emission=800.0, fb_temp_peak=3600.0,
+                 fireball_noise=0.5, fireball_noise_scale=1.4, cap_late_grow=5.0, head_density=0.5, cap_fade=60.0),
+    "tallboy": dict(cap_rise=150.0, cap_late_grow=1.0, cap_aspect=0.85, head_noise_amp=0.85,
+                    head_color_late=[0.44, 0.39, 0.33], col_height=110.0, col_rise=2.8, col_cap_r=40.0,
+                    col_radius=10.0, surge_start=1.5, site_humidity=0.6),
+    "grand_slam": dict(cap_rise=260.0, cap_late_grow=0.9, cap_aspect=0.85, head_color_late=[0.48, 0.42, 0.35],
+                       head_color_early=[0.44, 0.42, 0.39], stem_color=[0.13, 0.10, 0.08], col_cap_r=65.0,
+                       head_noise_amp=0.85, site_humidity=0.6),
+    "moab": dict(head_color_early=[0.30, 0.27, 0.24], head_color_late=[0.74, 0.72, 0.69], whiten_time=0.02,
+                 dark_base=0.7, stem_color=[0.45, 0.39, 0.31], rise_k=35.0, rise_delay=2.0, emission=350.0,
+                 fireball_squash=0.3, fireball_noise=0.3, fireball_noise_scale=6.0, site_humidity=0.6),
+    "davy_crockett": dict(tod_hist="noon", head_color_early=[0.66, 0.62, 0.57], head_color_late=[0.78, 0.76, 0.73],
+                          whiten_time=0.05, dark_base=0.6, stem_color=[0.42, 0.36, 0.28], site_humidity=0.25),
+    "b61_12": dict(head_noise_amp=0.7, billow_sharp=1.6, head_noise_scale=0.35, cap_aspect_max=0.5),
+    "grable": dict(tod_hist="noon", stem_flare=1.7, site_humidity=0.25),
+    "little_boy": dict(head_color_early=[0.62, 0.55, 0.55], head_color_late=[0.88, 0.87, 0.86], whiten_time=0.12,
+                       dark_base=0.7, core_radius=0.25, core_glow=0.8, core_cool_s=20.0, site_humidity=0.8,
+                       wilson_duration=0.7),
+    "trinity": dict(core_glow=1.5, core_radius=0.6, core_cool_s=30.0, head_noise_amp=0.55, billow_sharp=1.4,
+                    head_color_early=[0.42, 0.17, 0.07], roll=0.6, tint_time=1.0, site_humidity=0.45),
+    "baker": dict(site_humidity=0.85, cap_appear=3.0, col_rise=5.5),
+    "sedan": dict(col_rise=60.0, col_cone=0.25, col_flare=1.3, cap_aspect=0.9, head_noise_scale=0.3,
+                  head_noise_amp=0.8, vent_radius=45.0, col_delay=3.4, debris_count=150, site_humidity=0.25),
+    "ivy_king": dict(core_glow=1.4, core_cool_s=90.0, core_radius=0.35, wilson_force=True, site_humidity=0.8),
+    "b83": dict(head_noise_amp=0.55, billow_sharp=1.0, head_color_early=[0.26, 0.18, 0.12],
+                head_color_late=[0.36, 0.33, 0.30], whiten_time=1.0),
+    "rds37": dict(reflect_cut_t=2.5, skirt=0.9, skirt_color=[0.50, 0.43, 0.35], skirt_height=1.5,
+                  stem_color=[0.20, 0.16, 0.13], stem_density=0.9, stem_flare=3.0, wilson_force=True),
+    "ivy_mike": dict(fireball_noise=0.05, fireball_noise_scale=3.5, mottle_t2=5.0, fb_fade_s=[15.0, 45.0],
+                     head_appear_s=[6.0, 25.0], core_cool_s=45.0, site_humidity=0.85),
+    "castle_bravo": dict(fb_fade_s=[20.0, 60.0], head_appear_s=[8.0, 30.0], core_cool_s=55.0, site_humidity=0.85,
+                         fireball_noise=0.05, fireball_noise_scale=3.5),
+    "test219": dict(head_appear_s=[6.0, 25.0], fb_fade_s=[20.0, 55.0], core_cool_s=40.0, fireball_noise=0.05,
+                    fireball_noise_scale=3.5,
+                    top_keys=[[15.0, 9000.0], [40.0, 25000.0], [90.0, 35000.0], [300.0, 50000.0], [540.0, 53000.0]]),
+    "tsar": dict(fireball_noise=0.05, fireball_noise_scale=3.0, head_appear_s=[8.0, 30.0], fb_fade_s=[20.0, 60.0],
+                 core_cool_s=60.0, core_radius=0.25, stem_delay=12.0,
+                 top_keys=[[18.0, 10500.0], [40.0, 30000.0], [120.0, 42000.0], [480.0, 67000.0], [700.0, 64000.0]],
+                 tier2={"t_on": 0.35, "dur": 0.5, "opacity": 0.6, "radius_m": 47500.0, "height_rel": 0.92, "half_m": 2500.0}),
+}
+# Castle Bravo: early climb keyframes before the measured ones
+_bravo = PROFILES.get("castle_bravo", {})
+if "top_keys" in _bravo:
+    CYCLE2["castle_bravo"]["top_keys"] = [[10.0, 3500.0], [20.0, 7000.0], [40.0, 11000.0]] + [k for k in _bravo["top_keys"] if k[0] > 40.0]
+for _k, _v in CYCLE2.items():
+    PROFILES.setdefault(_k, {}).update(_v)

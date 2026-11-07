@@ -190,6 +190,9 @@ func _clear_missile() -> void:
 	if missile:
 		missile.queue_free()
 	missile = null
+	# under a parachute the payload was re-parented to the launcher: free it too (QA leak fix)
+	if payload and is_instance_valid(payload) and payload.get_parent() == self:
+		payload.queue_free()
 	payload = null
 	if chute:
 		chute.queue_free()

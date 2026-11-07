@@ -8,6 +8,9 @@ extends SceneTree
 ##   --movie              scripted ~100 s soundtrack driven by real frames (run windowed with
 ##                        --write-movie <dir>/mix.png --fixed-fps 30 to render the real mix)
 ##   --analyze <wav>      peak / RMS / envelope + spectrogram PNG of a rendered WAV
+##   --soak               repeated create/setup/free cycles and 20 launches with real playback:
+##                        buses/effects must not multiply, nodes/objects must not grow (run it
+##                        windowed too: headless uses the dummy audio driver)
 ##   --out <dir>          output folder (default user://audio_test)
 ##   --nospec             skip spectrogram PNGs
 
@@ -45,10 +48,18 @@ func _run() -> void:
 				i += 1
 			"--nospec":
 				spec = false
+			"--soak":
+				mode = "soak"
 		i += 1
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	if mode == "movie":
 		await _movie()
+		return
+	if mode == "soak":
+		await _soak()
+		print("RESULT fails=%d" % fails)
+		print("READY" if fails == 0 else "FAIL")
+		quit()
 		return
 	if mode == "analyze":
 		_analyze(wav_path)
@@ -146,6 +157,12 @@ func _test(spec: bool) -> void:
 	_check(_fired("tremor") and _fired("crack") and _fired("crack2") and _fired("thump") and _fired("infra")
 			and _fired("rumble"), "50Mt core layers incl. infrasonic thump and second report")
 	_check(_count("thunder") >= 5, "megaton thunder rolls (%d)" % _count("thunder"))
+	var seen := {}
+	var dup := false
+	for e: Array in sm.event_log:
+		dup = dup or seen.has(e[1])
+		seen[e[1]] = true
+	_check(not dup, "every fired layer has its own player (a reused player would cut its tail)")
 	_check(is_equal_approx(sm.lp_blast.cutoff_hz, 250.0), "150 km low-pass 250 Hz")
 	_check(not sm._mf_on, "no ear ringing at 150 km")
 
@@ -215,6 +232,18 @@ func _test(spec: bool) -> void:
 	await _advance(0.0, float(p5["t_shock"]) + 2.0, 1.0 / 30.0, 1.0)
 	_check(_fired("glass") and String(sm.event_log.filter(func(e: Array) -> bool: return e[1] == "glass")[0][2]) == "glass_crack",
 			"%.0f psi: glass crack" % float(p5["p_psi"]))
+	# missing / NaN / infinite parameters fall back to defaults: no NaN volume, no error
+	var bad_cases: Array[Dictionary] = [{},
+			{"yield_kt": NAN, "distance_m": INF, "t_shock": NAN, "t_seismic": -INF, "p_psi": NAN, "kind": ""},
+			{"yield_kt": 0.0, "distance_m": 0.0, "p_psi": INF, "hob_m": NAN, "kind": "NUCLEAR_SURFACE"}]
+	for bad: Dictionary in bad_cases:
+		_start(bad)
+		await _advance(0.0, sm._t_shock + 3.0, 0.25, 1.0)
+		var ok_bad := sm.event_log.size() >= 2 and is_finite(sm._lvl) and is_finite(sm._psi) \
+				and is_finite(sm._t_shock) and is_finite(sm.lp_blast.cutoff_hz)
+		for e: Array in sm.event_log:
+			ok_bad = ok_bad and is_finite(float(e[3])) and is_finite(float(e[4]))
+		_check(ok_bad, "robust params %s: %d events, lvl %.1f dB" % [str(bad), sm.event_log.size(), sm._lvl])
 	sm.stop_all()
 
 	# 8) UI, rocket, whistle, ambience
@@ -241,6 +270,16 @@ func _test(spec: bool) -> void:
 		sm._process(1.0 / 30.0)
 		await process_frame
 	_check(not sm._whistle.playing and not sm._rocket_loop.playing, "rocket and whistle stopped")
+	# a bomb falling 30 km away: the whistle is only a faint cue (1/r beyond 1.5 km, floored)
+	sm.rocket_update(Vector3(0.0, 300.0, -30000.0))
+	sm.whistle_start()
+	for f in 90:
+		sm._process(1.0 / 30.0)
+		await process_frame
+	_check(sm._whistle.playing and sm._whistle.volume_db < SoundManager.WHISTLE_DB - 20.0,
+			"whistle 30 km away attenuated (%.1f dB)" % sm._whistle.volume_db)
+	sm.stop_all()
+	_check(not sm._whistle.playing, "stop_all stops the whistle")
 	_check(sm._vent.playing and sm._hum.playing, "ambience playing")
 	sm.set_ambience(false)
 	for f in 60:
@@ -490,6 +529,126 @@ func _fft(re: PackedFloat32Array, im: PackedFloat32Array) -> void:
 		ln <<= 1
 
 
+# =============================================================================== soak mode
+
+## Leak / growth check: 6 create -> setup -> play -> free cycles of the manager (buses and
+## effects must not multiply), then 21 launches on one manager with every layer really playing
+## (nodes must stay equal, objects must not grow). Run windowed for the real audio driver.
+func _soak() -> void:
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	cam.current = true
+	var real_driver := DisplayServer.get_name() != "headless"
+	print("SOAK display=%s audio=%s mix %d Hz" % [DisplayServer.get_name(), AudioServer.get_driver_name(),
+			int(AudioServer.get_mix_rate())])
+	var near := _params(15.0, 2500.0, "NUCLEAR_AIR", 580.0)
+	var sig0: Array = []
+	var objs: Array[int] = []
+	for cycle in 6:
+		var t0 := Time.get_ticks_usec()
+		sm = SoundManager.new()
+		sm.name = "SoundManager"
+		root.add_child(sm)
+		sm.setup()
+		var setup_ms := float(Time.get_ticks_usec() - t0) / 1000.0
+		sm.set_ambience(true)
+		sm.play_ui("click")
+		sm.rocket_start(Vector3(-350.0, -15.0, -500.0))
+		_start(near)
+		await _play_real(float(near["t_shock"]) - 0.1, 30)
+		sm.stop_all()
+		var sig := _bus_signature()
+		if cycle == 0:
+			sig0 = sig
+			print("SOAK buses ", str(sig))
+		else:
+			_check(sig == sig0, "cycle %d: same buses and effects after setup (%d buses)" % [cycle, AudioServer.bus_count])
+		root.remove_child(sm)
+		sm.free()
+		sm = null
+		for f in 30:
+			await process_frame
+		var fx_left := 0
+		for b in AudioServer.bus_count:
+			fx_left += AudioServer.get_bus_effect_count(b)
+		objs.append(int(Performance.get_monitor(Performance.OBJECT_COUNT)))
+		print("SOAK cycle %d: setup %.0f ms, buses %d, effects left after free %d, objects %d, nodes %d, static %.1f MB" % [
+				cycle, setup_ms, AudioServer.bus_count, fx_left, objs[cycle],
+				int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+				Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0])
+		_check(fx_left == 0, "cycle %d: the freed manager took its effects off the buses" % cycle)
+	var grow := objs[objs.size() - 1] - objs[1]
+	if real_driver:
+		_check(grow <= 4, "objects stable over create/free cycles (%s)" % str(objs))
+	else:
+		print("INFO headless dummy audio driver: object delta over cycles %d (%s)" % [grow, str(objs)])
+
+	# 21 launches on one manager, every layer audible for a few frames
+	sm = SoundManager.new()
+	sm.name = "SoundManager"
+	root.add_child(sm)
+	sm.setup()
+	sm.set_ambience(true)
+	var cases: Array[Dictionary] = [near, _params(50000.0, 150000.0, "NUCLEAR_HIGH_AIR", 4000.0),
+			_params(1200.0, 2000.0, "NUCLEAR_SURFACE", 0.0), _params(0.0054, 1200.0, "CONVENTIONAL_BURIED", 0.0)]
+	var o_base := 0
+	var n_base := 0
+	var det_us := 0
+	for r in 21:
+		var pc: Dictionary = cases[r % cases.size()]
+		sm.stop_all()
+		sm.rocket_start(Vector3(-350.0, -15.0, -500.0))
+		sm.whistle_start()
+		for f in 3:
+			sm.rocket_update(Vector3(-350.0, -15.0 + 40.0 * f, -500.0))
+			await process_frame
+		sm.rocket_stop()
+		var t0 := Time.get_ticks_usec()
+		sm.on_detonation(pc)
+		det_us = maxi(det_us, Time.get_ticks_usec() - t0)
+		await _play_real(float(pc["t_shock"]) - 0.05, 12)
+		sm.stop_all()
+		for f in 10:
+			await process_frame
+		if r == 0:
+			o_base = int(Performance.get_monitor(Performance.OBJECT_COUNT))
+			n_base = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	for f in 30:
+		await process_frame
+	var o_end := int(Performance.get_monitor(Performance.OBJECT_COUNT))
+	var n_end := int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+	print("SOAK 20 launches: objects %d -> %d, nodes %d -> %d, on_detonation max %d us" % [o_base, o_end, n_base, n_end, det_us])
+	_check(n_end == n_base, "no node growth over 20 launches (%d -> %d)" % [n_base, n_end])
+	if real_driver:
+		_check(o_end - o_base <= 8, "no object growth over 20 launches (%d -> %d)" % [o_base, o_end])
+	else:
+		print("INFO headless dummy audio driver: object delta over 20 launches %d" % (o_end - o_base))
+	_check(det_us < 5000, "on_detonation() < 5 ms (%d us)" % det_us)
+	root.remove_child(sm)
+	sm.free()
+	sm = null
+	await process_frame
+
+
+## Drives the current manager with real frames from `age0` (60 game fps, time scale 1).
+func _play_real(age0: float, frames: int) -> void:
+	var age := age0
+	for f in frames:
+		sm.update_age(age, 1.0)
+		age += 1.0 / 60.0
+		await process_frame
+
+
+func _bus_signature() -> Array:
+	var sig := []
+	for b in AudioServer.bus_count:
+		var fx := []
+		for e in AudioServer.get_bus_effect_count(b):
+			fx.append(AudioServer.get_bus_effect(b, e).get_class())
+		sig.append("%s>%s%s" % [AudioServer.get_bus_name(b), AudioServer.get_bus_send(b), str(fx)])
+	return sig
+
+
 # =============================================================================== movie mode
 
 ## Scripted soundtrack in real frames; with --write-movie the engine renders the real bus mix.
@@ -559,7 +718,12 @@ func _movie() -> void:
 			age += dt * ts
 		frame += 1
 		await process_frame
-	sm.stop_all()
+	# free the manager while frames are still mixed, so the AudioServer releases its playbacks
+	root.remove_child(sm)
+	sm.free()
+	sm = null
+	for f in 4:
+		await process_frame
 	print("MOVIE done frames=%d" % frame)
 	print("READY")
 	quit()

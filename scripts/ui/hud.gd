@@ -147,11 +147,19 @@ static func _num(v: Variant) -> float:
 	return NAN
 
 
+## Theme overrides re-notify THEME_CHANGED (and re-shape the text) even when unchanged,
+## so only touch them when the colour really changes (update_info runs every frame).
+static func _set_color(l: Label, color: Color) -> void:
+	if l.get_meta(&"_fc", Color(-1.0, -1.0, -1.0, -1.0)) != color:
+		l.set_meta(&"_fc", color)
+		l.add_theme_color_override("font_color", color)
+
+
 func _put(key: String, text: String, color: Color) -> void:
 	var l: Label = _vals[key]
 	if l.text != text:
 		l.text = text
-	l.add_theme_color_override("font_color", color)
+	_set_color(l, color)
 
 
 func _eta(key: String, v: Variant, arrived_key: String) -> void:
@@ -216,14 +224,18 @@ func update_info(info: Dictionary) -> void:
 	if is_nan(t):
 		t = 0.0
 	var flight := phase == "flight" or t < 0.0
-	_t_cap.text = Game.tr_key("hud.tminus") if flight else Game.tr_key("hud.tplus")
+	var cap := Game.tr_key("hud.tminus") if flight else Game.tr_key("hud.tplus")
+	if _t_cap.text != cap:
+		_t_cap.text = cap
 	var tv := UiTheme.fmt_fixed(absf(t), 1 if absf(t) < 10000.0 else 0) + " " + Game.tr_key("unit.s")
 	if _t_val.text != tv:
 		_t_val.text = tv
 	var tcol := UiTheme.AMBER if flight else UiTheme.GREEN_BRIGHT
-	_t_cap.add_theme_color_override("font_color", tcol)
-	_t_val.add_theme_color_override("font_color", tcol)
-	_t_sub.text = Game.tr_key("hud.countdown") if flight else Game.tr_key("hud.after")
+	_set_color(_t_cap, tcol)
+	_set_color(_t_val, tcol)
+	var sub := Game.tr_key("hud.countdown") if flight else Game.tr_key("hud.after")
+	if _t_sub.text != sub:
+		_t_sub.text = sub
 
 	var d := _num(info.get("dist_km", NAN))
 	_put("dist", "—" if is_nan(d) else UiTheme.fmt_km(d), UiTheme.GREEN)

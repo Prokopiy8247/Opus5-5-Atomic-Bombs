@@ -21,6 +21,7 @@ global uniform float g_blast_age;
 global uniform vec3 g_blast_center;
 global uniform vec4 g_crater;       // radius, depth, rim height, progress 0..1
 global uniform vec4 g_dome;         // radius, height, 0, 0
+global uniform vec4 g_patch;        // terrain patch around ground zero: x, z, half extent, outer spacing
 
 // object kinds (uniform per material)
 const int K_WOOD = 0;
@@ -209,7 +210,28 @@ float tri_interp_h(vec2 c, float s, vec2 xz) {
 	return e + (d - e) * (1.0 - f.x) + (b - e) * (1.0 - f.y);
 }
 
-// The ground as the clipmap terrain actually draws it at xz (so nothing floats far away).
+// One grid level (spacing s, centre c) including its rim geomorph toward spacing 2s.
+float level_h(vec2 c, float s, vec2 xz) {
+	vec2 g = (xz - c) / s;
+	float de = 64.0 - max(abs(g.x), abs(g.y));
+	float morph = 1.0 - smoothstep(2.0, 19.2, de);
+	float h = tri_interp_h(c, s, xz);
+	if (morph > 0.001) {
+		h = mix(h, tri_interp_h(c, 2.0 * s, xz), morph);
+	}
+	return h;
+}
+
+// GDScript roundf (half away from zero), as terrain.gd snaps the patch level centres.
+float round_away(float x) {
+	return sign(x) * floor(abs(x) + 0.5);
+}
+
+// The ground as the terrain actually draws it at xz (so nothing floats or sinks): the camera
+// clipmap level that covers xz and, inside the high-resolution patch around ground zero
+// (terrain.gd set_patch, centred on burst_pos.xz), the patch level there. terrain.gdshader
+// discards the clipmap levels coarser than the patch inside it (patch only), while finer clipmap
+// levels near the camera are drawn together with the patch, so the higher surface is visible.
 float rendered_ground(vec2 xz) {
 	if (terrain_match < 0.5) {
 		return ground_exact(xz);
@@ -224,14 +246,33 @@ float rendered_ground(vec2 xz) {
 			break;
 		}
 	}
-	vec2 g = (xz - c) / s;
-	float de = 64.0 - max(abs(g.x), abs(g.y));
-	float morph = 1.0 - smoothstep(2.0, 19.2, de);
-	float h = tri_interp_h(c, s, xz);
-	if (morph > 0.001) {
-		h = mix(h, tri_interp_h(c, 2.0 * s, xz), morph);
+	if (g_patch.w > 0.0) {
+		vec2 qp = abs(xz - g_patch.xy);
+		float s5 = g_patch.w;
+		vec2 c5 = vec2(round_away(burst_pos.x / (2.0 * s5)), round_away(burst_pos.z / (2.0 * s5))) * (2.0 * s5);
+		vec2 dc = abs(c5 - g_patch.xy);
+		// only when the patch is the one around this ground zero
+		if (max(qp.x, qp.y) < g_patch.z - s5 * 0.75 && max(dc.x, dc.y) < 0.5 * s5) {
+			float sp = s5;
+			vec2 cp = g_patch.xy;
+			for (int l = 0; l < 5; l++) {
+				float sl = s5 * exp2(float(l - 5));
+				vec2 cl = vec2(round_away(burst_pos.x / (2.0 * sl)), round_away(burst_pos.z / (2.0 * sl))) * (2.0 * sl);
+				vec2 q = abs(xz - cl);
+				if (max(q.x, q.y) < 62.5 * sl) {
+					sp = sl;
+					cp = cl;
+					break;
+				}
+			}
+			float hp = level_h(cp, sp, xz);
+			if (s > s5 && max(qp.x, qp.y) < g_patch.z - s * 0.75) {
+				return hp;
+			}
+			return max(hp, level_h(c, s, xz));
+		}
 	}
-	return h;
+	return level_h(c, s, xz);
 }
 
 // ------------------------------------------------------------------ motion primitives

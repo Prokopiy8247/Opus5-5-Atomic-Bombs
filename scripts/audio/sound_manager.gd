@@ -20,8 +20,10 @@ const AudioSynth = preload("res://scripts/audio/audio_synth.gd")
 
 const SOUND_SPEED := 343.0
 const LN10 := 2.302585092994046
-const VENT_DB := -19.0
-const HUM_DB := -28.0
+# bunker ambience sits at ~-34 LUFS (measured in a --write-movie mix), well under the faintest
+# blasts at their recommended distance (Mk 82 at 2 km peaks around -21 dBFS)
+const VENT_DB := -24.0
+const HUM_DB := -33.0
 const ROCKET_DB := 10.0
 const WHISTLE_DB := -9.0
 ## The falling-bomb whistle keeps its full level up to this distance, then falls off as 1/r
@@ -31,6 +33,7 @@ const WHISTLE_MIN_DB := -24.0
 const UI_DB := -10.0
 const UI_KINDS := ["click", "select", "launch", "warn", "error"]
 const MAX_THUNDER := 7
+const EXIT_DRAIN_MS := 60
 ## One player per thunder roll: reusing a playing player would cut its tail (set_stream stops it).
 const BLAST_IDS := ["crack", "crack2", "thump", "infra", "rumble", "thunder0", "thunder1",
 		"thunder2", "thunder3", "thunder4", "thunder5", "thunder6", "roar", "wind"]
@@ -354,6 +357,7 @@ func stop_all() -> void:
 		_whistle.stream_paused = false
 	_rk_state = 0
 	_wh_state = 0
+	_src_known = false
 	_pause_age = false
 	_paused = false
 	_slow = 1.0
@@ -380,6 +384,11 @@ func _exit_tree() -> void:
 			(c as AudioStreamPlayer).stop()
 		elif c is AudioStreamPlayer3D:
 			(c as AudioStreamPlayer3D).stop()
+	# The AudioServer frees stopped playbacks on its mix thread one or two periods later; quitting
+	# right away reports them (and their streams) as leaked ObjectDB instances. Give the mix thread
+	# that time once here. (--write-movie mixes on the main thread per frame: waiting cannot help.)
+	if Engine.get_write_movie_path().is_empty():
+		OS.delay_msec(EXIT_DRAIN_MS)
 
 
 ## Takes our effects off the AudioServer buses (they would otherwise outlive the scene tree
@@ -731,7 +740,7 @@ func _update_whistle(delta: float, dt_game: float, ts: float) -> void:
 			_whistle.stop()
 			_wh_state = 0
 			return
-	_whistle.volume_db = WHISTLE_DB + linear_to_db(maxf(_wh_gain, 1.0e-4))
+	_whistle.volume_db = WHISTLE_DB + _whistle_dist_db() + linear_to_db(maxf(_wh_gain, 1.0e-4))
 	_whistle.pitch_scale = (0.7 + 0.62 * exp(-_wh_t / 5.0)) * _slow_factor(ts)
 
 
@@ -825,6 +834,27 @@ func _listener_pos() -> Vector3:
 
 func _log10(x: float) -> float:
 	return log(x) / LN10
+
+
+## p[key] as a float; `def` when missing, NaN or infinite.
+func _num(p: Dictionary, key: String, def: float) -> float:
+	var v: Variant = p.get(key, def)
+	if not (v is float or v is int):
+		return def
+	var f := float(v)
+	return def if is_nan(f) or is_inf(f) else f
+
+
+func _finite3(v: Vector3) -> bool:
+	return is_finite(v.x) and is_finite(v.y) and is_finite(v.z)
+
+
+## Distance attenuation (dB) of the falling-bomb whistle from the last known payload position.
+func _whistle_dist_db() -> float:
+	if not _src_known:
+		return 0.0
+	var d := _src_pos.distance_to(_listener_pos())
+	return clampf(-20.0 * _log10(maxf(d, WHISTLE_REF_M) / WHISTLE_REF_M), WHISTLE_MIN_DB, 0.0)
 
 
 ## Energy compensation for a pitched layer (it lasts 1/pitch longer).

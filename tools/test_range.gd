@@ -43,10 +43,15 @@ func _initialize() -> void:
 	game = root.get_node_or_null("Game")
 	print("test_range: Game autoload present: ", game != null, " display: ", DisplayServer.get_name())
 	_logic_tests()
+	_run.call_deferred()
+
+
+func _run() -> void:
+	await _leak_test()
 	if DisplayServer.get_name() == "headless":
 		_finish()
 	else:
-		_visual.call_deferred()
+		await _visual()
 
 
 func _finish() -> void:
@@ -125,12 +130,85 @@ func _logic_tests() -> void:
 	_scenario_logic(Vector3(0, TerrainMath.height(0, -2000), -2000), 0.0001, 1.0, true, {"nuclear": false})
 	print("--- scenario D: Tsar Bomba 50 Mt at 4 km, ground zero 150 km")
 	_scenario_logic(Vector3(0, TerrainMath.height(0, -150000), -150000), 50000.0, 4000.0, false, {})
+	print("--- scenario E: Sedan-like buried burst, blast_scale 0.08 (as main.gd passes it)")
+	var gz_e := Vector3(0, TerrainMath.height(0, -9000), -9000)
+	ro.setup(gz_e, 104.0, -194.0, true, 0.55, {"nuclear": true, "blast_scale": 0.08, "crater_r": 190.0})
+	var worst_p := 0.0
+	var worst_a := 0.0
+	for s: float in [300.0, 800.0, 2000.0, 5000.0]:
+		var b := BlastPhysics.overpressure(104.0 * 0.08, s, true, false)
+		worst_p = maxf(worst_p, absf(ro.psi_at(s) - b) / b)
+		worst_a = maxf(worst_a, absf(ro.arrival_at(s) - BlastPhysics.arrival_time(104.0, s, true, false)))
+	_check(worst_p < 0.02, "coupled overpressure = BlastPhysics.overpressure(w * blast_scale) (worst %.2f%%)" % (worst_p * 100.0))
+	_check(worst_a < 1e-6, "arrival uses the full yield, like explosion.gd's shock ring and bunker shock")
+	_check(ro.instance_total() > 40, "objects placed around a buried burst (%d)" % ro.instance_total())
+	var inside := 0
+	for key: String in ro._buckets:
+		for xf: Transform3D in ro._buckets[key]["xf"]:
+			if Vector2(xf.origin.x - gz_e.x, xf.origin.z - gz_e.z).length() < 190.0 * 1.6 * 0.9:
+				inside += 1
+	_check(inside == 0, "nothing placed inside the crater keep-out")
+	print("--- scenario F: exclude_r keeps the lagoon empty (Baker-style)")
+	var gz_f := Vector3(0, TerrainMath.height(0, -8000), -8000)
+	ro.setup(gz_f, 23.0, -27.0, true, 0.9, {"nuclear": true, "blast_scale": 0.3, "exclude_r": 2500.0})
+	var wet := 0
+	for key: String in ro._buckets:
+		for xf: Transform3D in ro._buckets[key]["xf"]:
+			if Vector2(xf.origin.x - gz_f.x, xf.origin.z - gz_f.z).length() < 2500.0 * 0.9:
+				wet += 1
+	_check(wet == 0, "no object inside exclude_r (%d objects outside)" % ro.instance_total())
+	print("--- setup() before the node enters the tree, double clear(), empty queries")
+	var r2: Node3D = RO.new()
+	r2.setup(Vector3(0, TerrainMath.height(0, -5000), -5000), 0.3, 150.0, false, 0.5)
+	var n2: int = r2.instance_total()
+	root.add_child(r2)
+	r2.clear()
+	r2.clear()
+	_check(n2 > 0 and r2.instance_total() == 0 and r2.damage_summary(5.0).is_empty() and r2.rings().is_empty(), "out-of-tree setup works (%d objects), clear() empties it" % n2)
+	r2.queue_free()
 	print("--- repeated setup does not leak instances")
 	var counts: Array = []
 	for i in 3:
 		ro.setup(Vector3(0, TerrainMath.height(0, -12000), -12000), 15.0, 580.0, false, 0.55)
 		counts.append(ro.instance_total())
 	_check(counts[0] == counts[1] and counts[1] == counts[2], "same layout each time (%s)" % str(counts))
+
+
+## 20 consecutive setup() calls over four bomb sizes with frames in between: the node, object
+## and resource counts after the 5th round equal those after the 2nd round (no leaks), and
+## clear() leaves no children behind.
+func _leak_test() -> void:
+	print("--- 20 setup() cycles: nodes / objects / resources do not grow")
+	var sc := [[Vector3(0, 0, -12000), 15.0, 580.0, false], [Vector3(1500, 0, -45000), 1200.0, 2.0, true],
+		[Vector3(0, 0, -2000), 0.0001, 1.0, true], [Vector3(0, 0, -150000), 50000.0, 4000.0, false]]
+	var snap := {}
+	var setup_ms := 0.0
+	for i in 20:
+		var e: Array = sc[i % 4]
+		var gz: Vector3 = e[0]
+		gz.y = TerrainMath.height(gz.x, gz.z)
+		var t0 := Time.get_ticks_usec()
+		ro.setup(gz, e[1], e[2], e[3], 0.55, {"nuclear": float(e[1]) >= 0.05})
+		setup_ms = maxf(setup_ms, (Time.get_ticks_usec() - t0) / 1000.0)
+		for f in 3:
+			await process_frame
+		var m := [ro.get_child_count(), int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)),
+			int(Performance.get_monitor(Performance.OBJECT_COUNT)), int(Performance.get_monitor(Performance.OBJECT_RESOURCE_COUNT)),
+			int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))]
+		if i >= 4 and i < 8:
+			snap[i % 4] = m
+		elif i >= 16:
+			var a: Array = snap[i % 4]
+			print("  scenario %d: children %d->%d nodes %d->%d objects %d->%d resources %d->%d orphans %d->%d" % [i % 4,
+				a[0], m[0], a[1], m[1], a[2], m[2], a[3], m[3], a[4], m[4]])
+			_check(m[0] == a[0] and m[1] == a[1] and m[4] == a[4], "scenario %d: node counts stable over 12 more setups" % (i % 4))
+			_check(m[2] - a[2] <= 8 and m[3] - a[3] <= 8, "scenario %d: object / resource counts stable" % (i % 4))
+	print("  slowest setup(): %.0f ms" % setup_ms)
+	_check(setup_ms < 400.0, "setup() stays well under half a second")
+	ro.clear()
+	for f in 3:
+		await process_frame
+	_check(ro.get_child_count() == 0, "clear() frees every MultiMesh node")
 
 
 func _scenario_logic(gz: Vector3, w: float, hob: float, surface: bool, opts: Dictionary) -> void:
@@ -294,6 +372,10 @@ func _simple_env() -> void:
 
 
 func _scenario_visual(tag: String, gz: Vector3, w: float, hob: float, surface: bool, opts: Dictionary = {}) -> void:
+	# high-resolution terrain patch around ground zero, exactly as main.gd sets it up
+	var crater := BlastPhysics.crater_radius_nuclear(w) if (surface and w >= 0.05) else 0.0
+	var ext := clampf(maxf(crater * 4.0, BlastPhysics.radius_for_pressure(w, 5.0, surface) * 1.2), 250.0, 6000.0)
+	terrain.call("set_patch", gz, ext)
 	ro.setup(gz, w, hob, surface, 0.55, opts)
 	var burst := gz + Vector3(0, maxf(hob, 0.0), 0)
 	print("visual %s: %d objects" % [tag, ro.instance_total()])
@@ -316,7 +398,7 @@ func _scenario_visual(tag: String, gz: Vector3, w: float, hob: float, surface: b
 	# the special test structures
 	for e: Array in [[RO.T_BRIDGE, 14.0, 150.0, 40.0, "bridge"], [RO.T_HANGAR, 2.5, 140.0, 45.0, "airfield"],
 			[RO.T_RAILCAR, 7.5, 90.0, 26.0, "rail"], [RO.T_TOWER, 5.0, 120.0, 30.0, "tower"], [RO.T_MAST, 7.0, 100.0, 25.0, "mast"],
-			[RO.T_TANK, 40.0, 45.0, 14.0, "tank"], [RO.T_BUNKER, 60.0, 45.0, 14.0, "bunker"]]:
+			[RO.T_TANK, 40.0, 45.0, 14.0, "tank"], [RO.T_BUNKER, 60.0, 45.0, 14.0, "cbunker"]]:
 		var v := _closeup(e[0], e[1], gz2, e[2], e[3], e[4])
 		if not v.is_empty():
 			views.append(v)

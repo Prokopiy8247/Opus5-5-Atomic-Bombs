@@ -31,6 +31,10 @@ const ZONE_COLORS := {
 	"concrete": Color(1.0, 0.22, 0.2),
 }
 const HUMAN_MIN_SIZE := 1.2      # show the 1.8 m scale figure only next to objects at least this big
+# burst-type groups, identical to ExplosionProfile._init()
+const CONVENTIONAL_KINDS := ["CONVENTIONAL_SURFACE", "CONVENTIONAL_BURIED", "THERMOBARIC"]
+const BURIED_KINDS := ["NUCLEAR_BURIED", "CONVENTIONAL_BURIED"]
+const SURFACE_KINDS := ["NUCLEAR_SURFACE", "NUCLEAR_TOWER", "CONVENTIONAL_SURFACE", "CONVENTIONAL_BURIED", "NUCLEAR_BURIED", "NUCLEAR_UNDERWATER"]
 const CONF_COLORS := {
 	"measured": Color(0.45, 1.0, 0.58),
 	"estimate": Color(1.0, 0.76, 0.3),
@@ -135,6 +139,7 @@ var _last_ms := 0
 var _anim_t := 0.0
 var _reveal := 1.0
 var _sync_t := 0.0
+var _game_snap: Array = []
 var _danger_key := ""
 var _danger_cache := Vector2.ZERO    # x = 10 psi / 10 cal range, y = 25 psi range (km)
 
@@ -276,6 +281,7 @@ func sync_from_game() -> void:
 		az_deg = clampf(Game.azimuth_deg, -AZ_LIMIT, AZ_LIMIT)
 		_az_slider.set_value_no_signal(az_deg)
 	_syncing = false
+	_game_snap = _game_snapshot()
 	_update_estimates()
 
 
@@ -289,8 +295,19 @@ static func km_to_slider(km: float) -> float:
 	return clampf(log(maxf(km, 1e-6) / D_MIN) / log(D_MAX / D_MIN), 0.0, 1.0)
 
 
+## Missile flight time (s) for a range; same curve as Launcher.flight_time_for().
 static func flight_time(km: float) -> float:
 	return lerpf(6.0, 25.0, clampf(log(maxf(km, 1e-6) / 0.5) / log(400.0), 0.0, 1.0))
+
+
+## Parachute phase (s) the launcher appends for retarded, non-contact bursts
+## (mirrors Launcher.launch(): contact = burst height <= 3 m).
+static func chute_time(b: Dictionary) -> float:
+	var hob := float(b.get("burst_height_m", 0.0))
+	if not bool(b.get("parachute", false)) or hob <= 3.0:
+		return 0.0
+	var drop := clampf(hob, 150.0, 1500.0) * 0.6 + 150.0
+	return clampf(drop / 60.0, 3.0, 6.0)
 
 
 static func _ground_r(slant: float, h: float) -> float:
@@ -301,87 +318,108 @@ static func _ground_r(slant: float, h: float) -> float:
 	return sqrt(slant * slant - h * h)
 
 
-## Menu estimates for bomb b at range d_km / azimuth az. Mirrors Explosion.setup():
-## buried bursts couple ~10 % and underwater ~30 % of the yield into the air blast.
-## Returns r_glass/r_house/r_concrete/r_burn (ground range m; 0 = does not reach the ground,
-## -1 = not applicable), p (psi at the bunker), q (cal/cm2), thermal (bool), slant (m),
-## t_shock (s), flight (s).
-static func estimate(b: Dictionary, d_km: float, az: float, humidity: float) -> Dictionary:
+## Air-blast coupling exactly as ExplosionProfile derives it (and Explosion.setup() uses it):
+## conventional = HE/thermobaric (Kingery-Bulmash scaling), surface = fireball touches the ground,
+## buried bursts couple profile.air_coupling (default 8 %) and underwater 30 % into the air blast.
+## Returns w, w_air (kt), surface, conventional, nuclear, thermal (bool), hob (m, >= 0).
+static func coupling(b: Dictionary) -> Dictionary:
+	var bt := String(b.get("burst_type", "NUCLEAR_AIR"))
 	var w := maxf(float(b.get("yield_kt", 1.0)), 1e-7)
-	var bt := String(b.get("burst_type", ""))
-	var hob := float(b.get("burst_height_m", 0.0))
-	var nuclear := bt.begins_with("NUCLEAR")
-	var surface := bt.contains("SURFACE") or bt.contains("TOWER")
-	var buried := bt.contains("BURIED")
-	var underwater := bt.contains("UNDERWATER")
+	var art: Variant = b.get("profile", {})
+	var air_c := -1.0
+	if art is Dictionary and (art as Dictionary).has("air_coupling"):
+		air_c = float((art as Dictionary)["air_coupling"])
+	var conventional := bt in CONVENTIONAL_KINDS
+	var buried := bt in BURIED_KINDS
+	var underwater := bt == "NUCLEAR_UNDERWATER"
 	var w_air := w
-	var surf_p := surface
 	if buried:
-		w_air = w * 0.1
-		surf_p = true
+		w_air = w * (air_c if air_c >= 0.0 else 0.08)
 	elif underwater:
-		w_air = w * 0.3
-		surf_p = true
-	var thermal := nuclear and not buried and not underwater
-	var d := d_km * 1000.0
-	var a := deg_to_rad(az)
-	var x := sin(a) * d
-	var z := -cos(a) * d
-	var gz := Vector3(x, TerrainMath.height(x, z), z)
-	var burst := gz + Vector3(0.0, maxf(hob, 0.0), 0.0)
-	var slant := burst.length()
-	var h := maxf(hob, 0.0)
-	var res := {}
-	res["p"] = BlastPhysics.overpressure(w_air, slant, surf_p)
-	res["q"] = BlastPhysics.thermal_fluence(w, slant, humidity) if thermal else 0.0
-	res["thermal"] = thermal
-	res["slant"] = slant
-	res["r_glass"] = _ground_r(BlastPhysics.radius_for_pressure(w_air, 1.0, surf_p), h)
-	res["r_house"] = _ground_r(BlastPhysics.radius_for_pressure(w_air, 5.0, surf_p), h)
-	res["r_concrete"] = _ground_r(BlastPhysics.radius_for_pressure(w_air, 20.0, surf_p), h)
-	res["r_burn"] = _ground_r(BlastPhysics.burn_radius(w, 3), h) if thermal else -1.0
-	res["t_shock"] = BlastPhysics.arrival_time(w_air, slant, surf_p)
-	res["flight"] = flight_time(d_km)
-	return res
-
-
-static func _danger_at(b: Dictionary, d_km: float, az: float, humidity: float, p_lim: float, use_q: bool) -> bool:
-	var e := estimate_fast(b, d_km, az, humidity)
-	return float(e["p"]) >= p_lim or (use_q and float(e["q"]) >= Q_WARN)
-
-
-## Pressure/fluence only (no arrival-time integral) for bisection.
-static func estimate_fast(b: Dictionary, d_km: float, az: float, humidity: float) -> Dictionary:
-	var w := maxf(float(b.get("yield_kt", 1.0)), 1e-7)
-	var bt := String(b.get("burst_type", ""))
-	var hob := float(b.get("burst_height_m", 0.0))
-	var buried := bt.contains("BURIED")
-	var underwater := bt.contains("UNDERWATER")
-	var surf_p := bt.contains("SURFACE") or bt.contains("TOWER") or buried or underwater
-	var w_air := w * (0.1 if buried else (0.3 if underwater else 1.0))
-	var thermal := bt.begins_with("NUCLEAR") and not buried and not underwater
-	var d := d_km * 1000.0
-	var a := deg_to_rad(az)
-	var x := sin(a) * d
-	var z := -cos(a) * d
-	var slant := Vector3(x, TerrainMath.height(x, z) + maxf(hob, 0.0), z).length()
+		w_air = w * (air_c if air_c >= 0.0 else 0.3)
 	return {
-		"p": BlastPhysics.overpressure(w_air, slant, surf_p),
-		"q": BlastPhysics.thermal_fluence(w, slant, humidity) if thermal else 0.0,
+		"w": w,
+		"w_air": maxf(w_air, 1e-9),
+		"surface": bt in SURFACE_KINDS,
+		"conventional": conventional,
+		"nuclear": not conventional,
+		"thermal": not conventional and not buried and not underwater,
+		"hob": maxf(float(b.get("burst_height_m", 0.0)), 0.0),
 	}
 
 
-## Largest range (km) at which the predicate is still true (0 if never, D_MAX if always).
+## Slant distance (m) from the bunker eye to the burst point for a target at d_km / az.
+static func _slant_at(d_km: float, az: float, hob: float) -> float:
+	var d := d_km * 1000.0
+	var a := deg_to_rad(az)
+	var x := sin(a) * d
+	var z := -cos(a) * d
+	return Vector3(x, TerrainMath.height(x, z) + hob, z).length()
+
+
+## Menu estimates for bomb b at range d_km / azimuth az, computed the same way as
+## Explosion.setup() (p_obs, t_shock_obs) so the warning agrees with what happens in game.
+## Returns r_glass/r_house/r_concrete/r_burn (ground range m; 0 = does not reach the ground,
+## -1 = not applicable), p (psi at the bunker), q (cal/cm2), thermal (bool), slant (m),
+## t_shock (s), flight (s, missile + parachute), chute (s).
+static func estimate(b: Dictionary, d_km: float, az: float, humidity: float) -> Dictionary:
+	var c := coupling(b)
+	var w: float = c["w"]
+	var w_air: float = c["w_air"]
+	var surf: bool = c["surface"]
+	var conv: bool = c["conventional"]
+	var thermal: bool = c["thermal"]
+	var h: float = c["hob"]
+	var slant := _slant_at(d_km, az, h)
+	var res := {}
+	res["p"] = BlastPhysics.overpressure(w_air, slant, surf, conv)
+	res["q"] = BlastPhysics.thermal_fluence(w, slant, humidity) if thermal else 0.0
+	res["thermal"] = thermal
+	res["slant"] = slant
+	res["r_glass"] = _ground_r(BlastPhysics.radius_for_pressure(w_air, 1.0, surf, conv), h)
+	res["r_house"] = _ground_r(BlastPhysics.radius_for_pressure(w_air, 5.0, surf, conv), h)
+	res["r_concrete"] = _ground_r(BlastPhysics.radius_for_pressure(w_air, 20.0, surf, conv), h)
+	res["r_burn"] = _ground_r(BlastPhysics.burn_radius(w, 3), h) if thermal else -1.0
+	res["t_shock"] = BlastPhysics.arrival_time(w, slant, surf, conv)
+	var chute := chute_time(b)
+	res["chute"] = chute
+	res["flight"] = flight_time(d_km) + chute
+	return res
+
+
+## Pressure/fluence only (no zones / arrival time).
+static func estimate_fast(b: Dictionary, d_km: float, az: float, humidity: float) -> Dictionary:
+	var c := coupling(b)
+	var slant := _slant_at(d_km, az, float(c["hob"]))
+	return {
+		"p": BlastPhysics.overpressure(float(c["w_air"]), slant, bool(c["surface"]), bool(c["conventional"])),
+		"q": BlastPhysics.thermal_fluence(float(c["w"]), slant, humidity) if bool(c["thermal"]) else 0.0,
+	}
+
+
+static func _danger_at(d_km: float, az: float, hob: float, r_lim: float, w: float, humidity: float, use_q: bool) -> bool:
+	var s := _slant_at(d_km, az, hob)
+	return s <= r_lim or (use_q and BlastPhysics.thermal_fluence(w, s, humidity) >= Q_WARN)
+
+
+## Largest range (km) at which the bunker still gets >= p_lim psi (or >= Q_WARN cal/cm2 when
+## use_q): 0 if not even at D_MIN, D_MAX if still at D_MAX. Inverts the pressure once
+## (radius_for_pressure) instead of evaluating overpressure() per step, so it costs ~1 ms.
 static func danger_range(b: Dictionary, az: float, humidity: float, p_lim: float, use_q: bool) -> float:
-	if not _danger_at(b, D_MIN, az, humidity, p_lim, use_q):
+	var c := coupling(b)
+	var r_lim := BlastPhysics.radius_for_pressure(float(c["w_air"]), p_lim, bool(c["surface"]), bool(c["conventional"]))
+	var hob: float = c["hob"]
+	var w: float = c["w"]
+	var uq := use_q and bool(c["thermal"])
+	if not _danger_at(D_MIN, az, hob, r_lim, w, humidity, uq):
 		return 0.0
-	if _danger_at(b, D_MAX, az, humidity, p_lim, use_q):
+	if _danger_at(D_MAX, az, hob, r_lim, w, humidity, uq):
 		return D_MAX
 	var lo := log(D_MIN)
 	var hi := log(D_MAX)
-	for _i in 36:
+	for _i in 32:
 		var mid := 0.5 * (lo + hi)
-		if _danger_at(b, exp(mid), az, humidity, p_lim, use_q):
+		if _danger_at(exp(mid), az, hob, r_lim, w, humidity, uq):
 			lo = mid
 		else:
 			hi = mid
@@ -1295,7 +1333,7 @@ func _refresh_details() -> void:
 	_ref_l.text = Game.tr_key("ui.preview_ref" if maxf(length, dia) >= HUMAN_MIN_SIZE else "ui.preview_ref_grid")
 	_dims_l.text = Game.tr_key("ui.dims").format({"l": UiTheme.fmt_sig(length, 3), "d": UiTheme.fmt_sig(dia, 3), "m": mass_s})
 	var rec := float(b.get("rec_km", 25.0))
-	_rec_btn.text = Game.tr_key("ui.rec_btn").format({"d": UiTheme.fmt_km(rec)})
+	_rec_btn.text = Game.tr_key("ui.rec_btn").format({"d": UiTheme.fmt_dist_round(rec * 1000.0)})
 	_scale.rec_km = rec
 
 
@@ -1494,7 +1532,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(_delta: float) -> void:
-	if not visible:
+	# the preview renders only while the menu is really on screen (menu or parent layer hidden -> off)
+	var shown := is_visible_in_tree()
+	var mode := SubViewport.UPDATE_ALWAYS if shown else SubViewport.UPDATE_DISABLED
+	if _sv.render_target_update_mode != mode:
+		_sv.render_target_update_mode = mode
+	if not shown:
 		_last_ms = 0
 		return
 	var now := Time.get_ticks_msec()
@@ -1519,14 +1562,16 @@ func _process(_delta: float) -> void:
 		_poll_game()
 
 
+## Game.* values the controls mirror. Compared against the snapshot taken at the last sync, so
+## values the controls cannot represent exactly (humidity off the slider step or > 1, a range
+## outside 0.5..200 km) do not trigger a re-sync every poll.
+func _game_snapshot() -> Array:
+	return [Game.tod, Game.humidity, Game.quality, Game.film_grain, Game.high_clouds, Game.hud_visible,
+		Game.distance_km, Game.azimuth_deg, Game.lang]
+
+
 func _poll_game() -> void:
-	var dirty := Game.tod >= 0 and Game.tod < _tod_btns.size() and not (_tod_btns[Game.tod] as Button).button_pressed
-	dirty = dirty or absf(_hum_slider.value - Game.humidity) > 0.001
-	dirty = dirty or _quality_opt.selected != Game.quality
-	dirty = dirty or _grain_cb.button_pressed != Game.film_grain or _clouds_cb.button_pressed != Game.high_clouds
-	dirty = dirty or _hud_cb.button_pressed != Game.hud_visible
-	dirty = dirty or absf(Game.distance_km - dist_km) > 1e-4 or absf(Game.azimuth_deg - az_deg) > 1e-4
-	if dirty:
+	if _game_snapshot() != _game_snap:
 		sync_from_game()
 
 
@@ -1767,8 +1812,8 @@ class RangeMap extends Control:
 		draw_line(Vector2(10, y), Vector2(10 + bar_px, y), UT.GREEN_DIM, 2.0)
 		draw_line(Vector2(10, y - 4), Vector2(10, y + 1), UT.GREEN_DIM, 2.0)
 		draw_line(Vector2(10 + bar_px, y - 4), Vector2(10 + bar_px, y + 1), UT.GREEN_DIM, 2.0)
-		draw_string(font, Vector2(14.0 + bar_px, y + 4.0), UT.fmt_dist_m(bar_m), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UT.GREEN_DIM)
+		draw_string(font, Vector2(14.0 + bar_px, y + 4.0), UT.fmt_dist_round(bar_m), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, UT.GREEN_DIM)
 		# ring spacing legend
-		var rl := "○ " + UT.fmt_dist_m(step)
+		var rl := "○ " + UT.fmt_dist_round(step)
 		draw_string(font, Vector2(10.0, 4.0 + fs), rl, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(UT.GREEN, 0.45))
 		draw_rect(Rect2(Vector2.ZERO, size), UT.BORDER_DIM, false, 1.0)

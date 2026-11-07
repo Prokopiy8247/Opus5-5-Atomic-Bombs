@@ -151,13 +151,18 @@ func _apply_art_static() -> void:
 	vol_mat.set_shader_parameter("ground_col", gcv)
 	var tint: Array = prof.a("fireball_tint", [1.0, 1.0, 1.0, 0.0])
 	vol_mat.set_shader_parameter("fb_tint", Vector4(tint[0], tint[1], tint[2], tint[3]))
-	vol_mat.set_shader_parameter("head_detail", Vector4(float(prof.a("head_noise_amp", 0.30)), float(prof.a("billow_sharp", 0.6)), float(prof.a("erosion", 0.8)), 0.0))
+	vol_mat.set_shader_parameter("head_detail", Vector4(float(prof.a("head_noise_amp", 0.30)), float(prof.a("billow_sharp", 1.3)), float(prof.a("erosion", 0.8)), 0.0))
 	vol_mat.set_shader_parameter("base_steps", float(prof.a("steps", 72.0)))
 	var wv: Array = prof.a("wind", [2.5, -1.5])
 	wind_v = Vector3(float(wv[0]), 0.0, float(wv[1]))
 	vol_mat.set_shader_parameter("wind", wind_v)
 	vol_mat.set_shader_parameter("wind_h", maxf(prof.cloud_top * 0.5, 50.0))
-	vol_mat.set_shader_parameter("churn", float(prof.a("churn", 1.2)) / maxf(prof.t_stab, 10.0))
+	# boiling speed (noise cells / s): nuclear clouds scale with their stabilisation time; HE smoke
+	# and ejecta columns boil on an absolute (seconds) scale or they freeze for seconds (review c2)
+	if prof.nuclear and not prof.is_column_kind():
+		vol_mat.set_shader_parameter("churn", float(prof.a("churn", 1.2)) / maxf(prof.t_stab, 10.0))
+	else:
+		vol_mat.set_shader_parameter("churn", float(prof.a("churn_abs", 0.12)))
 	vol_mat.set_shader_parameter("debug_mode", Args.get_int("vdebug", 0))
 	var empty: Array[Vector4] = [Vector4.ZERO, Vector4.ZERO, Vector4.ZERO, Vector4.ZERO]
 	vol_mat.set_shader_parameter("rings", empty)
@@ -228,7 +233,7 @@ func _update_volume(t: float) -> void:
 	vol_mat.set_shader_parameter("age", t)
 	var fr: float = fs["radius"]
 	vol_mat.set_shader_parameter("fb", Vector4(0.0, fs["center_y"], 0.0, fr if float(fs["opacity"]) > 0.001 else 0.0))
-	vol_mat.set_shader_parameter("fb_look", Vector4(fs["temp"], fs["emis"], float(prof.a("fireball_noise", 0.22)), fs["opacity"]))
+	vol_mat.set_shader_parameter("fb_look", Vector4(fs["temp"], fs["emis"], float(prof.a("fireball_noise", 0.14)), fs["opacity"]))
 	vol_mat.set_shader_parameter("fb_shape", Vector4(fs["squash"], fs["mottle"], float(prof.a("fireball_noise_scale", 10.0)), fs["skin"]))
 	vol_mat.set_shader_parameter("fb_cut_y", prof.fireball_cut_y(t))
 	var tint: Array = prof.a("fireball_tint", [1.0, 1.0, 1.0, 0.0])
@@ -247,6 +252,10 @@ func _update_volume(t: float) -> void:
 	vol_mat.set_shader_parameter("stem", Vector4(ss["bottom"], ss["top"], sr, ss["density"]))
 	vol_mat.set_shader_parameter("stem_shape", Vector4(ss["flare"], ss["waist"], ss["hollow"], ss["rise"]))
 	vol_mat.set_shader_parameter("stem_cone", float(prof.a("col_cone", 0.0)) if prof.is_column_kind() else 0.0)
+	if ss.has("front"):
+		vol_mat.set_shader_parameter("stem_wake", Vector4(ss["front"], ss["wake_bottom"], ss["wake"], ss["dust_ramp"]))
+	else:
+		vol_mat.set_shader_parameter("stem_wake", Vector4(1.0e9, 0.0, 0.0, 1.0))
 	var kr: float = ks["radius"] if float(ks["density"]) > 0.001 else 0.0
 	vol_mat.set_shader_parameter("skirt", Vector4(kr, ks["height"], ks["density"], ks["inner"]))
 	var rings := prof.rings_state(t)
@@ -259,7 +268,7 @@ func _update_volume(t: float) -> void:
 	var mn := Vector3(1e9, 1e9, 1e9)
 	var mx := Vector3(-1e9, -1e9, -1e9)
 	if fr > 0.0:
-		var e := fr * (1.0 + float(prof.a("fireball_noise", 0.22)) * 2.0) + 2.0
+		var e := fr * (1.0 + float(prof.a("fireball_noise", 0.14)) * 2.0) + 2.0
 		mn = mn.min(Vector3(-e, float(fs["center_y"]) - e, -e))
 		mx = mx.max(Vector3(e, float(fs["center_y"]) + e, e))
 	if hr > 0.0:
@@ -286,7 +295,7 @@ func _update_volume(t: float) -> void:
 			mn = mn.min(Vector3(-e3, sh.x - sh.z * 0.3, -e3))
 			mx = mx.max(Vector3(e3, sh.x + sh.z * 1.2, e3))
 	if mn.x < mx.x:
-		var drift := wind_v * t * 1.5
+		var drift := wind_v * t * 2.1
 		mn = mn.min(mn + Vector3(drift.x, 0.0, drift.z))
 		mx = mx.max(mx + Vector3(drift.x, 0.0, drift.z))
 	volume.visible = mn.x < mx.x
@@ -373,7 +382,11 @@ func metered_luminance(ti: float, amb: float) -> float:
 		var fr: float = fs["radius"]
 		ill = prof.light_power(ti) * 20.0 * fr * fr / maxf(obs_dist * obs_dist, 1.0) * 1000.0
 	var lum := ill / amb
-	if cam and float(fs["radius"]) > 0.0 and float(fs["opacity"]) > 0.0:
+	if not prof.nuclear:
+		# HE flames are not bright enough to make a camera stop down hard: meter the lit scene only
+		env_ctl.max_comp = 1.0
+		return lum
+	if cam and float(fs["radius"]) > 0.0 and float(fs["opacity"]) > 0.3 and float(fs["temp"]) > 3000.0:
 		var fpos := gz + Vector3(0, float(fs["center_y"]), 0)
 		var to := fpos - cam.global_position
 		var d := to.length()
@@ -382,13 +395,15 @@ func metered_luminance(ti: float, amb: float) -> float:
 		var ang := acos(clampf(fwd.dot(to / maxf(d, 1.0)), -1.0, 1.0))
 		var ang_r := atan(float(fs["radius"]) / maxf(d, 1.0))
 		if ang < half_fov + ang_r:
-			var cov := clampf(pow(ang_r / half_fov, 2.0) * 6.0, 0.0, 1.0)
+			# the auto-framed binocular view is not the eye filled by the ball: coverage capped
+			var cov := clampf(pow(ang_r / half_fov, 2.0) * 6.0, 0.0, 0.35)
 			# a camera / binocular stopped down on a fireball that fills the view (rapatronic look)
-			env_ctl.max_comp = lerpf(6.0, 10.0, cov) if prof.nuclear else 4.0
+			env_ctl.max_comp = lerpf(4.5, 6.0, cov) if ti < 3.0 * prof.t2 else lerpf(2.0, 3.0, cov)
 			var tt: float = fs["temp"]
 			var x := tt / 8000.0
-			# metering aims the fireball ~2 stops above middle grey (bright, but with visible structure)
-			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / (3.0 * amb)
+			# metering keeps the ball ~4 stops above middle grey: blinding white core, structure only
+			# at the limb (cycle-2 review: the ball must not turn into grey-beige cotton)
+			var l_fb := float(fs["emis"]) * x * x * x * x * float(fs["opacity"]) / (16.0 * amb)
 			lum = maxf(lum, (1.0 - cov) * (1.0 + lum) + cov * l_fb - 1.0)
 	return lum
 

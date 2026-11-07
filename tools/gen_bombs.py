@@ -78,7 +78,7 @@ bomb(id="baker", name={"ru": "«Бейкер» (Crossroads)", "en": "Baker (Cros
      country={"ru": "США", "en": "USA"}, yield_kt=23.0, yield_conf="measured",
      burst_type="NUCLEAR_UNDERWATER", burst_height_m=-27.0, medium="water",
      length_m=3.26, diameter_m=1.53, mass_kg=4670, model="fatman",
-     colors={"body": [0.78, 0.66, 0.25], "band": [0.15, 0.15, 0.15], "accent": [0.2, 0.2, 0.2]}, rec_km=25.0)
+     colors={"body": [0.78, 0.66, 0.25], "band": [0.15, 0.15, 0.15], "accent": [0.2, 0.2, 0.2]}, rec_km=8.0)
 bomb(id="sedan", name={"ru": "«Седан» (Plowshare)", "en": "Sedan (Plowshare)"}, original="Plowshare Sedan", year=1962, date="1962-07-06",
      country={"ru": "США", "en": "USA"}, yield_kt=104.0, yield_conf="measured",
      burst_type="NUCLEAR_BURIED", burst_height_m=-194.0, medium="underground",

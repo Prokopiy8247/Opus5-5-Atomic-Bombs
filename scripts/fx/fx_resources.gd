@@ -1,7 +1,8 @@
 class_name FxResources
 extends RefCounted
-## Shared FX resources: tileable 3D noise volumes generated synchronously (C++ FastNoiseLite)
-## so that the first explosion never waits or hitches. Deterministic seeds.
+## Shared FX resources: tileable 3D noise volumes. Loaded from data/noise_*.bin (exactly periodic
+## noise from tools/gen_noise.py); FastNoiseLite seamless volumes are the fallback. Loaded
+## synchronously so the first explosion never waits or hitches. Deterministic.
 
 static var _noise_fbm: ImageTexture3D
 static var _noise_billow: ImageTexture3D
@@ -16,7 +17,25 @@ static func _make(noise: FastNoiseLite, invert: bool) -> ImageTexture3D:
 	return tex
 
 
+## Loads a SIZE^3 8-bit volume written by tools/gen_noise.py (exactly periodic lattices: no seams).
+static func _load_bin(path: String) -> ImageTexture3D:
+	if not FileAccess.file_exists(path):
+		return null
+	var data := FileAccess.get_file_as_bytes(path)
+	if data.size() != SIZE * SIZE * SIZE:
+		return null
+	var imgs: Array[Image] = []
+	var n := SIZE * SIZE
+	for z in SIZE:
+		imgs.append(Image.create_from_data(SIZE, SIZE, false, Image.FORMAT_L8, data.slice(z * n, (z + 1) * n)))
+	var tex := ImageTexture3D.new()
+	tex.create(Image.FORMAT_L8, SIZE, SIZE, SIZE, false, imgs)
+	return tex
+
+
 static func noise_fbm() -> ImageTexture3D:
+	if _noise_fbm == null:
+		_noise_fbm = _load_bin("res://data/noise_fbm.bin")
 	if _noise_fbm == null:
 		var n := FastNoiseLite.new()
 		n.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
@@ -30,6 +49,8 @@ static func noise_fbm() -> ImageTexture3D:
 
 
 static func noise_billow() -> ImageTexture3D:
+	if _noise_billow == null:
+		_noise_billow = _load_bin("res://data/noise_billow.bin")
 	if _noise_billow == null:
 		var n := FastNoiseLite.new()
 		n.noise_type = FastNoiseLite.TYPE_CELLULAR

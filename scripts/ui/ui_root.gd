@@ -122,7 +122,7 @@ func update_hud(info: Dictionary) -> void:
 		_peak_p = 0.0
 	else:
 		var p: Variant = info.get("p_psi", 0.0)
-		if p is float or p is int:
+		if (p is float or p is int) and is_finite(float(p)):
 			_peak_p = maxf(_peak_p, float(p))
 	hud.update_info(info)
 
@@ -137,9 +137,12 @@ func is_hud_visible() -> bool:
 	return _hud_visible
 
 
-## "BUNKER DESTROYED" screen with a retry button (emits reset_requested).
-func show_destroyed(v: bool) -> void:
+## "BUNKER DESTROYED" screen with a retry button (emits reset_requested). The peak shown is
+## the highest p_psi seen by update_hud() in the explosion phase, or peak_psi if larger.
+func show_destroyed(v: bool, peak_psi: float = -1.0) -> void:
 	if v:
+		if peak_psi > 0.0 and not is_nan(peak_psi) and not is_inf(peak_psi):
+			_peak_p = maxf(_peak_p, peak_psi)
 		_dest_peak.text = Game.tr_key("dest.peak").format({"p": UiTheme.fmt_psi(_peak_p)}) if _peak_p > 0.0 else ""
 		_dest_peak.visible = _peak_p > 0.0
 	_destroyed.visible = v
@@ -179,7 +182,7 @@ func show_toast(text: String) -> void:
 
 ## Menu estimates for the current selection (p psi, q cal/cm2, zones, flight time).
 func get_estimate() -> Dictionary:
-	return menu.est
+	return menu.est.duplicate()
 
 
 # ================================================================ internals

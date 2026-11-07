@@ -147,8 +147,14 @@ func _bombs() -> void:
 			var hs := prof.head_state(prof.t_stab)
 			var top := float(hs["center_y"]) + float(hs["half"])
 			near("cloud top %s at t_stab" % name, top, prof.cloud_top, 0.2)
-		var p_rec := BlastPhysics.overpressure(prof.w_kt, float(b["rec_km"]) * 1000.0, prof.surface)
-		check("recommended distance is safe for the bunker glass (<10 psi): %s" % name, p_rec < 10.0, "p=%.3f psi" % p_rec)
+		# recommended distance: the bunker glass survives comfortably (< 2 psi with the real air-blast
+		# coupling) and an observer behind the window would not get 2nd-degree burns
+		var d_rec := float(b["rec_km"]) * 1000.0
+		var p_rec := BlastPhysics.overpressure(prof.blast_yield(), d_rec, prof.surface, prof.conventional)
+		check("recommended distance keeps the bunker < 2 psi: %s" % name, p_rec < 2.0, "p=%.3f psi" % p_rec)
+		if prof.nuclear:
+			var slant := sqrt(d_rec * d_rec + maxf(prof.hob, 0.0) * maxf(prof.hob, 0.0))
+			check("recommended distance is beyond the 2nd-degree burn radius: %s" % name, slant > BlastPhysics.burn_radius(prof.w_kt, 2), "d=%.0f m r2=%.0f m" % [slant, BlastPhysics.burn_radius(prof.w_kt, 2)])
 
 
 func _leaks() -> void:

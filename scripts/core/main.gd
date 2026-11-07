@@ -280,6 +280,9 @@ func launch(bomb_index: int, dist_km: float, az_deg: float) -> void:
 	clear_explosion()
 	_destroyed_shown = false
 	var b := Game.bomb(bomb_index)
+	if not Game.humidity_manual:
+		# historical site conditions by default (Wilson clouds over the Pacific shots, dry Nevada)
+		env_ctl.set_humidity(Game.site_humidity(b))
 	var snow := 1.0 if (bool(b.get("snow", false)) and Game.snow_override != 0) or Game.snow_override == 1 else 0.0
 	RenderingServer.global_shader_parameter_set("g_snow", snow)
 	launcher.visible = true
@@ -346,6 +349,7 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 			env_ctl.apply_tod(Game.tod)
 			bunker.set_night(Game.tod == Game.TimeOfDay.NIGHT)
 		"humidity":
+			Game.humidity_manual = true
 			env_ctl.set_humidity(float(value))
 		"quality":
 			Game.quality = int(value)
@@ -405,6 +409,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				ui.show_toast(Game.tr_key("tod." + Game.TOD_NAMES[Game.tod]))
 		KEY_H:
 			var h := fposmod(Game.humidity + 0.25, 1.25)
+			Game.humidity_manual = true
 			env_ctl.set_humidity(h)
 			if ui and ui.has_method("show_toast"):
 				ui.show_toast("%s %d%%" % [Game.tr_key("set.humidity"), int(h * 100.0)])

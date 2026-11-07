@@ -24,7 +24,7 @@ func run() -> void:
 	var q := Game.QUALITY_NAMES.find(Args.get_str("quality", "high"))
 	Game.quality = q if q >= 0 else Game.Quality.HIGH
 	Game.auto_quality = false
-	Game.humidity = Args.get_float("humidity", 0.35)
+	Game.humidity = Args.get_float("humidity", Game.site_humidity(bd))
 	var view := Args.get_str("view", "bunker")
 	var prefix := Args.get_str("prefix", "b%02d_%s_%skm_%s_%s" % [bomb_n, bd.get("id", "x"), _fmt(dist), tod_s, view])
 	var shots := Args.get_float_list("shots")
