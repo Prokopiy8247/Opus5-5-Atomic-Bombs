@@ -1,0 +1,10 @@
+# 06 W54 Davy Crockett / Little Feller I - reference images
+
+All files verified as real images and viewed. All are US Government works (public domain).
+
+| File | What it shows | Source page | License |
+|---|---|---|---|
+| lf1_ivyflats_film_t1s.png | Still from the US Army film "Ivy Flats Film Report" (MF20-9811, 1962, declassified DOE video 0800032), about 1 s after the Little Feller I detonation (17 July 1962): a brilliant white, bell-shaped glowing cloud sitting on the desert floor with a bright horizontal dust band spreading along the ground. The digitised film is sepia/faded, so colours are not reliable. | https://archive.org/details/IvyFlatsFilmReport | Public domain (US Army / DOE NNSA film; Internet Archive item carries the Public Domain Mark 1.0) |
+| lf1_ivyflats_film_t22s.png | Same film, about 22 s after detonation: a cauliflower cap on a thin, dusty, slightly wavy stem, with a wide low dust skirt along the ground. | https://archive.org/details/IvyFlatsFilmReport | Public domain (as above) |
+| lf1_dna6027f_fig8-1_20s.png | Figure 8-1 of DNA 6027F (Ponton et al., 1983), "Shot LITTLE FELLER I event, looking north 20 seconds after detonation": small white cloud on a stem above a horizontal dust line, sagebrush in the foreground (shows how small the event looks from several km). Cropped from the scanned report page. | https://www.govinfo.gov/content/pkg/GOVPUB-D15-PURL-gpo222775/pdf/GOVPUB-D15-PURL-gpo222775.pdf (also https://www.dtra.mil/Portals/61/Documents/NTPR/2-Hist_Rpt_Atm/1962_DNA_6027F.pdf) | Public domain (US Government report, Defense Nuclear Agency; "Approved for public release; distribution unlimited") |
+| m388_davy_crockett_1961.jpg | M388 atomic projectile mounted on the M28/M29 recoilless rifle tripod, Aberdeen Proving Ground, March 1961: the bulbous "watermelon" round with four tail fins on a long piston rod inserted in the barrel. Shape/scale reference for the weapon model (soldier for scale). | https://commons.wikimedia.org/wiki/File:DavyCrockettBomb.jpg | Public domain (US Government DoD/DOE photograph) |

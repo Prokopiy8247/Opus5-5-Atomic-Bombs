@@ -1,0 +1,15 @@
+# 03 Tallboy: reference image sources
+
+All files were downloaded from Wikimedia Commons (upload.wikimedia.org). Each one was checked with `file` and viewed. All are UK Crown Copyright photographs taken before 1 June 1957 (IWM collection). Their Crown Copyright has expired, and Commons marks them **Public domain** (PD-UKGov).
+
+| File | What it shows | Source page | License |
+|---|---|---|---|
+| `tallboy_hoisted_woodhall_spa_1944_CH15363.jpg` | A 12,000-lb Tallboy being hoisted at Woodhall Spa for a 617 Squadron raid on Wizernes (1944). It shows the long streamlined body, the sharp ogive nose with a thin painted ring, the stencil "TORPEX D1", the long tapering tail cone and offset fins, with people for scale. The body is uniformly dark in this B&W photo. | https://commons.wikimedia.org/wiki/File:Royal_Air_Force_Bomber_Command,_1942-1945._CH15363.jpg | Public domain (Crown Copyright expired; IWM CH 15363, photographer Stanley Arthur Devon) |
+| `tallboy_falling_watten_1944_CH15380.jpg` | A Tallboy immediately after release from Lancaster JB139 over the Watten V-weapon site, 19 June 1944. It shows the bomb in flight with a light nose, a darker mid-body band and a light tail cone with fins (B&W). | https://commons.wikimedia.org/wiki/File:Tallboy_bomb_dropped_on_Watten_bunker_1944.jpg | Public domain (Crown Copyright expired; IWM CH 15380, No. 617 Squadron RAF) |
+| `tallboy_saumur_tunnel_crater_1944_CL80.jpg` | A vertical reconnaissance photo of the Saumur rail cutting and tunnel after the 8/9 June 1944 Tallboy raid. It shows a field of large round craters with bright ejecta aprons, several of them about 30 m across (the IBCC caption of the companion photo gives 100–110 ft), and the cutting blocked. This is the reference for crater size and ejecta apron. | https://commons.wikimedia.org/wiki/File:RAF_Bomber_Command_Wrecks_Saumur_Tunnel_1944_CL80.jpg | Public domain (Crown Copyright expired; IWM CL 80) |
+| `tallboy_tirpitz_attack_1944_C4775.jpg` | Tallboy attack on the battleship Tirpitz, Tromsø, 12 November 1944, oblique from the air. It shows a large white-grey billowing smoke/steam cloud over the ship and, on the shore at right, a Tallboy ground burst with a spiky crown of soil jets and a white-grey dust ring. This is the reference for the "geyser of soil and smoke" look. | https://commons.wikimedia.org/wiki/File:Dramatic_End_of_the_Tirpitz_C4775.jpg | Public domain (Crown Copyright expired; IWM C 4775) |
+
+Notes:
+- Rejected: `Lancaster_attacks_Schildescher_Viadukt_Bielefeld_c1945.jpg` (IWM C 5659, PD). It was downloaded and viewed, then deleted because the Tallboy smoke is not distinguishable and the crater field is mostly from smaller bombs.
+- No public-domain still of a Tallboy *ground* explosion taken from the ground exists on Commons. Use the C 4775 shore burst plus the Grand Slam footage stills (bomb #4) as the closest visual analogue.
+- The 2020 Świnoujście (Piast Canal) underwater detonation exists only as Polish Navy and city video, whose license status was not verified. No frames were downloaded.

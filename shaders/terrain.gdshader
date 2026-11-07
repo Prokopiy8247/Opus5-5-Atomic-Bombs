@@ -1,0 +1,243 @@
+// Clipmap terrain: each level is an N x N grid snapped to 2*spacing, geomorphed at its rim,
+// and discarding pixels already covered by the finer level. Height comes from the shared
+// procedural function (terrain_common), plus blast deformations (crater, Sedan dome).
+shader_type spatial;
+render_mode cull_back, diffuse_burley, specular_schlick_ggx;
+
+#include "res://shaders/terrain_common.gdshaderinc"
+#include "res://shaders/atmos.gdshaderinc"
+
+global uniform vec3 g_blast_center;
+global uniform float g_blast_age;
+global uniform vec4 g_crater;       // radius, depth, rim height, progress 0..1
+global uniform vec4 g_dome;         // radius, height, 0, 0
+global uniform vec4 g_scorch;       // char radius, burn radius, glow 0..1, trinitite 0..1
+global uniform vec4 g_scorch_color; // rgb tint of the char, unused w
+global uniform vec4 g_shock;        // ground ring radius, strength, width, dust 0..1
+global uniform vec4 g_cloud_pos;    // x, cap centre height, z, opacity
+global uniform vec4 g_cloud_shape;  // cap radius, cap half-thickness, stem radius, stem top height
+global uniform float g_snow;
+global uniform vec4 g_water;        // x, z, radius, level
+
+uniform float spacing = 1.0;
+uniform vec2 level_center = vec2(0.0);
+uniform float half_n = 64.0;
+uniform float inner_half_extent = 0.0; // 0 for level 0
+uniform vec2 inner_center = vec2(0.0);
+
+varying vec3 v_world;
+varying float v_cloud_shadow;
+
+float blast_deform(vec2 xz) {
+	if (g_blast_age < 0.0) {
+		return 0.0;
+	}
+	vec2 d = xz - g_blast_center.xz;
+	float r = length(d);
+	float off = 0.0;
+	// crater (bowl + raised rim with ejecta)
+	if (g_crater.x > 0.0) {
+		float R = g_crater.x;
+		float x = r / R;
+		float bowl = -g_crater.y * (1.0 - x * x);
+		bowl = x < 1.0 ? bowl : 0.0;
+		float rim = g_crater.z * exp(-pow((x - 1.0) / 0.35, 2.0)) * (x > 0.6 ? 1.0 : 0.0);
+		float ejecta = g_crater.z * 0.35 * exp(-max(x - 1.0, 0.0) * 1.6) * (x > 1.0 ? 1.0 : 0.0);
+		off += (bowl + rim + ejecta) * g_crater.w;
+	}
+	// Sedan-type dome (heave)
+	if (g_dome.x > 0.0) {
+		float x = r / g_dome.x;
+		off += g_dome.y * exp(-x * x * 2.2);
+	}
+	return off;
+}
+
+float full_height(vec2 xz) {
+	return t_height(xz) + blast_deform(xz);
+}
+
+void vertex() {
+	vec2 grid = VERTEX.xz;
+	vec2 xz0 = level_center + grid * spacing;
+	float dist_edge = half_n - max(abs(grid.x), abs(grid.y));
+	float morph = 1.0 - smoothstep(2.0, half_n * 0.3, dist_edge);
+	vec2 odd = fract(grid * 0.5) * 2.0;
+	vec2 xz = xz0 - odd * spacing * morph;
+	float h = full_height(xz);
+	VERTEX = vec3(xz.x, h, xz.y);
+	v_world = VERTEX;
+}
+
+float hash12(vec2 p) {
+	vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
+}
+
+float vnoise(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	vec2 u = f * f * (3.0 - 2.0 * f);
+	return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x), mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
+}
+
+float road_mask(vec2 xz, float aa) {
+	// Main range road along the corridor, a few cross roads and a ring road.
+	float m = 0.0;
+	float d1 = abs(xz.x - 340.0 + 0.02 * xz.y);
+	m = max(m, 1.0 - smoothstep(3.5, 3.5 + aa, d1)) * step(xz.y, 200.0);
+	float cross_period = 8000.0;
+	float cy = abs(mod(xz.y + 1500.0, cross_period) - cross_period * 0.5);
+	m = max(m, (1.0 - smoothstep(3.0, 3.0 + aa, cy)) * step(xz.y, -1500.0) * step(abs(xz.x), 30000.0));
+	return m;
+}
+
+void fragment() {
+	vec3 wp = v_world;
+	vec2 xz = wp.xz;
+	// discard where the finer level already draws
+	if (inner_half_extent > 0.0) {
+		vec2 q = abs(xz - inner_center);
+		if (max(q.x, q.y) < inner_half_extent - spacing * 0.75) {
+			discard;
+		}
+	}
+	float dist = length(wp - CAMERA_POSITION_WORLD);
+	float eps = max(0.35, dist * 0.0012);
+	float hc = full_height(xz);
+	float hx = full_height(xz + vec2(eps, 0.0));
+	float hz = full_height(xz + vec2(0.0, eps));
+	vec3 n = normalize(vec3(hc - hx, eps, hc - hz));
+
+	// close-range micro relief (cracked playa, pebbles)
+	float detail_fade = 1.0 - smoothstep(60.0, 900.0, dist);
+	if (detail_fade > 0.0) {
+		float e2 = 0.15;
+		float d0 = vnoise(xz * 1.7) + 0.5 * vnoise(xz * 5.1);
+		float dx = vnoise((xz + vec2(e2, 0.0)) * 1.7) + 0.5 * vnoise((xz + vec2(e2, 0.0)) * 5.1);
+		float dz = vnoise((xz + vec2(0.0, e2)) * 1.7) + 0.5 * vnoise((xz + vec2(0.0, e2)) * 5.1);
+		n = normalize(n + detail_fade * 0.35 * vec3(d0 - dx, 0.0, d0 - dz) / e2 * 0.15);
+	}
+
+	float slope = 1.0 - n.y;
+	float hflat = t_height_flat(xz);
+	float mm = t_mountain_mask(xz);
+	// macro variation
+	float macro = t_fbm(xz * 0.00011 + vec2(5.2, 1.3), 4);
+	float meso = t_fbm(xz * 0.0019 + vec2(-2.0, 7.0), 3);
+	vec3 sand = vec3(0.60, 0.50, 0.38);
+	vec3 playa = vec3(0.74, 0.69, 0.60);
+	vec3 rock = vec3(0.36, 0.29, 0.23);
+	vec3 rock_dark = vec3(0.22, 0.19, 0.17);
+	vec3 scrub = vec3(0.33, 0.31, 0.24);
+	// playa where the ground is low and flat
+	float playa_m = smoothstep(-21.0, -24.5, hflat) * (1.0 - mm);
+	vec3 col = mix(sand, playa, playa_m);
+	col *= 0.86 + 0.22 * macro + 0.10 * meso;
+	// washes: sinuous lighter channels
+	float wash = 1.0 - smoothstep(0.0, 0.05, abs(t_fbm(xz * 0.00052 + vec2(11.0, 3.0), 4)));
+	col = mix(col, vec3(0.78, 0.71, 0.58), wash * 0.55 * (1.0 - mm));
+	// scrub speckles (fade with distance to avoid aliasing)
+	float sp_fade = 1.0 - smoothstep(300.0, 4000.0, dist);
+	float sp = smoothstep(0.72, 0.80, vnoise(xz * 0.45)) * (1.0 - playa_m);
+	col = mix(col, scrub, sp * 0.65 * sp_fade);
+	col = mix(col, mix(col, scrub, 0.22 * (1.0 - playa_m)), 1.0 - sp_fade);
+	// rock on mountains and slopes
+	float rock_m = clamp(mm * 1.3, 0.0, 1.0) * smoothstep(0.02, 0.18, slope + 0.05 * meso);
+	rock_m = max(rock_m, smoothstep(0.25, 0.45, slope));
+	vec3 rk = mix(rock, rock_dark, clamp(0.5 + 0.8 * meso, 0.0, 1.0));
+	col = mix(col, rk, rock_m);
+	// roads
+	float aa = max(fwidth(xz.x), fwidth(xz.y)) * 1.5;
+	float road = road_mask(xz, aa + 0.5) * (1.0 - mm);
+	col = mix(col, vec3(0.30, 0.28, 0.26), road * 0.8);
+	// snow (Novaya Zemlya preset)
+	float snow = g_snow * clamp(1.0 - slope * 1.6 + 0.3 * meso, 0.0, 1.0);
+	col = mix(col, vec3(0.86, 0.89, 0.93), snow);
+
+	float rough = mix(0.95, 0.75, snow);
+	vec3 emis = vec3(0.0);
+	// blast traces: scorch, trinitite, glowing ground
+	if (g_blast_age >= 0.0) {
+		float r = length(xz - g_blast_center.xz);
+		if (g_scorch.y > 0.0) {
+			float burn = 1.0 - smoothstep(g_scorch.x, g_scorch.y, r);
+			float noise_edge = 0.85 + 0.3 * vnoise(xz / max(g_scorch.y, 1.0) * 9.0);
+			burn = clamp(burn * noise_edge, 0.0, 1.0);
+			col = mix(col, col * 0.55, burn * (1.0 - g_snow * 0.6));
+			float char_m = 1.0 - smoothstep(g_scorch.x * 0.4, g_scorch.x, r);
+			col = mix(col, g_scorch_color.rgb, char_m * 0.85);
+			// trinitite: glassy green crust inside the inner zone
+			float tri = g_scorch.w * (1.0 - smoothstep(g_scorch.x * 0.2, g_scorch.x * 0.75, r));
+			col = mix(col, vec3(0.10, 0.22, 0.14), tri * (0.6 + 0.4 * vnoise(xz * 0.3)));
+			rough = mix(rough, 0.25, tri);
+			// incandescent ground right under the fireball
+			float glow = g_scorch.z * (1.0 - smoothstep(0.0, g_scorch.x, r));
+			emis += vec3(1.0, 0.35, 0.08) * glow * 6.0;
+			// snow melts in the burn zone
+			col = mix(col, col * 0.7, burn * g_snow * 0.5);
+		}
+		if (g_crater.x > 0.0) {
+			float x = r / g_crater.x;
+			float in_c = (1.0 - smoothstep(0.85, 1.05, x)) * g_crater.w;
+			col = mix(col, vec3(0.30, 0.25, 0.20) * (0.8 + 0.4 * vnoise(xz * 0.2)), in_c * 0.75);
+			// ejecta blanket
+			float ej = smoothstep(0.9, 1.1, x) * exp(-max(x - 1.0, 0.0) * 1.2) * g_crater.w;
+			col = mix(col, vec3(0.50, 0.42, 0.33), ej * 0.6);
+		}
+		// dust scoured by the shock front
+		if (g_shock.y > 0.0) {
+			float behind = smoothstep(g_shock.x, g_shock.x - g_shock.z * 4.0, r) * g_shock.w;
+			col = mix(col, col * 0.88 + vec3(0.03, 0.025, 0.02), behind * 0.5);
+		}
+	}
+
+	// cloud shadow (sun only, see light())
+	float shadow = 0.0;
+	if (g_cloud_pos.w > 0.0 && g_sun_dir.y > 0.02) {
+		float hcap = g_cloud_pos.y;
+		float s = (hcap - wp.y) / g_sun_dir.y;
+		vec2 q = wp.xz + g_sun_dir.xz * s;
+		float dcap = length(q - g_cloud_pos.xz);
+		float cap_sh = 1.0 - smoothstep(g_cloud_shape.x * 0.75, g_cloud_shape.x * 1.08, dcap);
+		// stem: closest approach of the sun ray to the vertical axis
+		vec2 rel = g_cloud_pos.xz - wp.xz;
+		vec2 ldir = normalize(g_sun_dir.xz + vec2(1e-5));
+		float along = dot(rel, ldir);
+		float perp = length(rel - ldir * along);
+		float s_axis = along / max(length(g_sun_dir.xz), 1e-4);
+		float h_at = wp.y + g_sun_dir.y * s_axis;
+		float stem_sh = (1.0 - smoothstep(g_cloud_shape.z * 0.6, g_cloud_shape.z * 1.2, perp)) * step(0.0, along) * step(h_at, g_cloud_shape.w);
+		shadow = clamp(max(cap_sh, stem_sh * 0.85) * g_cloud_pos.w, 0.0, 0.95);
+	}
+	v_cloud_shadow = shadow;
+
+	// water (Baker lagoon): handled by a separate water mesh; darken wet shore
+	if (g_water.z > 0.0) {
+		float rw = length(xz - g_water.xy);
+		float shore = smoothstep(g_water.z * 1.08, g_water.z, rw);
+		col = mix(col, col * 0.55, shore);
+	}
+
+	FOG = atm_fog(CAMERA_POSITION_WORLD, wp);
+	ALBEDO = col;
+	ROUGHNESS = rough;
+	SPECULAR = 0.3;
+	EMISSION = emis;
+	NORMAL = normalize((VIEW_MATRIX * vec4(n, 0.0)).xyz);
+}
+
+void light() {
+	float ndl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
+	float att = ATTENUATION;
+	if (LIGHT_IS_DIRECTIONAL) {
+		att *= 1.0 - v_cloud_shadow;
+	}
+	// wrap a little for soft terminators on dunes
+	float wrap = clamp((dot(NORMAL, LIGHT) + 0.15) / 1.15, 0.0, 1.0);
+	DIFFUSE_LIGHT += mix(ndl, wrap, 0.3) * att * LIGHT_COLOR / PI;
+	vec3 h = normalize(VIEW + LIGHT);
+	float spec = pow(clamp(dot(NORMAL, h), 0.0, 1.0), 24.0) * 0.04;
+	SPECULAR_LIGHT += spec * att * LIGHT_COLOR * ndl;
+}

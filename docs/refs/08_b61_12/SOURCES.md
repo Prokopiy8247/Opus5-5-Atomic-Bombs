@@ -1,0 +1,12 @@
+# 08 — B61 Mod 12 (minimum yield ~0.3 kt, never tested) — reference images
+
+The B61-12 has never been exploded (no US nuclear test since 1992). Images = (a) the real bomb (inert test unit) and (b) real Nevada airbursts of comparable yield / scaled burst height that the game's conceptual 0.3 kt model is built from.
+
+| File | What it shows | Source page | License |
+|---|---|---|---|
+| `b61_12_f35_drop_test_lanl.jpg` | F-35A (461st FLTS, "ED") releasing an inert B61-12 test unit. Shows outer shape: slim body, pointed nose, guided tail kit with 4 small fins; flight-test livery = white/light-grey nose and tail, red-orange centre section. | https://commons.wikimedia.org/wiki/File:F-35_B61-12_trial.jpg (Los Alamos National Laboratory) | Public domain (US Government / LANL) |
+| `tumbler_snapper_able_1952_1kt.jpg` | Tumbler-Snapper ABLE, 1 April 1952, 1 kt airdrop, burst at 793 ft (242 m) over Frenchman Flat. Colour photo: compact, dark reddish-brown (nitrogen-oxide) cloud ball, a short separate dust column rising from the desert, white smoke-rocket trails (blast-wave tracers). Key colour reference for a ~1 kt-class airburst. | https://commons.wikimedia.org/wiki/File:Tumbler-Snapper_Able_001.jpg | Public domain (US federal government) |
+| `teapot_wasp_1955_cloud_nnsa.jpg` | Teapot WASP, 18 Feb 1955, 1.2 kt airdrop, burst at 762 ft (232 m) over Yucca Flat. Shows the small "mushroom": flattened cap with hanging tendrils, DETACHED from a thin dust column + low dust skirt below. Same scaled burst height as the recommended game setup (0.3 kt at 150 m). | https://commons.wikimedia.org/wiki/File:Operation_Teapot_-_Wasp.jpg (NNSA/Nevada Site Office photo library ID 232) | Public domain (US DOE/NNSA) |
+| `hardtack2_eddy_1958_83t_balloon152m_cloud.jpg` | Hardtack II EDDY, 19 Sep 1958, 83 t, balloon burst at 500 ft (152 m) over Yucca Flat, seen through Joshua trees. A sub-kiloton airburst at the same physical height as the game setup: a single dark, lumpy cloud ball, no stem, no dust column (EDDY is ~1/4 of 0.3 kt, so 0.3 kt will be ~1.6x wider and may lift a faint dust column). | https://commons.wikimedia.org/wiki/File:Hardtack_II_Eddy_002.jpg | Public domain (US federal government) |
+
+Downloaded 2026-11-07 from upload.wikimedia.org / thumb.wikimedia.org. All files verified as real JPEG images and inspected visually. A DOE photo of a disassembled B61 exists on Commons but was intentionally not used (internal components are out of scope).

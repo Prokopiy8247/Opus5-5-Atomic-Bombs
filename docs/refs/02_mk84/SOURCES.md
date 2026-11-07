@@ -1,0 +1,12 @@
+# 02 Mk 84: reference image sources
+
+All files were downloaded from Wikimedia Commons (upload.wikimedia.org). Each one was checked with `file` and viewed. All are US government works, so they are public domain.
+
+| File | What it shows | Source page | License |
+|---|---|---|---|
+| `mk84_explosion_vietnam_1972.jpg` | Explosions of Mk 84 (907 kg class) bombs in North Vietnam, photographed from above by a VF-161 F-4B Phantom II (USS Midway, 1972–73). It shows two bright orange fireballs, each casting a dark shadow, black smoke and a brown dust pall drifting downwind. This is the reference for the orange ball plus black-brown column. | https://commons.wikimedia.org/wiki/File:Mk_84_bomb_explosion_Vietnam_c1972.jpg | Public domain (US Navy photo, Bud Taylor, VF-161) |
+| `mk84_2000lb_explosion_usmc_2007_a.jpg` | A "2,000-pound bomb" (type not given in the caption; Mk 84-class) on a small rocky island at Townshend Island, Shoalwater Bay, Australia, 1 July 2007, shown early in the event. It shows a bright orange fireball at the base, a black cauliflower smoke cap rising above it, a grey-tan dust cloud to the side and **dozens of white fragment splashes on the water** in a wide fan. This is the best fragment-fan reference. | https://commons.wikimedia.org/wiki/File:USMC-070701-M-3378S-081.jpg | Public domain (US Marine Corps photo, ID 070701-M-3378S-081) |
+| `mk84_2000lb_explosion_usmc_2007_b.jpg` | The same exercise, a few seconds later (or a second bomb). It shows a dark narrow ejecta jet over the impact point, a large grey-tan drifting dust/smoke cloud, white spray and fragment splashes along the shore, and soil sliding down the island slope. | https://commons.wikimedia.org/wiki/File:USMC-070701-M-3378S-034.jpg | Public domain (US Marine Corps photo, Cpl. Kamran Sadaghiani, ID 070701-M-3378S-034) |
+| `mk84_bombs_desert_storm_1991.jpg` | A Mk 84 on a loader before an F-16 sortie in Operation Desert Storm, 1991. It shows the olive-drab body, the conical tail fin, the ogival nose with a small yellow marking, lugs, and the real proportions next to people. This is the reference for the bomb model. | https://commons.wikimedia.org/wiki/File:Mark-84_bomb.jpg | Public domain (USAF photo, SSgt Lee F. Corkran, DF-ST-92-07651) |
+
+Note: the USMC 2007 photos do not name the bomb type. "Mk 84-class" is an inference from the stated weight. The 2,000-lb US bombs in service (Mk 84, BLU-117 and the BLU-109 penetrator) are all Mk 84-family bodies.

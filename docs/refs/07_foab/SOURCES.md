@@ -1,0 +1,11 @@
+# 07 — "Father of All Bombs" (ATBIP / AVBPM) — reference images
+
+No public-domain photo or footage frame of the FOAB itself exists (the only footage is the 2007 Russian Channel One TV segment, which is copyrighted and not PD; the Commons GIF made from it, `File:Взрыв АВБПМ.gif`, is CC BY-SA and was deliberately NOT downloaded). The images below are therefore stand-ins: comparable large air-dropped blast / fuel-air explosions from US government sources, plus a public-domain conceptual line drawing of the FOAB shape.
+
+| File | What it shows | Source page | License |
+|---|---|---|---|
+| `blu82_fireball_2008_usaf.jpg` | Last BLU-82 "Daisy Cutter" (15,000 lb, ~5.7 t GSX slurry) detonating at Utah Test and Training Range, 15 July 2008, seen from the air. Best available PD analogue for a multi-tonne, near-ground, parachute-retarded blast: yellow-orange fireball, dark smoke core, circular dust ring racing outward on desert. | https://commons.wikimedia.org/wiki/File:BLU-82_Daisy_Cutter_Fireball.JPG (USAF photo, Capt. Patrick Nichols, AFRC photo 080715-F-9999N-007) | Public domain (US Air Force work) |
+| `fae_bomb_uss_mcnulty_1972_usn.jpg` | US Navy second-generation fuel-air explosive (BLU-95 227 kg or BLU-96 907 kg) hitting target ship ex-USS McNulty, 16 Nov 1972. Shows the true FAE look: broad, flat, rolling yellow-orange fireball hugging the surface, lighter than an HE blast, with a pale water/spray skirt. | https://commons.wikimedia.org/wiki/File:USS_McNulty_(DDE-581)_sunk_as_target_with_FAE_1972.jpg (U.S. Navy, Naval Museum of Armament and Technology) | Public domain (US Navy work) |
+| `atbip_conceptual_drawing_pd.png` | Line drawing of the ATBIP shape by a Commons user (Altoing, 2011): short fat cylinder with domed ends, two skid "legs" underneath, drogue-parachute housing at one end. Matches the Wired 2007 description ("ski-like legs", horizontally deploying drogue) but is NOT an official drawing — use only as a loose shape hint. | https://commons.wikimedia.org/wiki/File:Abvp.svg | Public domain (released by author) |
+
+Downloaded 2026-11-07 via upload.wikimedia.org / thumb.wikimedia.org (1280 px thumbnails where available). All files verified as real JPEG/PNG images and inspected visually.
