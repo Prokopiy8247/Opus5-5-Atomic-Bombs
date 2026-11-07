@@ -61,8 +61,13 @@ static func make_event(p: Dictionary) -> Dictionary:
 	var inversion := tod in ["dawn", "predawn", "night"]
 	var shadow := 0.0
 	if tod == "noon":
-		var xs := sqrt(2.0 * 86000.0 * maxf(hob, 2.0)) + 600.0
-		shadow = smoothstep(xs, 3.0 * xs, dg) * 0.6
+		# the shock is not a point source: until it decays to ~1 psi it runs as a nonlinear
+		# hemisphere hundreds of metres to kilometres tall, so the effective source height is a
+		# quarter of the 1-psi radius (megatons are heard loud at 50-100 km by day); over the sea
+		# the lapse is weak (marine layer) and the shadow shallower
+		var h_eff := maxf(hob, 0.25 * float(p.get("r1psi_m", 0.0)))
+		var xs := sqrt(2.0 * 86000.0 * maxf(h_eff, 2.0)) + 600.0
+		shadow = smoothstep(xs, 3.0 * xs, dg) * 0.6 * (0.5 if bool(p.get("over_water", false)) else 1.0)
 
 	# ------------------------------------------------------------------ the front (32 kHz)
 	var front_dur := clampf(1.2 + 1.2 * minf(tp, 1.0) + d / 60000.0, 1.4, 3.0)
