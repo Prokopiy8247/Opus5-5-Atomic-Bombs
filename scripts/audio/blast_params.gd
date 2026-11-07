@@ -6,7 +6,7 @@ extends RefCounted
 
 ## The synthesis parameters of a bomb (bombs.json entry) seen from the bunker at a ground range
 ## (m): used by the game at launch time and by tools/audio_preview.gd.
-static func params_for(b: Dictionary, ground_m: float, humidity: float) -> Dictionary:
+static func params_for(b: Dictionary, ground_m: float, humidity: float, tod: String = "noon") -> Dictionary:
 	var prof := ExplosionProfile.new(b)
 	var hob := maxf(prof.hob, 0.0)
 	var slant := sqrt(ground_m * ground_m + hob * hob)
@@ -21,7 +21,8 @@ static func params_for(b: Dictionary, ground_m: float, humidity: float) -> Dicti
 		tp *= 0.8
 	return {"yield_kt": prof.w_kt, "kind": String(b.get("burst_type", "")), "nuclear": prof.nuclear,
 		"distance_m": slant, "hob_m": hob, "p_psi": psi, "t_plus": tp, "humidity": humidity,
-		"seed": int(b.get("num", 1)) * 7919 + int(ground_m),
+		"seed": int(b.get("num", 1)) * 7919 + int(ground_m), "tod": String(prof.a("sound_atmos", tod)),
+		"over_water": bool(prof.art.get("humid_site", false)) and prof.nuclear,
 		"thermobaric_delay_s": float(prof.a("fae_delay", 0.15)),
 		"eruption_s": float(prof.a("col_delay", 0.6)),
 		"eruption_dur_s": float(prof.a("col_rise", 5.0)) + float(prof.a("col_fall_time", 5.0))}

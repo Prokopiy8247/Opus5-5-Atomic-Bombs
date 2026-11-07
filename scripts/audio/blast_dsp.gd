@@ -84,7 +84,7 @@ static func iso9613_db_per_m(f: float, temp_c: float = 20.0, rh: float = 50.0, p
 ## Applies exp(-alpha(f) * dist) (ISO 9613-1) plus an optional 1st-order high-pass (hp_hz, the
 ## sub-audio part a loudspeaker cannot move) to a real signal, in place, via one FFT.
 ## The buffer is zero-padded to a power of two internally; returns the filtered signal (same length).
-static func absorb(x: PackedFloat32Array, rate: float, dist_m: float, rh: float, temp_c: float, hp_hz: float, extra_lp_hz: float = 0.0) -> PackedFloat32Array:
+static func absorb(x: PackedFloat32Array, rate: float, dist_m: float, rh: float, temp_c: float, hp_hz: float, extra_lp_hz: float = 0.0, floor_gain: float = 0.0) -> PackedFloat32Array:
 	var n0 := x.size()
 	# at least 2x zero padding: the filter's impulse response must not wrap around (circular
 	# convolution would smear the end of the buffer back onto the start)
@@ -104,7 +104,7 @@ static func absorb(x: PackedFloat32Array, rate: float, dist_m: float, rh: float,
 		var f := 5.0 * pow(rate * 0.5 / 5.0, float(k) / float(grid - 1))
 		gf.append(f)
 		var db := iso9613_db_per_m(f, temp_c, rh) * dist_m
-		var g := pow(10.0, -db / 20.0)
+		var g := maxf(pow(10.0, -db / 20.0), floor_gain)
 		if hp_hz > 0.0:
 			var r := f / hp_hz
 			g *= r / sqrt(1.0 + r * r)

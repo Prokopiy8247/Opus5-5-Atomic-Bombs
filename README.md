@@ -78,9 +78,24 @@ impact). At detonation:
 - **Test range objects** in distance rings scaled to each bomb's pressure radii (houses, trees,
   vehicles, towers, a bridge, bunkers, a hangar, aircraft) are destroyed in the physically correct
   order and ignite above their thermal thresholds.
-- **Sound:** procedural crack, sub-bass thump, terrain-echo rumble, fireball roar, distant thunder,
-  seismic tremor ahead of the air wave, infrasonic thump for megatons, ear-ringing after close
-  blasts; delays from the speed of sound / blast arrival; distance low-pass; master limiter.
+- **Sound:** every launch synthesizes the blast this bomb makes at this distance, in this
+  atmosphere, on a worker thread while the booster flies (`scripts/audio/blast_synth.gd`, 1.5-6 s
+  of CPU): a Friedlander pulse that becomes a rounded N-wave with range, with the positive-phase
+  duration and peak overpressure of the explosion physics, a shock rise time that grows as the wave
+  weakens, ISO 9613-1 air absorption computed by FFT, turbulent scattering, a dense local rumble,
+  diffuse mountain echoes 8-70 km away (absorbed over their own path), a continuous rolling coda,
+  blast wind behind strong fronts, and burst-type signatures (thermobaric double report, eruption /
+  water-column roar of buried and underwater shots, the second report of high bursts, 'avalanche'
+  multipath for megatons over water). The atmosphere follows the time of day: at noon the sound bends
+  up (beyond the shadow-zone onset only a dull diffracted boom arrives), at dawn/night a ground
+  inversion brings extra reflected arrivals (as at Trinity and RDS-37). Levels come from the physical
+  peak SPL through a compressive map. If synthesis is not finished in time the procedural generic
+  layers (crack, thump, rumble, thunder) play instead. Also: seismic tremor ahead of the air wave,
+  infrasonic thump for megatons, ear-ringing after close blasts, a solid-rocket ignition overpressure
+  'whump' and a crackling roar (skewed shocklet train, waveform skewness ~0.3, derivative skewness
+  ~4-5 as measured on real rockets), and the falling bomb's aerodynamic rush (no cartoon whistle;
+  silent beyond ~5 km and under a parachute). `tools/audio_preview.tscn` exports any event as WAV and
+  `tools/audio_plot.py` draws waveform/envelope/spectrogram sheets.
 
 ## Architecture
 
@@ -99,7 +114,8 @@ scripts/world/              terrain.gd + terrain_math.gd (clipmap + ground-zero 
                             CPU/GPU height function with Earth curvature), environment_ctl.gd
                             (sky, sun/moon, aerial perspective, time of day, eye adaptation),
                             bunker.gd, water_pond.gd, range_objects.gd
-scripts/audio/              audio_synth.gd (procedural synthesis), sound_manager.gd (buses, scheduling)
+scripts/audio/              audio_synth.gd (procedural synthesis), sound_manager.gd (buses, scheduling),
+                            blast_synth.gd + blast_dsp.gd + blast_params.gd (per-event blast synthesis)
 scripts/ui/                 ui_root.gd, terminal_menu.gd, hud.gd, ui_theme.gd
 scripts/bombs/              bomb_models.gd (20 procedural bomb models, booster, parachute)
 scripts/tools/              shot_rig.gd (deterministic screenshots), qa_driver.gd (QA matrix)

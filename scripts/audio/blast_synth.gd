@@ -51,6 +51,18 @@ static func make_event(p: Dictionary) -> Dictionary:
 	var underwater := kind.contains("UNDERWATER")
 	var thermobaric := kind == "THERMOBARIC"
 	var dp := psi * PA_PER_PSI
+	var hob := maxf(float(p.get("hob_m", 0.0)), 0.0)
+	var dg := maxf(sqrt(maxf(d * d - hob * hob, 1.0)), 50.0)
+	# Atmosphere preset from the time of day: noon = lapse (sound bends up: beyond the geometric
+	# shadow onset x_s = sqrt(2 * 86 km * H) + 0.6 km only diffracted, duller sound arrives);
+	# dawn / pre-dawn / night = ground inversion (no shadow, extra 'reflected' arrivals, as at
+	# Trinity and RDS-37); dusk = neutral.
+	var tod := String(p.get("tod", "noon"))
+	var inversion := tod in ["dawn", "predawn", "night"]
+	var shadow := 0.0
+	if tod == "noon":
+		var xs := sqrt(2.0 * 86000.0 * maxf(hob, 2.0)) + 600.0
+		shadow = smoothstep(xs, 3.0 * xs, dg) * 0.6
 
 	# ------------------------------------------------------------------ the front (32 kHz)
 	var front_dur := clampf(1.2 + 1.2 * minf(tp, 1.0) + d / 60000.0, 1.4, 3.0)
@@ -60,28 +72,49 @@ static func make_event(p: Dictionary) -> Dictionary:
 	var press := PackedFloat32Array()
 	press.resize(nf)
 	var t0 := int(FRONT_PRE * FRONT_RATE)
-	# rise time: molecular relaxation (~0.15 Pa*s / dp, sonic-boom data ~3 ms at 48 Pa) plus
-	# turbulence, which grows with range; buried / underwater pulses rise slowly (heave, water)
-	var rise := 0.15 / maxf(dp, 1.0) + 2.0e-4 * sqrt(d / 1000.0)
+	# Rise time (research: sonic-boom and explosion data): tau = tau0 (100 Pa / dp) F_turb, with
+	# tau0 = 0.5 ms in humid air .. 1.5 ms in dry air (molecular relaxation) and F_turb 1-4
+	# (turbulence), clamped to 20 us .. 15 ms. tau sets the 'crack' corner f ~ 1 / (pi tau).
+	var f_turb := 1.0 + 2.0 * rng.f() * clampf(d / 5000.0, 0.3, 1.0)
+	var rise := lerpf(1.5e-3, 0.5e-3, hum) * (100.0 / maxf(dp, 1.0)) * f_turb
+	rise = clampf(rise * (1.0 + 6.0 * shadow), 2.0e-5, 0.03)
+	var tpp := tp
 	if buried:
-		rise = maxf(rise, 0.25 * tp)
+		# camouflet: the ground heave pushes the air - a slow, muffled pulse (tau 5-20 ms, t+ x2.5)
+		rise = maxf(rise, 0.012)
+		tpp = tp * 2.5
 	elif underwater:
-		rise = maxf(rise, 0.12 * tp)
-	rise = clampf(rise, 3.0e-5, 0.5)
-	# far field (< ~1 psi) the Friedlander pulse has evolved into an N-wave with a rear shock
-	var nwave_k := clampf((1.0 - psi) / 0.8, 0.0, 1.0) if not (buried or underwater) else 0.0
-	_add_pulse(press, t0, FRONT_RATE, tp, 1.0, rise, nwave_k)
+		rise = maxf(rise, 0.008)
+		tpp = tp * 1.6
+	elif thermobaric:
+		tpp = tp * 1.7
+	# Pulse shape morphs with the scaled distance Z = R / W^(1/3) (m/kg^1/3): Friedlander below
+	# Z ~ 100, a rounded N-wave (negative lobe ~45 % for ~1.2 t+) beyond Z ~ 500
+	var zs := d / pow(w * 1.0e6, 1.0 / 3.0)
+	var nwave_k := smoothstep(log(100.0), log(500.0), log(maxf(zs, 1.0))) if not (buried or underwater) else 0.0
 	if thermobaric:
-		# FAE: dispersal charge (small sharp pop) ~0.15 s before the main, slower 'whoomph'
+		# FAE: a faint dispersal pop (-30 dB), then the cloud detonation 0.15 s later whose onset is
+		# smeared over ~0.1 s (cloud size / c): a 'whoomph' with a long positive phase
 		var dly := float(p.get("thermobaric_delay_s", 0.15))
-		var main := PackedFloat32Array()
-		main.resize(nf)
-		_add_pulse(main, t0, FRONT_RATE, tp * 1.6, 1.0, maxf(rise, 0.004), 0.0)
-		press.fill(0.0)
-		_add_pulse(press, t0, FRONT_RATE, tp * 0.25, 0.12, rise, 0.0)
-		AudioSynth.add(press, main, int(dly * FRONT_RATE), 1.0)
-	# loudspeaker/headphone band: below ~16 Hz nothing moves; keep it as a 1st-order roll-off
-	var direct := AudioSynth.hp1(press.duplicate(), 16.0, FRONT_RATE)
+		_add_pulse(press, t0, FRONT_RATE, tp * 0.2, 0.032, rise, 0.0)
+		_add_pulse(press, t0 + int(dly * FRONT_RATE), FRONT_RATE, tpp, 1.0, maxf(rise, 0.03), nwave_k * 0.5)
+	else:
+		_add_pulse(press, t0, FRONT_RATE, tpp, 1.0, rise, nwave_k)
+	if buried:
+		# gas venting through the crater: a second, weaker and slower pulse ~0.5 s later
+		_add_pulse(press, t0 + int(0.5 * FRONT_RATE), FRONT_RATE, tpp * 1.4, 0.45, 0.02, 0.0)
+	# loudspeaker/headphone band: below ~16 Hz nothing moves; keep it as a 1st-order roll-off.
+	# Air absorption of the front: a strong shock stays steep (nonlinear steepening balances
+	# absorption), so the absorbing path is shortened for strong fronts (to ~15 % above ~700 Pa).
+	# (research: apply absorption fully to weak fronts, cap it at ~6 dB while dp > 150 Pa; a
+	# shadowed, diffracted front gets the full absorption)
+	var floor_g := db_to_linear(-6.0) * smoothstep(100.0, 150.0, dp) * (1.0 - shadow / 0.6)
+	var direct := BlastDSP.absorb(press, FRONT_RATE, d, rh, 15.0, 16.0, 0.0, floor_g)
+	if nuclear and not (buried or underwater):
+		# the heavy 'body' of a nuclear report on loudspeakers: a 55 -> 32 Hz thump that lasts about
+		# min(t+, 0.5 s), riding on the front (research: designed 30-60 Hz burst for nuclear)
+		var th := AudioSynth.sweep(nf - t0, FRONT_RATE, 55.0, 32.0, minf(tpp, 0.5), 0.004, minf(tpp, 0.5) * 0.45)
+		AudioSynth.add(direct, th, t0, 0.32 * AudioSynth.peak(direct))
 	# scattered copies of the front (turbulence, terrain diffraction): a dense, decaying rattle
 	# right behind the bang that grows with range
 	var scat := PackedFloat32Array()
@@ -110,7 +143,7 @@ static func make_event(p: Dictionary) -> Dictionary:
 		fr[i] += scat[i - sh] * sg * 0.35 - scat[i] * sg * 0.17
 	# body: the long positive phase of big yields is felt as a push; on speakers it becomes the
 	# low roar of everything that rattles plus the harmonics of the pressure pulse
-	var body_k := clampf((tp - 0.25) / 1.0, 0.0, 1.0) * 0.6
+	var body_k := clampf((tp - 0.25) / 1.0, 0.0, 1.0) * 0.35
 	if body_k > 0.0:
 		var bn := AudioSynth.noise(nf, sd + 11)
 		AudioSynth.lp1(bn, 70.0, FRONT_RATE)
@@ -133,7 +166,10 @@ static func make_event(p: Dictionary) -> Dictionary:
 	var front := AudioSynth.to_wav_stereo(fl, fr, int(FRONT_RATE), false, 0.95 / maxf(pk, 1e-9))
 
 	# ------------------------------------------------------------------ the tail (8 kHz)
-	var tail_dur := clampf(14.0 + 9.0 * log(1.0 + w) / log(10.0) + d / 4000.0, 10.0, 130.0)
+	# rolling-rumble decay (research: ~0.5 s at 1 km, ~2 s at 3 km, 4-6 s at 10-15 km for bombs;
+	# tens of seconds for kiloton-class events in hilly terrain)
+	var tau_tail := clampf(0.55 * pow(d / 1000.0, 0.9) * (1.0 + 0.5 * log(1.0 + w) / log(10.0)), 0.4, 25.0)
+	var tail_dur := clampf(maxf(14.0 + 9.0 * log(1.0 + w) / log(10.0) + d / 4000.0, 6.0 * tau_tail), 10.0, 130.0)
 	var nt := int(tail_dur * TAIL_RATE)
 	var tl := PackedFloat32Array()
 	tl.resize(nt)
@@ -146,12 +182,16 @@ static func make_event(p: Dictionary) -> Dictionary:
 	var kpulse := PackedFloat32Array()
 	kpulse.resize(kn)
 	var krise := maxf(rise * 8.0, 0.004)
-	_add_pulse(kpulse, kpre, TAIL_RATE, tp * (1.6 if thermobaric else 1.0), 1.0, krise, nwave_k * 0.6)
+	_add_pulse(kpulse, kpre, TAIL_RATE, tpp, 1.0, krise, nwave_k * 0.6)
 	_fade(kpulse, TAIL_RATE, kn / TAIL_RATE * 0.35)
 	var kernels: Array[PackedFloat32Array] = []
 	var kpaths := [d + 6000.0, d + 25000.0, d + 70000.0]
 	for kp: float in kpaths:
-		kernels.append(BlastDSP.absorb(kpulse, TAIL_RATE, kp, rh, 15.0, 18.0, 900.0))
+		var ker := BlastDSP.absorb(kpulse, TAIL_RATE, kp, rh, 15.0, 18.0, 900.0)
+		# the zero-phase absorption filter spreads the pulse both ways: taper the truncated edges
+		# (an abrupt end would click in every echo)
+		_taper(ker, TAIL_RATE, 0.12, 0.15)
+		kernels.append(ker)
 	# Echo field in the bunker frame (observer at the origin facing +x, ground zero at dg):
 	#  - LOCAL scatterers (hills, gullies, outcrops, structures within a few km of the source and
 	#    the observer) give the dense rolling rumble of the first seconds;
@@ -159,7 +199,6 @@ static func make_event(p: Dictionary) -> Dictionary:
 	# Each population is built separately and scaled to a target level relative to the direct
 	# pulse (energy ratio), so the balance does not depend on how many reflectors happen to land
 	# where; amplitude ~ 1/(r1 r2) only shapes the distribution inside a population.
-	var dg := maxf(sqrt(maxf(d * d - float(p.get("hob_m", 0.0)) ** 2, 1.0)), 50.0)
 	var d_ref_rms := _rms(kernels[0], kpre, mini(kernels[0].size(), kpre + int(maxf(tp, 0.05) * TAIL_RATE))) + 1e-9
 	var lg := log(1.0 + w) / log(10.0)
 	var dkm := log(maxf(d / 1000.0, 0.5)) / log(10.0)
@@ -179,19 +218,37 @@ static func make_event(p: Dictionary) -> Dictionary:
 		var dly := (r1 + r2 - dg) / C0
 		if dly > tail_dur - 1.0 or dly < 0.05:
 			continue
-		var a := dg / (r1 * r2) * 1000.0 * rng.range(0.3, 1.0) * (1.0 if rng.f() > 0.25 else -0.7)
+		var a := dg / (r1 * r2) * 1000.0 * rng.range(0.3, 1.0) * (1.0 if rng.f() > 0.25 else -0.7) * exp(-dly / tau_tail)
 		var pan := clampf(ry / r2, -1.0, 1.0)
 		var kidx := 0 if dly < 8.0 else 1
 		_add_scaled(loc_l, loc_r, kernels[kidx], int(dly * TAIL_RATE) - kpre, a * sqrt(0.5 * (1.0 + pan)), a * sqrt(0.5 * (1.0 - pan)))
 	# rumble level: scattering grows with range (more terrain in between, refraction), and big
 	# yields roll longer (the source itself is kilometres wide)
-	var loc_db := clampf(-15.0 + 5.0 * dkm + 1.0 * lg, -18.0, -5.0) + float(p.get("rumble_db", 0.0))
+	# direct-to-rumble ratio (research): about -25 dB within 2 km, -6..-15 dB beyond 20 km
+	var loc_db := clampf(-25.0 + 12.0 * log(maxf(d / 2000.0, 1.0)) / log(10.0), -25.0, -9.0)
+	loc_db += 2.0 * clampf(log(maxf(w, 1.0)) / log(10.0) / 4.7, 0.0, 1.0) + 4.0 * shadow + float(p.get("rumble_db", 0.0))
 	_mix_scaled(tl, tr, loc_l, loc_r, d_ref_rms * db_to_linear(loc_db), TAIL_RATE, 0.2, 4.0)
 	var rid_l := PackedFloat32Array()
 	rid_l.resize(nt)
 	var rid_r := PackedFloat32Array()
 	rid_r.resize(nt)
 	var n_ref := int(clampf(90.0 + 30.0 * lg, 90.0, 220.0))
+	# smear kernel: low-passed (500 Hz) noise with a 0.6 s exponential decay (-36 dB at its end, plus
+	# a taper: no audible cut-off), energy-matched to the echo kernel
+	var smear_k := AudioSynth.noise(int(2.5 * TAIL_RATE), sd + 51)
+	AudioSynth.lp1(smear_k, 500.0, TAIL_RATE)
+	AudioSynth.lp1(smear_k, 500.0, TAIL_RATE)
+	AudioSynth.env_ad(smear_k, TAIL_RATE, 0.05, 0.6)
+	_fade(smear_k, TAIL_RATE, 0.8)
+	# the smeared energy travelled as far as the echo itself: same air absorption (a 30-70 km echo
+	# keeps almost nothing above ~150 Hz)
+	var smears: Array[PackedFloat32Array] = [smear_k]
+	var smear_gs: Array[float] = [0.0]
+	for kk in [1, 2]:
+		var sk := BlastDSP.absorb(smear_k, TAIL_RATE, kpaths[kk], rh, 15.0, 18.0, 900.0)
+		_taper(sk, TAIL_RATE, 0.02, 0.3)
+		smears.append(sk)
+		smear_gs.append(_rms(kernels[kk], kpre, kpre + int(maxf(tp, 0.05) * TAIL_RATE)) / maxf(_rms(sk, 0, int(0.8 * TAIL_RATE)), 1e-9) * 0.5)
 	var got := 0
 	for k in n_ref:
 		var rr := 8000.0 + 62000.0 * pow(rng.f(), 0.8)
@@ -207,13 +264,33 @@ static func make_event(p: Dictionary) -> Dictionary:
 		var a := dg / maxf(r1 * rr, 1.0) * 1.0e4 * rng.range(0.4, 1.2)
 		var kidx := 1 if extra < 50000.0 else 2
 		var pan := clampf(ry / rr, -1.0, 1.0)
-		_add_scaled(rid_l, rid_r, kernels[kidx], int(dly * TAIL_RATE) - kpre, a * sqrt(0.5 * (1.0 + pan)), a * sqrt(0.5 * (1.0 - pan)))
+		_add_scaled(rid_l, rid_r, kernels[kidx], int(dly * TAIL_RATE) - kpre, a * 0.6 * sqrt(0.5 * (1.0 + pan)), a * 0.6 * sqrt(0.5 * (1.0 - pan)))
+		# a mountainside reflects diffusely: the echo is smeared over ~0.5-2 s
+		var smg: float = smear_gs[kidx]
+		_add_scaled(rid_l, rid_r, smears[kidx], int(dly * TAIL_RATE), a * sqrt(0.5 * (1.0 + pan)) * smg, a * sqrt(0.5 * (1.0 - pan)) * smg)
 	if got > 0:
 		var rid_db := clampf(-21.0 + 3.0 * dkm + 1.5 * lg, -26.0, -10.0) + float(p.get("echo_db", 0.0))
 		_mix_scaled(tl, tr, rid_l, rid_r, d_ref_rms * db_to_linear(rid_db), TAIL_RATE, 20.0, 90.0)
 	# diffuse late reverberation: noise whose envelope follows the echo energy, darker with time
-	var env_l := _envelope(tl, TAIL_RATE, 0.9)
-	var env_r := _envelope(tr, TAIL_RATE, 0.9)
+	var env_l := _envelope(tl, TAIL_RATE, 2.5)
+	var env_r := _envelope(tr, TAIL_RATE, 2.5)
+	# continuous coda bed under the echoes (research: T60 = 3 + 2 log10(W + 1) + R_km / 20 s, capped
+	# at 40 s, starting ~10 dB under the front): no silent gaps between mountain echoes
+	var t60 := clampf(3.0 + 2.0 * lg + d / 20000.0, 3.0, 40.0)
+	var bed0 := d_ref_rms * db_to_linear(-14.0 + 3.0 * clampf(dkm, 0.0, 2.0))
+	var kb := exp(-6.9 / (t60 * TAIL_RATE))
+	var eb := bed0
+	# the reverberant field between distant echoes decays slowly (release ~2.5 s close, up to 8 s far
+	# away): echoes ride on a continuous rumble instead of starting from silence
+	var rel := exp(-1.0 / (clampf(1.5 + d / 5000.0, 2.5, 8.0) * TAIL_RATE))
+	var hl := 0.0
+	var hr := 0.0
+	for i in nt:
+		hl = maxf(env_l[i], hl * rel)
+		hr = maxf(env_r[i], hr * rel)
+		env_l[i] = maxf(hl, eb)
+		env_r[i] = maxf(hr, eb)
+		eb *= kb
 	var dn := AudioSynth.noise(nt, sd + 21)
 	var dn2 := AudioSynth.noise(nt, sd + 22)
 	var c1 := 0.0
@@ -221,6 +298,7 @@ static func make_event(p: Dictionary) -> Dictionary:
 	var c3 := 0.0
 	var c4 := 0.0
 	var al := 0.0
+	var roll := AudioSynth.smooth_noise(nt, sd + 23, 2.5, TAIL_RATE)
 	for i in nt:
 		if i & 255 == 0:
 			var tt := float(i) / TAIL_RATE
@@ -229,29 +307,60 @@ static func make_event(p: Dictionary) -> Dictionary:
 		c2 += al * (c1 - c2)
 		c3 += al * (dn2[i] - c3)
 		c4 += al * (c3 - c4)
-		tl[i] += c2 * env_l[i] * 3.2
-		tr[i] += c4 * env_r[i] * 3.2
+		var rm := 0.75 + 0.25 * roll[i]
+		tl[i] += c2 * env_l[i] * 3.2 * rm
+		tr[i] += c4 * env_r[i] * 3.2 * rm
 	# burst-type extras
 	if buried or underwater:
 		# eruption / water column and the debris or water falling back: a long low roar
 		var e0 := float(p.get("eruption_s", 0.6))
 		var ed := float(p.get("eruption_dur_s", 8.0 if underwater else 5.0))
 		_add_roar(tl, tr, TAIL_RATE, e0, ed, 0.45, 220.0 if underwater else 140.0, sd + 31, rng)
-	if nuclear and w >= 1.0 and d < 60000.0:
-		# the rising fireball's turbulent roar (heard close, minutes for megatons)
-		var rd := clampf(6.0 * pow(w, 0.25), 6.0, 60.0)
-		var rg := 0.22 * clampf(1.0 - log(d / 3000.0) / log(30.0), 0.0, 1.0)
-		if rg > 0.0:
-			_add_roar(tl, tr, TAIL_RATE, 0.5, rd, rg, 120.0, sd + 41, rng)
+	if inversion and d > 3000.0 and not buried:
+		# ground inversion: 1-2 further arrivals 1.5-6 s after the first, nearly as strong and a
+		# little duller ('knocked off our feet by a reflected shock wave', RDS-37 at 32 km)
+		var n_inv := 1 if d < 15000.0 else 2
+		for k in n_inv:
+			var dl := rng.range(1.5, 3.5) + 2.2 * k
+			var g := rng.range(0.5, 0.9) * (0.8 if k > 0 else 1.0)
+			_add_scaled(tl, tr, kernels[0], int(dl * TAIL_RATE) - kpre, g * rng.range(0.85, 1.0), g * rng.range(0.85, 1.0))
+	if w >= 1000.0 and (underwater or bool(p.get("over_water", false)) or d > 80000.0):
+		# megatons over water / far away: an 'avalanche' of several bangs (atmospheric multipath)
+		var n_sub := 3 + int(rng.f() * 5.0)
+		for k in n_sub:
+			var dl := rng.range(1.0, 15.0)
+			var g := rng.range(0.25, 0.6) * exp(-dl / 20.0)
+			_add_scaled(tl, tr, kernels[1], int(dl * TAIL_RATE) - kpre, g * rng.range(0.7, 1.0), g * rng.range(0.7, 1.0))
+	# blast wind: the air behind the front moves at u = dp / (rho c) ~ dp / 412 m/s; above ~3 m/s it
+	# is heard as a gust/roar for the positive phase (Farrell at 9 km: 'the strong, sustained, awesome
+	# roar'), reversing in the suction phase
+	var u := dp / 412.0
+	if u > 1.5 and not buried:
+		var wn := AudioSynth.noise(nt, sd + 61)
+		AudioSynth.lp1(wn, 380.0, TAIL_RATE)
+		AudioSynth.lp1(wn, 380.0, TAIL_RATE)
+		AudioSynth.hp1(wn, 25.0, TAIL_RATE)
+		AudioSynth.normalize(wn, 1.0)
+		var wg := clampf(u * u / 225.0, 0.02, 1.0) * d_ref_rms * 2.2
+		var gust := AudioSynth.smooth_noise(nt, sd + 62, 3.0, TAIL_RATE)
+		for i in mini(nt, int(3.5 * tpp * TAIL_RATE)):
+			var x := float(i) / TAIL_RATE / tpp
+			var pv := (1.0 - x) * exp(-x)
+			var e := pv * pv * (1.0 - exp(-x * 40.0)) * (0.75 + 0.25 * gust[i])
+			tl[i] += wn[i] * e * wg
+			tr[i] += wn[(i + 997) % nt] * e * wg
 	AudioSynth.hp1(tl, 16.0, TAIL_RATE)
 	AudioSynth.hp1(tr, 16.0, TAIL_RATE)
 	_fade(tl, TAIL_RATE, 3.0)
 	_fade(tr, TAIL_RATE, 3.0)
 	var pt := maxf(AudioSynth.peak(tl), AudioSynth.peak(tr))
 	var tail := AudioSynth.to_wav_stereo(tl, tr, int(TAIL_RATE), false, 0.95 / maxf(pt, 1e-9))
+	var spl := 20.0 * log(maxf(dp, 1e-3) / 2.0e-5) / log(10.0)
+	var front_db := _map_spl(spl) - 12.0 * shadow
 	# both streams are normalised to the same peak: playing the tail at tail_gain_db relative to the
 	# front restores their physical ratio
-	return {"front": front, "tail": tail, "front_dur": front_dur, "tail_dur": tail_dur,
+	return {"front": front, "tail": tail, "front_dur": front_dur, "tail_dur": tail_dur, "tau_tail": tau_tail,
+		"front_db": front_db, "spl_db": spl, "shadow": shadow,
 		"front_peak": pk, "tail_peak": pt, "tail_gain_db": linear_to_db(maxf(pt, 1e-9) / maxf(pk, 1e-9)),
 		"rise_s": rise, "t_plus": tp}
 
@@ -270,8 +379,8 @@ static func _add_pulse(buf: PackedFloat32Array, start: int, rate: float, tp: flo
 			break
 		var x := t / tp
 		var fr := (1.0 - x) * exp(-x)
-		# N-wave: linear fall to -1 at 2 t+, then the rear shock back to 0 within ~ the rise time
-		var nw := 1.0 - x if x < 2.0 else -exp(-(t - 2.0 * tp) / (tr * 0.45))
+		# rounded N-wave: linear fall to 0 at t+, a negative lobe of ~45 % over 1.2 t+, then back
+		var nw := 1.0 - x if x < 1.0 else (-0.45 * sin(PI * (x - 1.0) / 1.2) if x < 2.2 else 0.0)
 		var rf := 1.0 - exp(-t / (tr * 0.45))
 		buf[i] += lerpf(fr, nw, nk) * rf * amp
 		i += 1
@@ -312,6 +421,19 @@ static func _add_scaled(l: PackedFloat32Array, r: PackedFloat32Array, k: PackedF
 		var v := k[j]
 		l[off + j] += v * gl
 		r[off + j] += v * gr
+
+
+## Output level (dBFS of the front's peak) for a physical peak SPL: a compressive map
+## (research: 100 dB -> -30, 120 -> -18, 140 -> -10, 160 -> -4, >= 180 -> -1 dBFS).
+static func _map_spl(spl: float) -> float:
+	var xs := [80.0, 100.0, 120.0, 140.0, 160.0, 180.0]
+	var ys := [-42.0, -30.0, -18.0, -10.0, -4.0, -1.0]
+	if spl <= xs[0]:
+		return ys[0]
+	for i in range(1, xs.size()):
+		if spl <= xs[i]:
+			return lerpf(ys[i - 1], ys[i], (spl - xs[i - 1]) / (xs[i] - xs[i - 1]))
+	return -1.0
 
 
 ## Adds (sl, sr) to (l, r) scaled so that its RMS over [t0, t1] equals target_rms.
@@ -369,6 +491,17 @@ static func _add_roar(l: PackedFloat32Array, r: PackedFloat32Array, rate: float,
 		var e := (1.0 - exp(-t / (0.12 * dur))) * exp(-t / (0.55 * dur)) * (0.7 + 0.3 * mod[j])
 		l[s0 + j] += nl[j] * e * gain * ref * 6.0
 		r[s0 + j] += nr[j] * e * gain * ref * 6.0
+
+
+## Raised-cosine fade-in over a_s and fade-out over b_s seconds, in place.
+static func _taper(x: PackedFloat32Array, rate: float, a_s: float, b_s: float) -> void:
+	var n := x.size()
+	var ma := mini(n / 2, int(a_s * rate))
+	var mb := mini(n / 2, int(b_s * rate))
+	for j in ma:
+		x[j] *= 0.5 - 0.5 * cos(PI * float(j) / float(ma))
+	for j in mb:
+		x[n - 1 - j] *= 0.5 - 0.5 * cos(PI * float(j) / float(mb))
 
 
 static func _fade(x: PackedFloat32Array, rate: float, secs: float) -> void:

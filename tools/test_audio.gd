@@ -287,6 +287,33 @@ func _test(spec: bool) -> void:
 		await process_frame
 	_check(not sm._vent.playing, "ambience faded out")
 	sm.stop_all()
+	# 9) per-event blast synthesis: prepared at launch on a worker thread, used when the blast arrives
+	var ps := _params(15.0, 20000.0, "NUCLEAR_AIR", 580.0)
+	var bp := {"yield_kt": 15.0, "kind": "NUCLEAR_AIR", "nuclear": true, "distance_m": ps["distance_m"],
+			"hob_m": 580.0, "p_psi": ps["p_psi"], "t_plus": 0.5, "humidity": 0.35, "seed": 77,
+			"tod": "noon", "key": "test_15kt"}
+	var t_syn := Time.get_ticks_msec()
+	sm.prepare_blast(bp)
+	while sm._synth_ready("test_15kt").is_empty() and Time.get_ticks_msec() - t_syn < 90000:
+		await process_frame
+	var syn := sm._synth_ready("test_15kt")
+	_check(not syn.is_empty() and syn.get("front") != null and syn.get("tail") != null,
+			"blast event synthesized on a worker thread (%d ms)" % (Time.get_ticks_msec() - t_syn))
+	ps["synth_key"] = "test_15kt"
+	_start(ps)
+	await _advance(0.0, float(ps["t_shock"]) + 2.0, 0.25, 1.0)
+	_check(sm._mode == "synth" and _fired("blast_front") and _fired("blast_tail") and not _fired("crack")
+			and not _fired("rumble"), "synthesized front + tail replace the generic layers (mode %s)" % sm._mode)
+	var pf := sm._p["blast_front"] as AudioStreamPlayer
+	_check(pf.stream == syn["front"] and is_equal_approx(pf.volume_db, float(syn["front_db"])),
+			"front plays the synthesized stream at its SPL-mapped level (%.1f dB)" % pf.volume_db)
+	_check(_fired_at("blast_front") < _fired_at("blast_tail") and _fired("tremor"), "front pre-roll before the tail, tremor kept")
+	# a different key (not prepared) falls back to the generic layers
+	ps["synth_key"] = "other"
+	_start(ps)
+	await _advance(0.0, float(ps["t_shock"]) + 2.0, 0.25, 1.0)
+	_check(sm._mode == "generic" and _fired("crack") and not _fired("blast_front"), "unprepared event falls back to generic layers")
+	sm.stop_all()
 	# no node growth over repeated launches
 	var nodes0 := sm.get_child_count()
 	for r in 20:

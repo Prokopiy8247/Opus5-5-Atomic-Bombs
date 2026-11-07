@@ -349,7 +349,7 @@ func launch(bomb_index: int, dist_km: float, az_deg: float) -> void:
 		sound.play_ui("launch")
 		# synthesize the blast this bomb will make at this distance while the booster flies
 		var gd := Vector2(target_gz.x, target_gz.z).length()
-		var sp := BlastParams.params_for(b, gd, Game.humidity)
+		var sp := BlastParams.params_for(b, gd, Game.humidity, String(Game.TOD_NAMES[Game.tod]))
 		sp["key"] = _synth_key(bomb_index, gd)
 		sound.prepare_blast(sp)
 	if ui:
@@ -380,7 +380,8 @@ func _on_detonated(_burst: Vector3) -> void:
 
 
 func _synth_key(bomb_index: int, ground_m: float) -> String:
-	return "%d_%d" % [bomb_index, int(ground_m)]
+	# the atmosphere (time of day, humidity) changes the event too
+	return "%d_%d_%d_%d" % [bomb_index, int(ground_m), Game.tod, int(Game.humidity * 100.0)]
 
 
 func reset_scene() -> void:
@@ -519,7 +520,7 @@ func _process(delta: float) -> void:
 	if state == State.FLIGHT and sound:
 		sound.rocket_update(launcher.current_position())
 		# falling-bomb whistle over the last seconds (air-dropped / parachute phase)
-		if not _whistling and launcher.time_to_detonation() < 4.0:
+		if not _whistling and launcher.time_to_detonation() < 4.0 and not launcher.chute_on:
 			_whistling = true
 			sound.whistle_start()
 	if explosion:

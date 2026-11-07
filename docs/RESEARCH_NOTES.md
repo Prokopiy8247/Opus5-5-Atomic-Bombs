@@ -677,3 +677,59 @@ All 20 folders were checked by the merge on 2026-11-07: every image is a real JP
 - **Not found:** quantitative Wilson-cloud sizes except Baker (A7 heuristic is ESTIMATED; the search backend refused the query); Little Feller I crater numbers (Project 1.9 report offline); Sedan base-surge timing (extent measured, timing estimated); a source for the Mk 82 yellow-band width (76 mm) and for the dossier's Trinity device mass (≈4 t, one secondary source); RDS-37 length ("up to 7 m", single source).
 - **Second-hand only:** the MOAB Alcis analysis (page behind Cloudflare, read via search summary); Romps et al. 2026 Hiroshima cloud-height study (press coverage); Mk 82/84 fragment ranges (forum-level).
 - **Physics:** the blackbody colour stops and the sound-absorption table are approximate; the Wilson-cloud model and the cloud-rise tanh law are heuristics; megaton cloud tops and timings must come from the per-bomb keyframes.
+
+## 7. Sound research (audio rework, 2026-11-07)
+
+Three research agents (nuclear eyewitness accounts and recordings, conventional/HE blasts, rockets
+and falling bombs) and one synthesis-technique agent read primary and technical sources; the
+numbers below are the ones the synthesizer (`scripts/audio/blast_synth.gd`, `audio_synth.gd`) uses.
+
+**What the real events sounded like**
+- Trinity (pre-dawn, mountains on both sides): at 16 km the air blast came after ~40-50 s as a dull
+  double thud with no sharp crack, followed by thunder that rolled between the ranges for a long
+  time; at 9 km a blast push followed at once by a sustained roar; at 32 km some heard a sharp
+  report. Reconstruction: ~1 kPa and t+ ~1.1-1.4 s at 16 km. -> dawn inversion, long mountain coda.
+- Hiroshima/Nagasaki: survivors close in describe a flash with no sound ("noiseless flash"); nobody
+  heard the bomb fall. -> no whistle for free-falling bombs beyond ~5 km, none under parachutes.
+- Crossroads Baker: a muffled report, then the roar of the water column falling back for tens of
+  seconds; flat atolls, so no terrain echoes. -> eruption / fall-back roar, no mountain echoes.
+- Megatons (Castle Bravo, Tsar Bomba, RDS-37): at tens to hundreds of km a sharp report, then a long
+  push and gale and prolonged rumbling, often several distinct bangs (multipath); RDS-37's shock was
+  focused by an inversion and hurt people far away. -> 'avalanche' of arrivals, inversion preset.
+- Most nuclear test films are dubbed; 1950s recordings that are authentic (Annie 1953, Baker 1946
+  radio) lost everything below ~30-50 Hz and clipped the peak - the 'click' of old broadcasts is the
+  recording chain, not the event. The infrasonic push has to be rebuilt, not copied.
+- HE: a Mk 82-class blast is a hard crack-boom with a ~20 ms positive phase (fundamental ~20 Hz),
+  hill echoes and little infrasonic push; thermobaric (MOAB/FOAB) has a dispersal pop, then the
+  main report with a long positive phase; buried 'earthquake' bombs give ground tremor before a
+  muffled thump.
+
+**Physics used**
+- Peak overpressure and positive-phase duration from the game's blast physics (DNA/Kingery-Bulmash;
+  far field t+ grows slowly with range); waveform Friedlander -> rounded N-wave with scaled distance
+  Z = R/W^(1/3) from 100 to 500.
+- Shock rise time tau ~ 0.5-1.5 ms x (100 Pa / dp), longer in turbulence and in the shadow zone;
+  nonlinear steepening keeps the front sharp: absorption on the front is capped at ~6 dB while
+  dp > 150 Pa.
+- ISO 9613-1 atmospheric absorption (computed, not tabulated; humidity from the site/player).
+- Refraction: daytime lapse -> shadow zone from x_s = sqrt(2 * 86 km * H) + 0.6 km (duller, weaker
+  diffracted boom); night/dawn inversion -> no shadow, extra arrivals 1.5-6 s later.
+- Rolling rumble: direct-to-rumble ratio ~-25 dB within 2 km, -6..-15 dB beyond 20 km; coda
+  T60 = 3 + 2 log10(W + 1) + R_km/20 s; echo delays (d1 + d2 - R)/c from ridges 8-70 km away.
+- Blast wind u = dp / (rho c) ~ dp / 412 m/s, audible as a gust above ~3 m/s.
+- Solid rockets: jet-noise spectrum peaking near 21 * sqrt(7.6 MN / F) Hz with ~-9 dB/oct below and
+  ~-4.5 dB/oct above; crackle = skewed shocklet train (waveform skewness ~0.3-0.6, derivative
+  skewness >= 5); ignition overpressure = ~60 ms positive triangle + ~120 ms negative half-sine.
+- Loudspeaker practice (film/game sound design): a designed 30-60 Hz 'body' under infrasonic events,
+  compressive loudness mapping, transient emphasis on the front.
+
+**Sources (selection)** - Glasstone & Dolan ch. III (bkardell.com/effects-of-nuclear-math);
+arXiv 2102.06574, 2103.05784 ('Fermi at Trinity'), 2408.04078; Rigby et al. 2014 (negative phase,
+eprints.whiterose.ac.uk/78295); DTIC AD0737127, AD0743173; NASA NTRS 19940028990, 19720023371,
+19910007381; AHF Trinity eyewitness documents (ahf.nuclearmuseum.org); A. Wellerstein,
+blog.nuclearsecrecy.com/?p=2071 (dubbed test films); nuclearweaponarchive.org Tsar Bomba;
+DENIX DoD blast-noise fact sheet; BYU acoustics (K. Gee) rocket crackle and Starship/SLS far-field
+papers (physics.byu.edu, acoustics.byu.edu/nonlinearity, JASA-EL 3(2) 023601); sengpielaudio ISO
+9613-1 calculator; python-acoustics ISO 9613-1 implementation; Farnell, 'Designing Sound' (MIT
+Press) practicals 17/31/32; DICE Battlefield 1 sound talk (asoundeffect.com, GDC Vault 1024111).
+No recording or sample was downloaded: every sound in the game is synthesized.

@@ -54,14 +54,14 @@ func _ready() -> void:
 		var prof := b.get("profile", {}) as Dictionary
 		if prof.has("site_humidity"):
 			hum = float(prof["site_humidity"])
-		var p := BlastParams.params_for(b, km * 1000.0, hum)
+		var p := BlastParams.params_for(b, km * 1000.0, hum, String(prof.get("tod_hist", "noon")))
 		var t0 := Time.get_ticks_msec()
 		var r := BlastSynth.make_event(p)
 		var ms := Time.get_ticks_msec() - t0
 		var base := out.path_join("b%02d_%s_%skm" % [n, b["id"], str(km)])
 		(r["front"] as AudioStreamWAV).save_to_wav(base + "_front.wav")
 		(r["tail"] as AudioStreamWAV).save_to_wav(base + "_tail.wav")
-		print("PREVIEW b%02d %-14s d=%.1f km p=%.4f psi t+=%.3f s rise=%.5f s front=%.1f s tail=%.1f s tail_gain=%.1f dB gen=%d ms" % [
-			n, b["id"], p["distance_m"] / 1000.0, p["p_psi"], p["t_plus"], r["rise_s"], r["front_dur"], r["tail_dur"], r["tail_gain_db"], ms])
+		print("PREVIEW b%02d %-14s d=%.1f km spl=%.0f dB front=%.1f dBFS shadow=%.2f p=%.4f psi t+=%.3f s rise=%.5f s front=%.1f s tail=%.1f s tail_gain=%.1f dB gen=%d ms" % [
+			n, b["id"], p["distance_m"] / 1000.0, r["spl_db"], r["front_db"], r["shadow"], p["p_psi"], p["t_plus"], r["rise_s"], r["front_dur"], r["tail_dur"], r["tail_gain_db"], ms])
 	print("READY")
 	get_tree().quit()

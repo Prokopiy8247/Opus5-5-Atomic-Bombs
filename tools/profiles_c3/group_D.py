@@ -46,6 +46,8 @@ CYCLE3 = {
     # translucent bell skirt at mid-stem, a thin stem ring, brown dust skirt, flat late cap.
     "rds37": dict(
         tod_hist="noon",
+        # sound: the documented low inversion over the site (extra 'reflected' blast arrivals)
+        sound_atmos="dawn",
         wilson_hum_min=0.75, wilson_start=0.5, wilson_dur_s=2.8, wilson_flatten=0.35, wilson_discs=0.6,
         wilson_opacity=0.6,
         ring_list=[[1.5, 7.0, 900.0, 2400.0, 40.0], [2.0, 7.0, 1900.0, 3000.0, 40.0],

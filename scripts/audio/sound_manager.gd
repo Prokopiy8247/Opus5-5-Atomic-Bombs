@@ -25,7 +25,7 @@ const LN10 := 2.302585092994046
 # blasts at their recommended distance (Mk 82 at 2 km peaks around -21 dBFS)
 const VENT_DB := -24.0
 const HUM_DB := -33.0
-const ROCKET_DB := 10.0
+const ROCKET_DB := 16.0          # +6 dB vs the old loop: the crackling roar has a crest factor of ~12 (was ~4)
 const WHISTLE_DB := -9.0
 ## The falling-bomb whistle keeps its full level up to this distance, then falls off as 1/r
 ## (floored at WHISTLE_MIN_DB so it stays a faint cue at long range).
@@ -663,9 +663,14 @@ func _resolve_mode() -> void:
 	_mode = "synth"
 	_syn_stream["blast_front"] = r["front"]
 	_syn_stream["blast_tail"] = r["tail"]
+	# levels: the front's peak from the physical peak SPL (compressive map, BlastSynth._map_spl),
+	# the tail at its physical ratio to the front
+	var fdb := float(r.get("front_db", _lvl))
 	for ev: Dictionary in _events:
-		if ev["id"] == "blast_tail":
-			ev["db"] = float(ev["db"]) + float(r.get("tail_gain_db", -10.0))
+		if ev["id"] == "blast_front":
+			ev["db"] = fdb
+		elif ev["id"] == "blast_tail":
+			ev["db"] = fdb + float(r.get("tail_gain_db", -10.0))
 	# the synthesized streams already carry the air absorption and the echoes
 	lp_blast.cutoff_hz = 20000.0
 	reverb_blast.wet = 0.04
@@ -949,7 +954,11 @@ func _whistle_dist_db() -> float:
 	if not _src_known:
 		return 0.0
 	var d := _src_pos.distance_to(_listener_pos())
-	return clampf(-20.0 * _log10(maxf(d, WHISTLE_REF_M) / WHISTLE_REF_M), WHISTLE_MIN_DB, 0.0)
+	# research: never louder than ~70-80 dB at 1 km and inaudible beyond ~3-5 km
+	if d >= 5000.0:
+		return -80.0
+	var db := -20.0 * _log10(maxf(d, WHISTLE_REF_M) / WHISTLE_REF_M)
+	return db + linear_to_db(maxf(1.0 - smoothstep(3000.0, 5000.0, d), 1.0e-4))
 
 
 ## Energy compensation for a pitched layer (it lasts 1/pitch longer).

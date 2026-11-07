@@ -2975,6 +2975,7 @@
     "skirt_height": 2.5,
     "stem_flare": 3.0,
     "wilson_force": true,
+    "sound_atmos": "dawn",
     "wilson_hum_min": 0.75,
     "wilson_start": 0.5,
     "wilson_dur_s": 2.8,
