@@ -103,7 +103,9 @@ var _syn_key := ""                 # key of the prepared event (bomb + distance)
 var _syn_task := -1
 var _syn_res: Dictionary = {}
 var _syn_res_key := ""
-var _syn_want := ""                # the newest request: an older task finishing late is discarded
+var _syn_want := ""
+var _movie_quit_frame := -1        # --quit-after of an offline render (see setup)
+var _movie_silenced := false                # the newest request: an older task finishing late is discarded
 var _syn_mutex := Mutex.new()
 var _syn_pending: Array[int] = []  # finished-or-running task ids still to be waited for
 var _mode := ""                    # "", "synth" or "generic" (decided when the blast arrives)
@@ -143,6 +145,16 @@ func setup() -> void:
 	_setup_buses()
 	_generate()
 	_make_players()
+	# offline render (--write-movie ... --quit-after N): the movie writer mixes audio on the main
+	# thread once per frame, so voices still playing when the engine quits are never released
+	# (leaked AudioStreamPlayback instances at exit). Note the last frame to fade out before it.
+	# (--quit-after is consumed by the engine and not visible to scripts: run_cinematic.bat passes the
+	# same frame count as the user argument --movie_frames)
+	if not Engine.get_write_movie_path().is_empty():
+		var a := OS.get_cmdline_user_args()
+		var qi := a.find("--movie_frames")
+		if qi >= 0 and qi + 1 < a.size():
+			_movie_quit_frame = int(a[qi + 1])
 	is_setup = true
 
 
@@ -620,6 +632,19 @@ func _player3d(pname: String, st: AudioStream) -> AudioStreamPlayer3D:
 
 func _process(delta: float) -> void:
 	if not is_setup:
+		return
+	if _movie_quit_frame > 0 and not _movie_silenced and Engine.get_process_frames() >= _movie_quit_frame - 4:
+		# a few frames before the movie ends: stop every voice so the mixer frees the playbacks
+		_movie_silenced = true
+		stop_all()
+		set_ambience(false)
+		for c in get_children():
+			if c is AudioStreamPlayer:
+				(c as AudioStreamPlayer).stop()
+			elif c is AudioStreamPlayer3D:
+				(c as AudioStreamPlayer3D).stop()
+		return
+	if _movie_silenced:
 		return
 	var ts := 1.0
 	_pause_game = false

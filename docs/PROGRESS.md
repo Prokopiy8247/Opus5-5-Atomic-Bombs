@@ -15,10 +15,10 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 | 5 | Reference explosion at full quality | done | raymarched volume (fireball/head/stem/skirt/rings/caps/dome), shock/dust/wilson/debris layers, periodic noise |
 | 6 | Remaining 19 bombs, special types, destruction | done | all 20 profiles; column/surge/dome/rings/ice caps; range objects destroyed by pressure/thermal thresholds |
 | 7 | Menu, slider, previews, HUD, cine mode, keys, l10n | done | modules built + independently verified (UI 86/86, models, range); menu-drive QA in the real game |
-| 8 | Sound | done | procedural synth, 23 sounds, scheduling by DNA arrival, limiter; verifier 126/126 |
+| 8 | Sound | verified | procedural synth, 23 sounds, scheduling by DNA arrival, limiter; REWORKED on the user's request (2026-11-07 21:34): researched real events, per-event physically based blast synthesis (BlastSynth), rocket ignition/crackle, falling-bomb rush; independent code review (9 bugs fixed); test_audio 133/133; in-game synth path verified |
 | 9 | Polish, optimization, auto-quality | done | auto-quality fixed (D014); worst case ~107 fps at 1440p |
-| 10 | QA matrix, independent review, fixes, final frames | in progress (cycle 3 done; final QA/FPS/screens running) | review cycle 2 done (avg 3.1/10, 162 issues) and fixed; cycle 3 next; QA matrix runs clean after fixes |
-| 11 | Docs (README, CREDITS, QA_REPORT), cleanup | not started | |
+| 10 | QA matrix, independent review, fixes, final frames | done | 3 review cycles (2.60 -> 3.10 -> 3.65 review, 5.65 after tuning, independent verification 4.85); QA matrix 121/121; FPS report; 60 screens in docs/screens |
+| 11 | Docs (README, CREDITS, QA_REPORT), cleanup | done | README, CREDITS, RESEARCH_NOTES s.7 (sound), DECISIONS D001-D037, QA_REPORT all sections, docs/.gdignore |
 | 12 | Final statistics (section 14) | not started | |
 
 ## Bombs (20)
@@ -50,11 +50,11 @@ After any context compaction: re-read `docs/00_TASK_PROMPT.md` and this file fir
 
 | # | Criterion | Status |
 |---|---|---|
-| 1 | All 20 bombs launch at rec/near/far, each `verified` (>=3 fix-render-look cycles, frames in docs/screens) | not started |
+| 1 | All 20 bombs launch at rec/near/far, each `verified` (>=3 fix-render-look cycles, frames in docs/screens) | done: all 20 `verified` (table above), 60 frames in docs/screens (bunker / binocular / outside per bomb, looked at) |
 | 2 | Explosions visibly different; selftest prints READY, no FAIL | done: selftest 126/126 READY (2026-11-07 22:50); test_audio 131/131 READY; 20 distinct profiles reviewed in 3 art cycles |
 | 3 | QA matrix passes, no crashes/errors; QA_REPORT filled | done: 121/121 launches, 0 errors, 0 warnings, nodes 567 -> 567 (docs/qa_results.json, QA_REPORT section 2) |
 | 4 | FPS measured, section 9 targets met or deviations described | done: bunker 112-352 fps, Tsar night worst case 136-172 fps (all presets), binocular full-frame 24-50 Mt cloud 30-35 fps (docs/fps_report.json, QA_REPORT section 3) |
-| 5 | Clean launch via run.bat (menu, slider, launch, explosion); run_cinematic.bat tested | not started |
+| 5 | Clean launch via run.bat (menu, slider, launch, explosion); run_cinematic.bat tested | done: .godot deleted -> run.bat import + menu-drive READY (synth audio at blast arrival); run_cinematic.bat 20 s 720p: 1200 frames + WAV (QA_REPORT section 5) |
 | 6 | README, CREDITS, RESEARCH_NOTES, DECISIONS, PROGRESS, TIMELOG, PROJECT_STATS ready | not started |
 | 7 | Final local git commit | not started |
 | 8 | Time/token/cost calculation done and shown | not started |

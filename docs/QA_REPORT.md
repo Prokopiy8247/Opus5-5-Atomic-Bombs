@@ -57,56 +57,56 @@ reset (range objects excluded, their number depends on the bomb) and static memo
 - launches: 121 (20 bombs x 3 distances x 2 times of day + feature test), failures: 0
 - engine/script/shader errors counted in-process: 0, warnings: 0
 - nodes after the 2nd launch / at the end (range objects excluded): 567 / 567
-- static memory: 171.3 MB -> 187.7 MB; wall time 10.8 min
+- static memory: 172.0 MB -> 187.7 MB; wall time 10.8 min
 
 | # | bomb | tod | rec km | psi rec | near km | psi near | far km | psi far | destroyed | min fps | worst frame ms | errors |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | mk82 | noon | 2.0 | 0.021 | 0.67 | 0.075 | 6.0 | 0.006 | - | 117 | 15 | 0 |
-| 2 | mk84 | noon | 3.0 | 0.025 | 1.0 | 0.088 | 9.0 | 0.007 | - | 121 | 14 | 0 |
-| 3 | tallboy | noon | 4.0 | 0.014 | 1.33 | 0.047 | 12.0 | 0.004 | - | 202 | 8 | 0 |
-| 4 | grand_slam | noon | 5.0 | 0.014 | 1.67 | 0.049 | 15.0 | 0.004 | - | 193 | 12 | 0 |
-| 5 | moab | noon | 8.0 | 0.026 | 2.67 | 0.093 | 24.0 | 0.008 | - | 128 | 14 | 0 |
-| 6 | davy_crockett | noon | 8.0 | 0.02 | 2.67 | 0.071 | 24.0 | 0.006 | - | 112 | 16 | 0 |
-| 7 | foab | noon | 10.0 | 0.034 | 3.33 | 0.124 | 30.0 | 0.01 | - | 130 | 14 | 0 |
-| 8 | b61_12 | noon | 12.0 | 0.073 | 4.0 | 0.277 | 36.0 | 0.021 | - | 206 | 6 | 0 |
-| 9 | grable | noon | 20.0 | 0.19 | 6.67 | 0.762 | 60.0 | 0.051 | - | 142 | 15 | 0 |
-| 10 | little_boy | noon | 20.0 | 0.195 | 6.67 | 0.78 | 60.0 | 0.053 | - | 150 | 14 | 0 |
-| 11 | trinity | noon | 25.0 | 0.081 | 8.33 | 0.308 | 75.0 | 0.023 | - | 140 | 15 | 0 |
-| 12 | baker | noon | 8.0 | 0.204 | 2.67 | 0.824 | 24.0 | 0.055 | - | 127 | 14 | 0 |
-| 13 | sedan | noon | 12.0 | 0.135 | 4.0 | 0.528 | 36.0 | 0.037 | - | 205 | 30 | 0 |
-| 14 | ivy_king | noon | 50.0 | 0.259 | 16.67 | 1.072 | 150.0 | 0.069 | - | 147 | 17 | 0 |
-| 15 | b83 | noon | 55.0 | 0.158 | 18.33 | 0.628 | 165.0 | 0.043 | - | 176 | 15 | 0 |
-| 16 | rds37 | noon | 60.0 | 0.335 | 20.0 | 1.453 | 180.0 | 0.088 | - | 167 | 35 | 0 |
-| 17 | ivy_mike | noon | 90.0 | 0.209 | 30.0 | 0.845 | 200.0 | 0.08 | - | 208 | 7 | 0 |
-| 18 | castle_bravo | noon | 100.0 | 0.214 | 33.33 | 0.864 | 200.0 | 0.092 | - | 192 | 13 | 0 |
-| 19 | test219 | noon | 120.0 | 0.439 | 40.0 | 1.994 | 200.0 | 0.231 | - | 184 | 61 | 0 |
-| 20 | tsar | noon | 150.0 | 0.449 | 50.0 | 2.055 | 200.0 | 0.312 | - | 218 | 9 | 0 |
-| 1 | mk82 | night | 2.0 | 0.021 | 0.67 | 0.075 | 6.0 | 0.006 | - | 122 | 12 | 0 |
-| 2 | mk84 | night | 3.0 | 0.025 | 1.0 | 0.088 | 9.0 | 0.007 | - | 129 | 13 | 0 |
-| 3 | tallboy | night | 4.0 | 0.014 | 1.33 | 0.047 | 12.0 | 0.004 | - | 209 | 8 | 0 |
-| 4 | grand_slam | night | 5.0 | 0.014 | 1.67 | 0.049 | 15.0 | 0.004 | - | 200 | 44 | 0 |
-| 5 | moab | night | 8.0 | 0.026 | 2.67 | 0.093 | 24.0 | 0.008 | - | 139 | 12 | 0 |
-| 6 | davy_crockett | night | 8.0 | 0.02 | 2.67 | 0.071 | 24.0 | 0.006 | - | 123 | 14 | 0 |
-| 7 | foab | night | 10.0 | 0.034 | 3.33 | 0.124 | 30.0 | 0.01 | - | 137 | 14 | 0 |
-| 8 | b61_12 | night | 12.0 | 0.073 | 4.0 | 0.277 | 36.0 | 0.021 | - | 223 | 6 | 0 |
-| 9 | grable | night | 20.0 | 0.19 | 6.67 | 0.762 | 60.0 | 0.051 | - | 159 | 12 | 0 |
-| 10 | little_boy | night | 20.0 | 0.195 | 6.67 | 0.78 | 60.0 | 0.053 | - | 162 | 18 | 0 |
-| 11 | trinity | night | 25.0 | 0.081 | 8.33 | 0.308 | 75.0 | 0.023 | - | 150 | 15 | 0 |
+| 1 | mk82 | noon | 2.0 | 0.021 | 0.67 | 0.075 | 6.0 | 0.006 | - | 104 | 15 | 0 |
+| 2 | mk84 | noon | 3.0 | 0.025 | 1.0 | 0.088 | 9.0 | 0.007 | - | 112 | 14 | 0 |
+| 3 | tallboy | noon | 4.0 | 0.014 | 1.33 | 0.047 | 12.0 | 0.004 | - | 187 | 9 | 0 |
+| 4 | grand_slam | noon | 5.0 | 0.014 | 1.67 | 0.049 | 15.0 | 0.004 | - | 182 | 9 | 0 |
+| 5 | moab | noon | 8.0 | 0.026 | 2.67 | 0.093 | 24.0 | 0.008 | - | 122 | 19 | 0 |
+| 6 | davy_crockett | noon | 8.0 | 0.02 | 2.67 | 0.071 | 24.0 | 0.006 | - | 110 | 14 | 0 |
+| 7 | foab | noon | 10.0 | 0.034 | 3.33 | 0.124 | 30.0 | 0.01 | - | 123 | 13 | 0 |
+| 8 | b61_12 | noon | 12.0 | 0.073 | 4.0 | 0.277 | 36.0 | 0.021 | - | 212 | 6 | 0 |
+| 9 | grable | noon | 20.0 | 0.19 | 6.67 | 0.762 | 60.0 | 0.051 | - | 151 | 12 | 0 |
+| 10 | little_boy | noon | 20.0 | 0.195 | 6.67 | 0.78 | 60.0 | 0.053 | - | 157 | 12 | 0 |
+| 11 | trinity | noon | 25.0 | 0.081 | 8.33 | 0.308 | 75.0 | 0.023 | - | 135 | 16 | 0 |
+| 12 | baker | noon | 8.0 | 0.204 | 2.67 | 0.824 | 24.0 | 0.055 | - | 133 | 12 | 0 |
+| 13 | sedan | noon | 12.0 | 0.135 | 4.0 | 0.528 | 36.0 | 0.037 | - | 214 | 24 | 0 |
+| 14 | ivy_king | noon | 50.0 | 0.259 | 16.67 | 1.072 | 150.0 | 0.069 | - | 153 | 12 | 0 |
+| 15 | b83 | noon | 55.0 | 0.158 | 18.33 | 0.628 | 165.0 | 0.043 | - | 181 | 14 | 0 |
+| 16 | rds37 | noon | 60.0 | 0.335 | 20.0 | 1.453 | 180.0 | 0.088 | - | 173 | 13 | 0 |
+| 17 | ivy_mike | noon | 90.0 | 0.209 | 30.0 | 0.845 | 200.0 | 0.08 | - | 224 | 6 | 0 |
+| 18 | castle_bravo | noon | 100.0 | 0.214 | 33.33 | 0.864 | 200.0 | 0.092 | - | 207 | 10 | 0 |
+| 19 | test219 | noon | 120.0 | 0.439 | 40.0 | 1.994 | 200.0 | 0.231 | - | 199 | 13 | 0 |
+| 20 | tsar | noon | 150.0 | 0.449 | 50.0 | 2.055 | 200.0 | 0.312 | - | 230 | 8 | 0 |
+| 1 | mk82 | night | 2.0 | 0.021 | 0.67 | 0.075 | 6.0 | 0.006 | - | 112 | 14 | 0 |
+| 2 | mk84 | night | 3.0 | 0.025 | 1.0 | 0.088 | 9.0 | 0.007 | - | 119 | 14 | 0 |
+| 3 | tallboy | night | 4.0 | 0.014 | 1.33 | 0.047 | 12.0 | 0.004 | - | 193 | 11 | 0 |
+| 4 | grand_slam | night | 5.0 | 0.014 | 1.67 | 0.049 | 15.0 | 0.004 | - | 196 | 8 | 0 |
+| 5 | moab | night | 8.0 | 0.026 | 2.67 | 0.093 | 24.0 | 0.008 | - | 133 | 13 | 0 |
+| 6 | davy_crockett | night | 8.0 | 0.02 | 2.67 | 0.071 | 24.0 | 0.006 | - | 117 | 14 | 0 |
+| 7 | foab | night | 10.0 | 0.034 | 3.33 | 0.124 | 30.0 | 0.01 | - | 131 | 14 | 0 |
+| 8 | b61_12 | night | 12.0 | 0.073 | 4.0 | 0.277 | 36.0 | 0.021 | - | 234 | 6 | 0 |
+| 9 | grable | night | 20.0 | 0.19 | 6.67 | 0.762 | 60.0 | 0.051 | - | 165 | 11 | 0 |
+| 10 | little_boy | night | 20.0 | 0.195 | 6.67 | 0.78 | 60.0 | 0.053 | - | 174 | 11 | 0 |
+| 11 | trinity | night | 25.0 | 0.081 | 8.33 | 0.308 | 75.0 | 0.023 | - | 148 | 15 | 0 |
 | 12 | baker | night | 8.0 | 0.204 | 2.67 | 0.824 | 24.0 | 0.055 | - | 139 | 12 | 0 |
-| 13 | sedan | night | 12.0 | 0.135 | 4.0 | 0.528 | 36.0 | 0.037 | - | 222 | 24 | 0 |
-| 14 | ivy_king | night | 50.0 | 0.259 | 16.67 | 1.072 | 150.0 | 0.069 | - | 157 | 14 | 0 |
-| 15 | b83 | night | 55.0 | 0.158 | 18.33 | 0.628 | 165.0 | 0.043 | - | 181 | 17 | 0 |
-| 16 | rds37 | night | 60.0 | 0.335 | 20.0 | 1.453 | 180.0 | 0.088 | - | 177 | 18 | 0 |
-| 17 | ivy_mike | night | 90.0 | 0.209 | 30.0 | 0.845 | 200.0 | 0.08 | - | 230 | 7 | 0 |
-| 18 | castle_bravo | night | 100.0 | 0.214 | 33.33 | 0.864 | 200.0 | 0.092 | - | 214 | 10 | 0 |
-| 19 | test219 | night | 120.0 | 0.439 | 40.0 | 1.994 | 200.0 | 0.231 | - | 202 | 19 | 0 |
-| 20 | tsar | night | 150.0 | 0.449 | 50.0 | 2.055 | 200.0 | 0.312 | - | 246 | 7 | 0 |
+| 13 | sedan | night | 12.0 | 0.135 | 4.0 | 0.528 | 36.0 | 0.037 | - | 223 | 24 | 0 |
+| 14 | ivy_king | night | 50.0 | 0.259 | 16.67 | 1.072 | 150.0 | 0.069 | - | 162 | 12 | 0 |
+| 15 | b83 | night | 55.0 | 0.158 | 18.33 | 0.628 | 165.0 | 0.043 | - | 195 | 14 | 0 |
+| 16 | rds37 | night | 60.0 | 0.335 | 20.0 | 1.453 | 180.0 | 0.088 | - | 185 | 13 | 0 |
+| 17 | ivy_mike | night | 90.0 | 0.209 | 30.0 | 0.845 | 200.0 | 0.08 | - | 241 | 6 | 0 |
+| 18 | castle_bravo | night | 100.0 | 0.214 | 33.33 | 0.864 | 200.0 | 0.092 | - | 224 | 10 | 0 |
+| 19 | test219 | night | 120.0 | 0.439 | 40.0 | 1.994 | 200.0 | 0.231 | - | 216 | 12 | 0 |
+| 20 | tsar | night | 150.0 | 0.449 | 50.0 | 2.055 | 200.0 | 0.312 | - | 251 | 8 | 0 |
 
 Feature test (slow motion 0.05x, pause, cinematographer, 4 director angles, HUD off/on, RU/EN, 4 times of day, humidity): ok=True
 
-Final run: 2026-11-07 22:52-23:03 (after the audio rework; every launch also synthesized its blast on a worker
-thread while the booster flew). **121/121 launches passed, 0 errors, 0 warnings, node count unchanged (567 -> 567)**.
-Static memory grew by 16.4 MB over 121 launches (0.14 MB per launch; Godot's shader-pipeline and resource caches
+Final run: 2026-11-07 23:49 - 2026-11-08 00:00, after every audio fix (an earlier run at 22:52, before the review
+fixes, gave the same result); every launch also synthesized its blast on a worker thread while the booster flew. **121/121 launches passed, 0 errors, 0 warnings, node count unchanged (567 -> 567)**.
+Static memory grew by 15.7 MB over 121 launches (0.13 MB per launch; Godot's shader-pipeline and resource caches
 fill as new bomb/time-of-day variants are drawn) and the node count did not grow; the selftest leak check (20 launches
 of the same bomb) shows no growth at all. The only engine output at exit is the known shutdown warning
 `7 RIDs of type "Texture" were leaked` (section 6). The "destroyed" column is empty because no recommended / near /
@@ -295,7 +295,24 @@ Bugs found and fixed while testing the scripts themselves:
   WAV, `override.cfg` removed; a 30 s 1080p run (B61-12, launch → flight → detonation) wrote 1800
   frames + WAV with no errors (render 1.5 ms/frame, PNG encoding 280 ms/frame).
 
-<!--CLEANLAUNCH-->
+Final clean-launch test (2026-11-07, after all changes):
+1. `.godot/` deleted (no import cache), no Godot process running.
+2. `run.bat --log-file <tmp>\game.log -- --menu_drive --bomb 10 --out <tmp> --audio_log`: `run.bat` found no
+   `global_script_class_cache.cfg`, ran the headless import (12 s, cache rebuilt), then started the game windowed.
+   The menu-drive mode drove the real UI: terminal menu → Little Boy selected → logarithmic distance slider moved to
+   15.2 km (HUD: 0.27 psi at the bunker, shock wave in 43.2 s) → LAUNCH pressed → booster flight → detonation →
+   explosion age 8.2 s, then it waited for the blast: `AUDIO synth event used: tail -12.0 dB`, `blast_front` at
+   t = 43.13 s (-4.2 dB), `blast_tail` at 43.27 s, tremor earlier at 8.45 s; `mode=synth` → `READY`. Screenshots of
+   every step were checked (menu in Russian, slider, flash, mushroom cloud from the bunker).
+3. The import also showed that Godot imported the 60 PNGs of `docs/screens/` as game textures; `docs/.gdignore`
+   now excludes the whole documentation folder from the project.
+4. `run_cinematic.bat 1 20 1280x720 noon bunker`: 1200 PNG frames of 1280x720 + `b1_frame.wav` (48 kHz, 32-bit
+   stereo), `override.cfg` removed afterwards; GPU 1.55 ms/frame, PNG encoding 139 ms/frame (185 s in total). The
+   soundtrack: rocket ignition peaking at -4 dBFS at ~2 s, roar fading with distance, the Mk 82 report at ~17 s at
+   -11 dBFS (= the synthesized front level for 137 dB SPL), no clipping. A `--verbose` run showed 3 playbacks and
+   3 streams leaked at exit (the movie writer mixes on the main thread, so voices playing when `--quit-after`
+   ends the render are never released); `run_cinematic.bat` now passes the frame count (`--movie_frames`) and the
+   sound manager stops every voice 4 frames before the end: 0 leaked instances, last 50 ms silent.
 
 ## 6. Known limitations
 

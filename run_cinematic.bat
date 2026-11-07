@@ -39,7 +39,7 @@ for /f "tokens=1,2 delims=x" %%a in ("%RES%") do (
   echo window/size/viewport_height=%MH%
   echo window/stretch/mode="viewport"
 ) > override.cfg
-"%GODOT%" --path "%CD%" --resolution 1280x720 --fixed-fps 60 --write-movie "movie\b%BOMB%_frame.png" --quit-after %FRAMES% -- --bomb %BOMB% --tod %TOD% --view %VIEW% --autolaunch
+"%GODOT%" --path "%CD%" --resolution 1280x720 --fixed-fps 60 --write-movie "movie\b%BOMB%_frame.png" --quit-after %FRAMES% -- --bomb %BOMB% --tod %TOD% --view %VIEW% --autolaunch --movie_frames %FRAMES%
 del override.cfg
 echo Done: movie\b%BOMB%_frame*.png (%MW%x%MH%)
 endlocal

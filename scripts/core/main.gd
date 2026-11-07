@@ -188,6 +188,14 @@ func _menu_drive() -> void:
 		# the blast usually arrives later than 8 s: report whether its synthesized event is ready
 		var syn: Dictionary = sound.call("_synth_ready", sound.get("_syn_key"))
 		print("MENU_DRIVE audio synth_ready=", not syn.is_empty(), " mode=", sound.get("_mode"))
+		if Args.has("audio_log"):
+			# wait for the blast to reach the bunker: the synthesized front + tail must be the ones played
+			var t2 := Time.get_ticks_msec()
+			while String(sound.get("_mode")) == "" and Time.get_ticks_msec() - t2 < 120000:
+				await get_tree().process_frame
+			await _menu_shot(out, "5_blast")
+			print("MENU_DRIVE audio at blast arrival: mode=", sound.get("_mode"), " age=", snappedf(explosion.age if explosion else -1.0, 0.1))
+			good = good and String(sound.get("_mode")) == "synth"
 	print("READY" if good else "FAIL")
 	get_tree().quit()
 

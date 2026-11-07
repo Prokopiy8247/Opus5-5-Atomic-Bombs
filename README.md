@@ -157,6 +157,13 @@ Key design points (details in `docs/DECISIONS.md`):
 - `scripts/tools/qa_driver.gd`: `-- --qa_matrix` launches all 20 bombs at the recommended / 3×
   closer / 3× farther distances at noon and night in one session through the real launch path, then
   exercises slow motion, pause, cinematographer, director angles, HUD, RU/EN and time of day.
+- `run.bat -- --menu_drive [--bomb N] [--out DIR] [--audio_log]`: drives the real menu (select a bomb,
+  move the distance slider, press LAUNCH), takes a screenshot of every step and, with `--audio_log`,
+  waits for the blast at the bunker and checks that the synthesized sound event was the one played
+  (`--audio_log` also prints every scheduled sound layer).
+- `tools/test_audio.gd` (`--headless -s res://tools/test_audio.gd -- --nospec`): 133 audio checks
+  (generation, levels, loop seams, buses, timelines, pause/scrub/slow motion, robustness, the
+  per-event synthesis path); `tools/audio_preview.tscn` + `tools/audio_plot.py` export and plot events.
 - `tools/fps_report.py`: real-time FPS per scenario (every bomb, bunker and binocular views, the
   Tsar Bomba night worst case at all four quality presets) → `docs/fps_report.json`.
 - `tools/render_all.py` and three cycles of independent art-director reviews (`docs/reviews/cycle1..3_art_review.json`),
