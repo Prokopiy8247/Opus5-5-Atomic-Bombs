@@ -124,6 +124,13 @@ func apply_tod(t: int) -> void:
 			p = {"az": 292.0, "el": 2.2, "sun_col": Color(1.0, 0.74, 0.48), "sun_e": 1.5, "sky_i": 20.0,
 				"exposure": 1.6, "fog": 0.00003, "turb": 1.8, "night": 0.0, "amb": 1.0,
 				"amb_col": Color(0.25, 0.22, 0.30), "amb_scale": 1.0, "fog_bright": 1.0}
+		Game.TimeOfDay.PREDAWN:
+			# civil twilight, sun ~5 deg below the eastern horizon: deep blue sky, a warm band at the
+			# horizon, no direct sun; clouds are lit softly from the bright eastern sky
+			p = {"az": 68.0, "el": -3.0, "sun_col": Color(1.0, 0.8, 0.6), "sun_e": 0.0, "sky_i": 22.0,
+				"exposure": 4.0, "fog": 0.000022, "turb": 1.4, "night": 0.1, "amb": 0.7,
+				"amb_col": Color(0.07, 0.08, 0.13), "amb_scale": 1.0, "fog_bright": 1.0,
+				"light_el": 4.0, "light_col": Color(0.30, 0.27, 0.36)}
 		_:
 			# night: keep a readable ambient so dark cloud silhouettes stay legible against the sky
 			p = {"az": 0.0, "el": -28.0, "sun_col": Color(1.0, 0.8, 0.6), "sun_e": 0.0, "sky_i": 20.0,
@@ -145,7 +152,10 @@ func apply_tod(t: int) -> void:
 	sky_mat.set_shader_parameter("sun_intensity", p["sky_i"])
 	sky_mat.set_shader_parameter("turbidity", p["turb"])
 	sky_mat.set_shader_parameter("star_intensity", 60.0 * float(p["night"]))
-	RenderingServer.global_shader_parameter_set("g_sun_dir", sd if sd.y > 0.0 else md)
+	var light_dir := sd if sd.y > 0.0 else md
+	if p.has("light_el"):
+		light_dir = dir_from_az_el(p["az"], p["light_el"])
+	RenderingServer.global_shader_parameter_set("g_sun_dir", light_dir)
 	RenderingServer.global_shader_parameter_set("g_night", float(p["night"]))
 	env.ambient_light_sky_contribution = 1.0
 	env.ambient_light_energy = float(p["amb"])
@@ -156,7 +166,10 @@ func apply_tod(t: int) -> void:
 	var se: float = p["sun_e"]
 	var night: float = p["night"]
 	var sun_light := Vector4(sc.r * se, sc.g * se, sc.b * se, 1.0)
-	if night > 0.0:
+	if p.has("light_col"):
+		var lc: Color = p["light_col"]
+		sun_light = Vector4(lc.r, lc.g, lc.b, 1.0)
+	elif night > 0.0:
 		sun_light = Vector4(0.62 * 0.11, 0.72 * 0.11, 1.0 * 0.11, 1.0)
 	RenderingServer.global_shader_parameter_set("g_sun_light", sun_light)
 	var amb: Color = p.get("amb_col", Color(0.32, 0.42, 0.58))

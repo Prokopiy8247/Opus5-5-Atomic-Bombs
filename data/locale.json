@@ -83,6 +83,7 @@
 		"tod.noon": {"ru": "Полдень", "en": "Noon"},
 		"tod.dusk": {"ru": "Закат", "en": "Dusk"},
 		"tod.night": {"ru": "Ночь", "en": "Night"},
+		"tod.predawn": {"ru": "Предрассветные сумерки", "en": "Pre-dawn twilight"},
 		"set.humidity": {"ru": "ВЛАЖНОСТЬ", "en": "HUMIDITY"},
 		"set.quality": {"ru": "КАЧЕСТВО", "en": "QUALITY"},
 		"q.low": {"ru": "Низкое", "en": "Low"},

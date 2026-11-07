@@ -6,9 +6,11 @@ signal language_changed
 signal bomb_selected(index: int)
 
 enum Quality { LOW, MEDIUM, HIGH, CINEMATIC }
-enum TimeOfDay { DAWN, NOON, DUSK, NIGHT }
+## PREDAWN (sun ~5 deg below the horizon) is a historical preset (Trinity 05:29, Castle Bravo); the
+## T key and the menu cycle the first four.
+enum TimeOfDay { DAWN, NOON, DUSK, NIGHT, PREDAWN }
 
-const TOD_NAMES := ["dawn", "noon", "dusk", "night"]
+const TOD_NAMES := ["dawn", "noon", "dusk", "night", "predawn"]
 const QUALITY_NAMES := ["low", "medium", "high", "cine"]
 
 var bombs: Array = []              # parsed data/bombs.json "bombs"
@@ -109,3 +111,13 @@ func quality_steps_scale() -> float:
 			return 1.0
 		_:
 			return 2.0
+
+
+## Scene luminance relative to daylight (drives the eye-adaptation response to the flash).
+func ambient_level() -> float:
+	match tod:
+		TimeOfDay.NIGHT:
+			return 0.03
+		TimeOfDay.PREDAWN:
+			return 0.15
+	return 1.0

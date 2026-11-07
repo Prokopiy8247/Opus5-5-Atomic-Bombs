@@ -356,7 +356,7 @@ func _update_lights(t: float) -> void:
 		bunker.set_flash(-to_obs.normalized(), vis, col)
 	# eye adaptation: relative luminance vs ambient scene
 	if env_ctl:
-		var amb := 1.0 if Game.tod != Game.TimeOfDay.NIGHT else 0.03
+		var amb := Game.ambient_level()
 		var lum := illum / amb
 		# the visible fireball adds glare even when the illuminance is modest
 		var wo := float(prof.a("whiteout_s", 0.0))
@@ -374,7 +374,7 @@ func step_exposure(t: float, dt: float) -> void:
 		return
 	if dt <= 0.0:
 		return
-	var amb := 1.0 if Game.tod != Game.TimeOfDay.NIGHT else 0.03
+	var amb := Game.ambient_level()
 	var steps := maxi(1, int(ceil(dt / 0.02)))
 	if dt > 60.0:
 		steps = maxi(1, int(ceil(dt / 0.25)))
