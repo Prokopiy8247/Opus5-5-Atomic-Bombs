@@ -29,6 +29,8 @@ uniform float ground_y = 0.0;    // ground level relative to the centre (m)
 uniform float part = 1.0;        // 1 = near wall, 0 = far wall
 uniform float seed = 0.0;
 uniform float age = 0.0;
+uniform vec4 fire = vec4(0.0);   // fireball radiance (rgb, volume units) and radius (w)
+uniform vec3 fire_pos;           // fireball centre (world)
 
 void fragment() {
 	vec3 cam = CAMERA_POSITION_WORLD;
@@ -80,30 +82,45 @@ void fragment() {
 	if (seg <= 0.0) {
 		discard;
 	}
-	vec3 mid = cam + rd * (ta + tb) * 0.5;
+	// droplet density rises across the wall from 0 at the inner radius to 1 at the front:
+	// f = (|p|^2 - ri^2) / (1 - ri^2), integrated exactly along the segment (no hard inner edge)
+	vec3 pa = o + dl * ta;
+	float qbp = dot(pa, dl);
+	float ri2 = ri * ri;
+	float integ = qa * seg * seg * seg / 3.0 + qbp * seg * seg + (dot(pa, pa) - ri2) * seg;
+	integ = max(integ, 0.0) / max(1.0 - ri2, 1e-3);
+	// noise / lighting sample: a fixed depth behind the OUTER surface along the ray. (The segment
+	// midpoint would race across the shell where the ray just grazes the inner radius and smear
+	// the noise into a visible inner ellipse.)
+	float t_out = part > 0.5 ? max(t0, 0.0) : t3;
+	float dsm = min(seg * 0.5, 0.2 * thick * radius);
+	float ts = clamp(part > 0.5 ? t_out + dsm : t_out - dsm, ta, tb);
+	vec3 mid = cam + rd * ts;
 	vec3 q = (mid - centre) / sc;                    // unit-shell coordinates
-	// billowy droplet density: big lumps + finer curds, slowly churning
-	vec3 np = q * 1.15 + vec3(seed, seed * 0.37, age * 0.04);
-	float n1 = texture(noise_b, np).r;
-	float n2 = texture(noise_a, q * 2.6 + vec3(seed * 0.5, age * 0.03, 1.7)).r;
-	float n = n1 * 0.65 + n2 * 0.35;
-	float dens = 0.35 + 1.0 * smoothstep(0.2, 0.8, n);
-	// stacked discs (megaton humid layers)
+	// droplet density: large smooth lumps (fbm) + softer billows, slowly churning
+	float n_lo = texture(noise_a, q * 0.8 + vec3(seed, seed * 0.37, age * 0.02)).r;
+	float n_hi = texture(noise_b, q * 2.0 + vec3(seed * 0.5, age * 0.03, 1.7)).r;
+	float n = n_lo * 0.6 + n_hi * 0.4;
+	float dens = 0.5 + 0.8 * smoothstep(0.15, 0.85, n);
+	// stacked discs (humid layers): bright bands, thin gaps
 	if (discs > 0.0) {
-		float band = sin(q.y * 11.0 + (n2 - 0.5) * 4.0 + seed) * 0.5 + 0.5;
-		dens *= mix(1.0, 0.15 + 1.6 * smoothstep(0.35, 0.85, band), discs);
+		// thin dense sheets with a thinner veil between them (never fully clear: no stripes)
+		float band = sin(q.y * 7.0 + (n_lo - 0.5) * 4.0 + seed) * 0.5 + 0.5;
+		dens *= mix(1.0, 0.45 + 1.3 * smoothstep(0.6, 0.95, band), discs);
 	}
-	// evaporation: holes open in the thin parts, then everything thins out
-	dens *= smoothstep(evap - 0.05, evap + 0.35, n * 0.9 + 0.1) * (1.0 - 0.6 * evap);
-	// clears from the bottom up (noisy edge)
-	float qy = q.y + (n - 0.5) * 0.35;
-	dens *= smoothstep(clear_y - 0.15, clear_y + 0.25, qy);
-	// lumpy, soft silhouette: fade the outermost ~12 % of the impact parameter with noise
+	// evaporation: the veil thins out and opens in large SOFT holes (no flakes or cracks)
+	float hole = smoothstep(evap * 0.8 - 0.15, evap * 0.8 + 0.4, n_lo * 0.8 + n_hi * 0.2);
+	dens *= mix(1.0, hole, smoothstep(0.0, 0.35, evap)) * (1.0 - 0.65 * evap);
+	// clears from the bottom up (noisy, soft edge)
+	float qy = q.y + (n - 0.5) * 0.4;
+	dens *= smoothstep(clear_y - 0.2, clear_y + 0.35, qy);
+	// lumpy, soft silhouette: fade the outer ~20 % of the impact parameter with noise
 	float tmin = -qb / qa;
 	float bimp = length(o + dl * tmin);
-	dens *= smoothstep(1.0, 0.86, bimp + (n1 - 0.5) * 0.12);
-	float sigma = tau / max(thick * radius, 1e-3);
-	float od = sigma * seg * dens;
+	dens *= smoothstep(1.0, 0.8, bimp + (n_lo - 0.5) * 0.16 + (n_hi - 0.5) * 0.06);
+	// (mean of f across the wall at normal incidence is ~0.5: sigma x 2 keeps tau as the wall depth)
+	float sigma = 2.0 * tau / max(thick * radius, 1e-3);
+	float od = sigma * integ * dens;
 	float alpha = 1.0 - exp(-od);
 	if (alpha < 0.003) {
 		discard;
@@ -111,22 +128,25 @@ void fragment() {
 	// --- lighting: sunlit droplets (soft terminator, silver lining toward the sun)
 	vec3 L = normalize(g_sun_dir);
 	vec3 nrm = normalize((mid - centre) / (sc * sc));
-	float lit = 0.55 + 0.45 * smoothstep(-0.6, 0.8, dot(nrm, L));
-	lit *= 0.85 + 0.3 * n;
+	float lit = 0.5 + 0.5 * smoothstep(-0.6, 0.8, dot(nrm, L));
+	// denser lumps self-shadow a little on their underside: reads as a soft cloud, not a film
+	lit *= 0.8 + 0.35 * smoothstep(0.2, 0.8, n) * clamp(nrm.y * 0.5 + 0.7, 0.0, 1.0);
+	// the foot of the dome is shaded by the dome itself
+	lit *= 0.78 + 0.22 * smoothstep(-0.3, 0.5, q.y);
 	float fwd = pow(max(dot(rd, L), 0.0), 8.0);
-	vec3 col = vec3(0.97, 0.98, 1.0) * (g_sun_light.rgb * (lit + fwd * 1.5) + g_ambient.rgb * g_ambient.w * 1.1);
-	// lit from inside by the fireball: falloff with distance + a forward-scattered halo around it
-	if (g_fireball_color.w > 0.0 && g_fireball.w > 0.0) {
-		vec3 fb = g_fireball.xyz;
-		float rf = g_fireball.w;
-		float dd = length(mid - fb);
-		vec3 fire = g_fireball_color.rgb * g_fireball_color.w;
-		col += fire * 0.06 * (rf * rf) / (dd * dd + rf * rf);
-		vec3 to_fb = fb - cam;
+	vec3 col = vec3(0.97, 0.98, 1.0) * (g_sun_light.rgb * (lit * 1.05 + fwd * 1.5) + g_ambient.rgb * g_ambient.w * 1.2);
+	// lit from inside by the fireball (same law as the volume's cloud: radiance x r^2/(d^2+r^2))
+	// plus the droplets' strong forward scattering: a bright aureole around the ball seen through
+	// the near wall
+	if (fire.w > 0.0 && dot(fire.rgb, vec3(1.0)) > 0.0) {
+		float rf = fire.w;
+		float dd = max(length(mid - fire_pos) - rf * 0.7, 0.0);
+		col += fire.rgb * 0.25 * (rf * rf) / (dd * dd + rf * rf);
+		vec3 to_fb = fire_pos - cam;
 		float dfb = length(to_fb);
 		float ang = length(cross(rd, to_fb / dfb));
 		float ang_r = rf / dfb;
-		col += fire * 0.12 * exp(-pow(ang / (ang_r * 2.2), 2.0)) * part;
+		col += fire.rgb * 0.04 * exp(-pow(ang / (ang_r * 2.2), 2.0)) * part;
 	}
 	vec4 fog = atm_fog(cam, mid);
 	col = mix(col * g_exposure, fog.rgb, fog.a);

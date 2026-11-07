@@ -52,6 +52,11 @@ static func _split_pair(parent: Node3D, mesh: Mesh, shader: Shader, prio_far: in
 	return [insts, mats]
 
 
+## QA switch: `--fx_off shock,dust,wilson,debris` hides those layers (isolates them in renders).
+static func is_off(layer: String) -> bool:
+	return Args.has("fx_off") and Args.get_str("fx_off").contains(layer)
+
+
 static func _set_all(mats: Array, key: String, value: Variant) -> void:
 	for m in mats:
 		(m as ShaderMaterial).set_shader_parameter(key, value)
@@ -105,7 +110,7 @@ class ShockLayer extends Node3D:
 
 	func update(t: float) -> void:
 		var prof := ex.prof
-		if t <= 0.0 or prof.kind == ExplosionProfile.Kind.NUCLEAR_BURIED or prof.kind == ExplosionProfile.Kind.CONVENTIONAL_BURIED:
+		if t <= 0.0 or prof.kind == ExplosionProfile.Kind.NUCLEAR_BURIED or prof.kind == ExplosionProfile.Kind.CONVENTIONAL_BURIED or FxLayersLib.is_off("shock"):
 			shell.visible = false
 			return
 		var slant := ex.shock_slant_radius(t)
@@ -186,7 +191,8 @@ class DustWallLayer extends Node3D:
 		else:
 			h_cap = 20.0 * wc * (1.8 if precursor else 1.0)
 		h_cap = float(prof.a("dust_wall_h_max", h_cap))
-		tau = float(prof.a("dust_wall_tau", 5.4 * wc))
+		# fade time once the ring forms: HE ~0.25 s (Mk 82) .. 1.2 s (MOAB); nuclear 2.5 s x W^1/3
+		tau = float(prof.a("dust_wall_tau", (5.4 if prof.conventional else 2.5) * wc))
 		p0 = 0.6 if precursor else 1.0
 		var r_on := prof.r_fb_max * 1.5
 		t_start = BlastPhysics.arrival_time(prof.w_kt, sqrt(r_on * r_on + burst_h() * burst_h()), prof.surface, prof.conventional)
@@ -201,7 +207,7 @@ class DustWallLayer extends Node3D:
 	func update(t: float) -> void:
 		var prof := ex.prof
 		var r := prof.shock_ground_radius(t, ex.arrival_tbl)
-		if t <= 0.0 or r <= 1.0 or amount <= 0.0:
+		if t <= 0.0 or r <= 1.0 or amount <= 0.0 or FxLayersLib.is_off("dust"):
 			_hide()
 			return
 		var hb := burst_h()
@@ -229,13 +235,14 @@ class DustWallLayer extends Node3D:
 				h *= 1.8
 		h = minf(h, h_cap)
 		# mesh: 2 m below the ground up to the tallest ragged lumps
-		var hm := h * 1.9 + 2.0
+		var hm := h * 2.3 + 2.0
 		for w in walls:
 			w.visible = true
 			w.global_position = ex.gz + Vector3(0, hm * 0.5 - 2.0, 0)
 			w.scale = Vector3(r, hm, r)
 			(w as MeshInstance3D).custom_aabb = AABB(Vector3(-1.2, -50.0, -1.2), Vector3(2.4, 100.0, 2.4))
 		FxLayersLib._set_all(mats, "radius", r)
+		FxLayersLib._set_all(mats, "lean", minf(h * 4.0 / r, 0.35))
 		FxLayersLib._set_all(mats, "height", h)
 		FxLayersLib._set_all(mats, "mesh_h", hm)
 		FxLayersLib._set_all(mats, "opacity", op)
@@ -253,6 +260,7 @@ class WilsonLayer extends Node3D:
 	var amount := 0.0
 	var flatten := 1.0
 	var clear_bottom := 1.0
+	var tau_k := 1.0
 
 	func setup(p_ex: Explosion) -> void:
 		ex = p_ex
@@ -275,19 +283,23 @@ class WilsonLayer extends Node3D:
 		if t0 <= 0.0:
 			# when the front reaches ~ the Wilson radius
 			t0 = prof.wilson_t0
-		flatten = float(prof.a("wilson_flatten", 0.55 if big else 1.0))
+		# flattened: the condensation sits in the humid low layers (dome for surface bursts,
+		# a flattened shell with disc banding for airbursts, stacked discs for megatons)
+		flatten = float(prof.a("wilson_flatten", 0.55 if big else (0.9 if prof.surface else 0.75)))
 		FxLayersLib._set_all(mats, "flatten", flatten)
 		FxLayersLib._set_all(mats, "thick", float(prof.a("wilson_thick", 0.3)))
-		FxLayersLib._set_all(mats, "discs", float(prof.a("wilson_discs", 0.75 if big else 0.0)))
+		FxLayersLib._set_all(mats, "discs", float(prof.a("wilson_discs", 0.6 if big else (0.0 if prof.surface else 0.3))))
 		# the dome evaporates from the bottom up (Baker) - airbursts thin out evenly
 		clear_bottom = float(prof.a("wilson_clear", 1.0 if prof.surface else 0.4))
+		# optical depth across one wall: Baker's dome is milky, nearly opaque; airburst veils thinner
+		tau_k = float(prof.a("wilson_opacity", 1.4 if prof.surface else 0.9))
 
 	func _hide() -> void:
 		for s in shells:
 			s.visible = false
 
 	func update(t: float) -> void:
-		if amount <= 0.0 or t < t0 or t > t0 + dur * 2.2:
+		if amount <= 0.0 or t < t0 or t > t0 + dur * 2.2 or FxLayersLib.is_off("wilson"):
 			_hide()
 			return
 		var x := (t - t0) / dur
@@ -296,7 +308,9 @@ class WilsonLayer extends Node3D:
 			_hide()
 			return
 		var prof := ex.prof
-		var slant := ex.shock_slant_radius(t) * 0.92
+		# the condensation forms in the air the front has just crossed and stays in that air: the
+		# shell grows with the front only while it forms, then stays put and evaporates
+		var slant := ex.shock_slant_radius(minf(t, t0 + dur * 0.6)) * 0.92
 		var cy := maxf(prof.hob, 0.0)
 		if prof.kind == ExplosionProfile.Kind.NUCLEAR_UNDERWATER:
 			cy = 0.0
@@ -307,12 +321,20 @@ class WilsonLayer extends Node3D:
 			s.scale = Vector3(slant, slant * flatten, slant) * 1.03
 		FxLayersLib._set_all(mats, "centre", centre)
 		FxLayersLib._set_all(mats, "radius", slant)
-		FxLayersLib._set_all(mats, "tau", 1.3 * op)
+		FxLayersLib._set_all(mats, "tau", tau_k * op)
 		# droplets evaporate in growing holes, and from the bottom up
 		FxLayersLib._set_all(mats, "evap", smoothstep(0.35, 2.0, x))
 		FxLayersLib._set_all(mats, "clear_y", lerpf(-1.2, 0.55, smoothstep(0.3, 1.8, x) * clear_bottom))
 		FxLayersLib._set_all(mats, "ground_y", -cy)
 		FxLayersLib._set_all(mats, "age", t)
+		# fireball light, on the same scale as the volume's own fireball-lit cloud (bb_lum x emis)
+		var fs := prof.fireball_state(t)
+		var temp := float(fs["temp"])
+		var lum := pow(temp / 8000.0, 4.0) * smoothstep(650.0, 1500.0, temp) * float(fs["emis"]) * float(fs["opacity"])
+		var c := ex._bb_color(maxf(temp, 1000.0))
+		var fire := Vector3(pow(c.r, 2.2), pow(c.g, 2.2), pow(c.b, 2.2)) * lum
+		FxLayersLib._set_all(mats, "fire", Vector4(fire.x, fire.y, fire.z, float(fs["radius"])))
+		FxLayersLib._set_all(mats, "fire_pos", ex.gz + Vector3(0, float(fs["center_y"]), 0))
 
 
 # --------------------------------------------------------------------------- debris and puffs
@@ -393,7 +415,7 @@ class DebrisLayer extends Node3D:
 			var pos := Vector3(px, TerrainMath.height(px, pz), pz) - ex.gz
 			# fragments (~1-2 km/s) land within ~0.1-0.5 s, the near ones first
 			var t_birth := 0.1 + 0.25 * rr / r_max + rng.randf() * 0.15
-			var s := rng.randf_range(2.0, 4.0) * sqrt(hes)
+			var s := rng.randf_range(2.5, 4.5) * sqrt(hes)
 			mm.set_instance_transform(i, Transform3D(Basis(), pos))
 			mm.set_instance_custom_data(i, Color(t_birth, s, s * 0.6, rng.randf() * 10.0))
 		# the puffs are the ground itself thrown up: soil colour, not the pale dust-wall colour
@@ -411,7 +433,7 @@ class DebrisLayer extends Node3D:
 			m.set_shader_parameter("noise_a", FxResources.noise_fbm())
 			m.set_shader_parameter("dust_col", Vector3(dc[0], dc[1], dc[2]))
 			m.set_shader_parameter("puff_life", float(prof.a("frag_puff_life", 3.0)))
-			m.set_shader_parameter("opacity", 0.6)
+			m.set_shader_parameter("opacity", 0.9)
 			inst.material_override = m
 			inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			inst.extra_cull_margin = 5000.0
@@ -422,6 +444,10 @@ class DebrisLayer extends Node3D:
 			puff_mats.append(m)
 
 	func update(t: float) -> void:
+		var off := FxLayersLib.is_off("debris")
+		mmi.visible = not off
+		for p in puffs:
+			p.visible = not off
 		for m in puff_mats:
 			m.set_shader_parameter("age", t)
 

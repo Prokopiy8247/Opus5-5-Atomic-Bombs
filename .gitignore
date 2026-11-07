@@ -5,3 +5,5 @@
 /shots/
 *.tmp
 docs/research_parts/*.tmp
+override.cfg
+/movie/

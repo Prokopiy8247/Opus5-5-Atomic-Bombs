@@ -108,24 +108,27 @@ func _orient_light(l: DirectionalLight3D, to_body: Vector3) -> void:
 
 
 func apply_tod(t: int) -> void:
+	# The haze colours (g_fog_color / g_fog_sun) are derived from the sky model (see _haze_colors);
+	# "fog_bright" scales them (1 = distant terrain fades exactly into the horizon sky).
 	var p := {}
 	match t:
 		Game.TimeOfDay.DAWN:
-			p = {"az": 68.0, "el": 1.6, "sun_col": Color(1.0, 0.62, 0.38), "sun_e": 1.6, "sky_i": 20.0,
+			p = {"az": 68.0, "el": 1.6, "sun_col": Color(1.0, 0.74, 0.50), "sun_e": 1.6, "sky_i": 20.0,
 				"exposure": 1.5, "fog": 0.000028, "turb": 1.6, "night": 0.0, "amb": 1.0,
-				"amb_col": Color(0.22, 0.24, 0.32), "amb_scale": 1.0, "fog_col": Color(0.42, 0.38, 0.40), "fog_sun": Color(1.0, 0.55, 0.28), "fog_bright": 0.9}
+				"amb_col": Color(0.22, 0.24, 0.32), "amb_scale": 1.0, "fog_bright": 1.0}
 		Game.TimeOfDay.NOON:
 			p = {"az": 100.0, "el": 46.0, "sun_col": Color(1.0, 0.96, 0.9), "sun_e": 3.2, "sky_i": 22.0,
 				"exposure": 0.42, "fog": 0.000018, "turb": 1.0, "night": 0.0, "amb": 1.0,
-				"amb_col": Color(0.30, 0.38, 0.52), "amb_scale": 1.0, "fog_col": Color(0.50, 0.58, 0.70), "fog_sun": Color(0.6, 0.55, 0.45), "fog_bright": 0.85}
+				"amb_col": Color(0.30, 0.38, 0.52), "amb_scale": 1.0, "fog_bright": 1.0}
 		Game.TimeOfDay.DUSK:
-			p = {"az": 292.0, "el": 2.2, "sun_col": Color(1.0, 0.55, 0.3), "sun_e": 1.5, "sky_i": 20.0,
+			p = {"az": 292.0, "el": 2.2, "sun_col": Color(1.0, 0.68, 0.42), "sun_e": 1.5, "sky_i": 20.0,
 				"exposure": 1.6, "fog": 0.00003, "turb": 1.8, "night": 0.0, "amb": 1.0,
-				"amb_col": Color(0.25, 0.22, 0.30), "amb_scale": 1.0, "fog_col": Color(0.42, 0.36, 0.38), "fog_sun": Color(1.0, 0.5, 0.25), "fog_bright": 0.9}
+				"amb_col": Color(0.25, 0.22, 0.30), "amb_scale": 1.0, "fog_bright": 1.0}
 		_:
+			# night: keep a readable ambient so dark cloud silhouettes stay legible against the sky
 			p = {"az": 0.0, "el": -28.0, "sun_col": Color(1.0, 0.8, 0.6), "sun_e": 0.0, "sky_i": 20.0,
 				"exposure": 3.2, "fog": 0.000015, "turb": 1.0, "night": 1.0, "amb": 0.3,
-				"amb_col": Color(0.010, 0.013, 0.022), "amb_scale": 1.0, "fog_col": Color(0.008, 0.010, 0.016), "fog_sun": Color(0.02, 0.025, 0.04), "fog_bright": 1.0}
+				"amb_col": Color(0.015, 0.019, 0.032), "amb_scale": 1.0, "fog_bright": 1.0}
 	tod_params = p
 	var sd := dir_from_az_el(p["az"], p["el"])
 	_orient_light(sun, sd)
@@ -159,11 +162,133 @@ func apply_tod(t: int) -> void:
 	var amb: Color = p.get("amb_col", Color(0.32, 0.42, 0.58))
 	var amb_s: float = p.get("amb_scale", 1.0)
 	RenderingServer.global_shader_parameter_set("g_ambient", Vector4(amb.r, amb.g, amb.b, amb_s))
-	var fc: Color = p.get("fog_col", Color(0.62, 0.68, 0.78))
-	var fsun: Color = p.get("fog_sun", Color(1.0, 0.85, 0.65))
+	# Haze colours for the aerial perspective, taken from the sky itself just above the horizon so
+	# that distant terrain fades into exactly the sky colour behind it (no horizon seam, no grey band).
+	var haze := _haze_colors(sd, md, p)
+	var fc: Color = haze[0]
+	var fsun: Color = haze[1]
+	if Args.has("envdbg"):
+		print("HAZE tod=%d away=%s fwd=%s zenith=%s" % [t, fc, fsun, _sky_radiance(Vector3.UP, sd, md, p)])
 	RenderingServer.global_shader_parameter_set("g_fog_color", Vector4(fc.r, fc.g, fc.b, p.get("fog_bright", 1.0)))
 	RenderingServer.global_shader_parameter_set("g_fog_sun", Vector4(fsun.r, fsun.g, fsun.b, 0.0))
 	_apply_fog_density()
+
+
+## g_fog_color = mean horizon radiance away from the sun (90, 180, 270 deg of azimuth from it);
+## g_fog_sun = forward lobe fitted 30 deg from the sun with the atm_haze_color() shape.
+func _haze_colors(sd: Vector3, md: Vector3, p: Dictionary) -> Array:
+	var el := deg_to_rad(0.6)
+	var sun_az := atan2(sd.x, -sd.z)
+	var away := Vector3.ZERO
+	for k in [0.5, 1.0, 1.5]:
+		var a: float = sun_az + PI * k
+		away += _sky_radiance(Vector3(sin(a) * cos(el), sin(el), -cos(a) * cos(el)), sd, md, p) / 3.0
+	var a30 := sun_az + deg_to_rad(30.0)
+	var d30 := Vector3(sin(a30) * cos(el), sin(el), -cos(a30) * cos(el))
+	var c30 := _sky_radiance(d30, sd, md, p)
+	var mu: float = maxf(d30.dot(sd), 0.0)
+	var sun_k := pow(mu, 6.0) * 0.8 + pow(mu, 40.0) * 1.5
+	var fwd := Vector3.ZERO
+	if sun_k > 1e-3:
+		fwd = (c30 - away) / sun_k
+		fwd = Vector3(maxf(fwd.x, 0.0), maxf(fwd.y, 0.0), maxf(fwd.z, 0.0))
+	return [Color(away.x, away.y, away.z), Color(fwd.x, fwd.y, fwd.z)]
+
+
+## Radiance of the sky shader (without sun disc, stars and explosion) in direction `dir`.
+func _sky_radiance(dir: Vector3, sd: Vector3, md: Vector3, p: Dictionary) -> Vector3:
+	var col := Vector3.ZERO
+	if sd.y > -0.2:
+		col = sky_scatter(dir, sd, float(p["sky_i"]), float(p["turb"]))
+	var night: float = p["night"]
+	if night > 0.0:
+		col += sky_scatter(dir, md, 0.012, float(p["turb"])) * night
+		col += Vector3(0.0010, 0.0014, 0.0026) * (1.0 + 1.5 * exp(-maxf(dir.y, 0.0) * 8.0)) * night
+	return col
+
+
+# ---------------------------------------------------------------- CPU twin of shaders/sky.gdshader
+const SKY_R_E := 6360e3
+const SKY_R_A := 6420e3
+const SKY_BETA_R := Vector3(5.8e-6, 13.5e-6, 33.1e-6)
+const SKY_BETA_M := 21e-6
+const SKY_BETA_O := Vector3(0.650e-6, 1.881e-6, 0.085e-6)
+const SKY_H_R := 7994.0
+const SKY_H_M := 1200.0
+const SKY_R_OZ := 6385e3
+const SKY_OZ_COL := 15000.0
+const SKY_MS := 0.03
+const SKY_MS_TINT := Vector3(0.6, 0.8, 1.0)
+const SKY_MS_TINT_LOW := Vector3(0.35, 0.6, 1.0)
+
+
+static func _vexp(v: Vector3) -> Vector3:
+	return Vector3(exp(v.x), exp(v.y), exp(v.z))
+
+
+static func _ch_up(x: float, mu: float) -> float:
+	var c := sqrt(0.5 * PI * x)
+	return c / ((c - 1.0) * mu + 1.0)
+
+
+static func _chapman_od(r: float, mu: float, h: float) -> float:
+	var e := exp(-(r - SKY_R_E) / h)
+	if mu >= 0.0:
+		return h * e * _ch_up(r / h, mu)
+	var r0 := r * sqrt(maxf(1.0 - mu * mu, 0.0))
+	if r0 < SKY_R_E:
+		return 1e7
+	return h * (2.0 * exp(-(r0 - SKY_R_E) / h) * sqrt(0.5 * PI * r0 / h) - e * _ch_up(r / h, -mu))
+
+
+static func _light_tau(r: float, mu: float, bm: float) -> Vector3:
+	var rr := minf(r / SKY_R_OZ, 0.999)
+	var od_o := SKY_OZ_COL / sqrt(maxf(1.0 - rr * rr * (1.0 - mu * mu), 0.0081))
+	return SKY_BETA_R * _chapman_od(r, mu, SKY_H_R) + Vector3.ONE * (bm * 1.1 * _chapman_od(r, mu, SKY_H_M)) + SKY_BETA_O * od_o
+
+
+static func sky_scatter(rd: Vector3, l: Vector3, intensity: float, turb: float) -> Vector3:
+	var r0 := SKY_R_E + 30.0
+	var b := r0 * rd.y
+	var t_end := -b + sqrt(b * b - (r0 * r0 - SKY_R_A * SKY_R_A))
+	var dg := b * b - (r0 * r0 - SKY_R_E * SKY_R_E)
+	if dg >= 0.0 and -b - sqrt(dg) > 0.0:
+		t_end = minf(t_end, -b - sqrt(dg))
+	var mu := rd.dot(l)
+	var pr := 3.0 / (16.0 * PI) * (1.0 + mu * mu)
+	var g := 0.76
+	var pm := 3.0 / (8.0 * PI) * ((1.0 - g * g) * (1.0 + mu * mu)) / ((2.0 + g * g) * pow(1.0 + g * g - 2.0 * g * mu, 1.5))
+	var bm := SKY_BETA_M * turb
+	var t_hi := _vexp(-_light_tau(SKY_R_E + 12000.0, l.y, bm))
+	var tint := SKY_MS_TINT_LOW.lerp(SKY_MS_TINT, smoothstep(0.05, 0.4, l.y))
+	var ms := t_hi * tint * (SKY_MS * clampf(l.y * 4.0 + 0.6, 0.0, 1.0))
+	var tau_v := Vector3.ZERO
+	var sum_r := Vector3.ZERO
+	var sum_m := Vector3.ZERO
+	var sum_ms := Vector3.ZERO
+	var t_prev := 0.0
+	for i in 16:
+		var x1 := float(i + 1) / 16.0
+		var t_cur := t_end * x1 * x1 * x1
+		var seg := t_cur - t_prev
+		var tm := 0.5 * (t_prev + t_cur)
+		t_prev = t_cur
+		var px := rd.x * tm
+		var py := r0 + rd.y * tm
+		var pz := rd.z * tm
+		var r := sqrt(px * px + py * py + pz * pz)
+		var h := r - SKY_R_E
+		var dr := exp(-h / SKY_H_R) * seg
+		var dm := exp(-h / SKY_H_M) * seg
+		var d_o := maxf(0.0, 1.0 - absf(h - 25000.0) / 15000.0) * seg
+		var dtau := SKY_BETA_R * dr + Vector3.ONE * (bm * 1.1 * dm) + SKY_BETA_O * d_o
+		var tv := _vexp(-(tau_v + dtau * 0.5))
+		var att := tv * _vexp(-_light_tau(r, (px * l.x + py * l.y + pz * l.z) / r, bm))
+		sum_r += att * dr
+		sum_m += att * dm
+		sum_ms += (SKY_BETA_R * dr + Vector3.ONE * (bm * dm)) * tv
+		tau_v += dtau
+	return (sum_r * SKY_BETA_R * pr + sum_m * (bm * pm) + sum_ms * ms) * intensity
 
 
 func set_humidity(h: float) -> void:

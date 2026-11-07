@@ -638,7 +638,7 @@
     "cap_radius_m": 250.0,
     "cap_half_m": 260.0,
     "t_stab_s": 150.0,
-    "stem_radius_m": 120.0,
+    "stem_radius_m": 140.0,
     "head_color_early": [
      0.3,
      0.27,
@@ -660,9 +660,9 @@
      0.27
     ],
     "dark_base": 0.7,
-    "torus": 0.8,
-    "head_noise_amp": 0.55,
-    "billow_sharp": 0.75,
+    "torus": 0.3,
+    "head_noise_amp": 0.7,
+    "billow_sharp": 1.4,
     "skirt": 1.0,
     "skirt_max_r": 500.0,
     "crater": false,
@@ -688,6 +688,8 @@
     "whiten_time": 0.02,
     "rise_delay": 2.0,
     "site_humidity": 0.6,
+    "stem_density": 0.25,
+    "stem_flare": 2.5,
     "fireball_r_m": 70.0,
     "cloud_top_m": 1500.0
    }
@@ -771,7 +773,7 @@
      0.28
     ],
     "core_cool_s": 1.0,
-    "core_glow": 0.3,
+    "core_glow": 0.6,
     "crater": true,
     "crater_time": 0.6,
     "debris_count": 1200,
@@ -794,6 +796,7 @@
     "whiten_time": 0.05,
     "dark_base": 0.6,
     "site_humidity": 0.25,
+    "skirt_height": 0.35,
     "fireball_r_m": 17.0,
     "cloud_top_m": 1800.0,
     "cap_radius_m": 350.0,
@@ -863,7 +866,7 @@
     "emission": 1500.0,
     "fb_temp_peak": 3000.0,
     "fireball_noise": 0.5,
-    "fireball_noise_scale": 2.4,
+    "fireball_noise_scale": 4.0,
     "rise_k": 60.0,
     "rise_delay": 6.0,
     "cap_radius_m": 250.0,
@@ -876,11 +879,11 @@
      0.04
     ],
     "head_color_late": [
-     0.12,
-     0.11,
-     0.1
+     0.2,
+     0.18,
+     0.16
     ],
-    "whiten_time": 5.0,
+    "whiten_time": 1.5,
     "stem_color": [
      0.14,
      0.12,
@@ -888,8 +891,8 @@
     ],
     "dark_base": 0.4,
     "torus": 0.9,
-    "skirt": 0.4,
-    "skirt_max_r": 350.0,
+    "skirt": 0.15,
+    "skirt_max_r": 200.0,
     "crater": false,
     "debris_count": 200,
     "debris_speed": 40.0,
@@ -901,13 +904,15 @@
     ],
     "wilson": 0.0,
     "stem_delay": 4.0,
-    "stem_density": 0.4,
-    "dust_wall": 0.6,
+    "stem_density": 0.15,
+    "dust_wall": 0.15,
     "wind": [
      1.0,
      -1.0
     ],
     "churn": 2.5,
+    "fireball_squash": 0.6,
+    "billow_sharp": 1.4,
     "fireball_r_m": 60.0,
     "cloud_top_m": 2000.0
    }
@@ -993,16 +998,16 @@
     "stem_detached_frac": 0.4,
     "stem_radius_m": 40.0,
     "stem_color": [
-     0.5,
-     0.42,
-     0.32
+     0.38,
+     0.32,
+     0.25
     ],
     "stem_density": 0.6,
-    "skirt": 0.25,
+    "skirt": 0.15,
     "wilson": 0.8,
     "wilson_duration": 0.6,
     "crater": false,
-    "dust_wall": 0.5,
+    "dust_wall": 0.2,
     "wind": [
      1.0,
      -1.5
@@ -1010,6 +1015,13 @@
     "churn": 1.5,
     "head_noise_scale": 0.35,
     "cap_aspect_max": 0.5,
+    "roll": 0.8,
+    "stem_stretch": 1.0,
+    "dust_color": [
+     0.5,
+     0.43,
+     0.34
+    ],
     "fireball_r_m": 38.0,
     "cloud_top_m": 2150.0,
     "cap_radius_m": 450.0
@@ -1112,11 +1124,26 @@
     "wilson": 0.6,
     "crater": false,
     "wind": [
-     3.0,
-     -3.0
+     4.0,
+     -4.0
     ],
     "churn": 1.5,
     "site_humidity": 0.25,
+    "ice_cap": {
+     "t_on": 0.25,
+     "dur": 0.6,
+     "opacity": 0.5,
+     "r_rel": 1.05
+    },
+    "tier2": {
+     "t_on": 0.45,
+     "dur": 0.8,
+     "opacity": 0.4,
+     "radius_m": 1600.0,
+     "height_rel": 0.55,
+     "half_m": 250.0
+    },
+    "roll": 0.6,
     "fireball_r_m": 175.0,
     "cloud_top_m": 9700.0,
     "cap_radius_m": 1750.0
@@ -1199,8 +1226,8 @@
     ],
     "stem_density": 0.55,
     "skirt": 1.5,
-    "skirt_height": 2.5,
-    "skirt_max_r": 3000.0,
+    "skirt_height": 1.1,
+    "skirt_max_r": 2200.0,
     "skirt_color": [
      0.16,
      0.13,
@@ -1680,13 +1707,13 @@
      0.85,
      0.85
     ],
-    "whiten_time": 0.5,
+    "whiten_time": 0.8,
     "stem_color": [
-     0.72,
-     0.7,
-     0.68
+     0.42,
+     0.28,
+     0.2
     ],
-    "stem_density": 0.35,
+    "stem_density": 0.55,
     "skirt": 0.25,
     "wilson": 1.0,
     "crater": false,
@@ -1710,10 +1737,12 @@
     ],
     "ice_cap": {
      "t_on": 0.08,
-     "dur": 0.3,
-     "opacity": 0.7
+     "dur": 0.07,
+     "opacity": 0.45,
+     "r_rel": 0.8,
+     "lift": 0.0
     },
-    "rings": 1,
+    "rings": 0,
     "core_cool_s": 90.0,
     "wind": [
      1.5,
@@ -1723,6 +1752,12 @@
     "core_radius": 0.35,
     "wilson_force": true,
     "site_humidity": 0.8,
+    "stem_radius_m": 800.0,
+    "stem_flare": 1.8,
+    "wilson_start": 0.5,
+    "wilson_duration": 5.0,
+    "wilson_flatten": 0.5,
+    "head_noise_amp": 0.5,
     "fireball_r_m": 650.0,
     "cloud_top_m": 23000.0,
     "cap_radius_m": 13500.0
@@ -1906,14 +1941,14 @@
    "profile": {
     "tod_hist": "dawn",
     "head_color_early": [
-     0.36,
-     0.14,
-     0.07
+     0.32,
+     0.15,
+     0.09
     ],
     "head_color_late": [
-     0.84,
-     0.83,
-     0.82
+     0.7,
+     0.72,
+     0.76
     ],
     "stem_color": [
      0.2,
@@ -1942,22 +1977,22 @@
      ],
      [
       40.0,
-      160.0,
+      60.0,
       6500.0,
-      5200.0,
-      200.0
+      1600.0,
+      80.0
      ]
     ],
     "tier2": {
-     "t_on": 0.1,
-     "dur": 0.6,
-     "opacity": 0.45,
-     "radius_m": 9000.0,
-     "height_rel": 0.45,
-     "half_m": 1500.0
+     "t_on": 0.06,
+     "dur": 0.2,
+     "opacity": 0.3,
+     "radius_m": 3000.0,
+     "height_rel": 0.3,
+     "half_m": 600.0
     },
-    "whiten_time": 0.4,
-    "core_cool_s": 45.0,
+    "whiten_time": 0.8,
+    "core_cool_s": 60.0,
     "wind": [
      1.5,
      -1.0
@@ -2222,11 +2257,11 @@
      0.77
     ],
     "stem_color": [
-     0.3,
-     0.25,
-     0.21
+     0.2,
+     0.16,
+     0.13
     ],
-    "stem_density": 1.2,
+    "stem_density": 1.6,
     "stem_radius_m": 3500.0,
     "skirt": 1.2,
     "skirt_color": [
@@ -2341,17 +2376,17 @@
     "dust_wall": 1.0,
     "wilson": 0.0,
     "ice_cap": {
-     "t_on": 0.04,
-     "dur": 0.45,
+     "t_on": 0.05,
+     "dur": 0.12,
      "opacity": 0.85
     },
     "tier2": {
-     "t_on": 0.12,
-     "dur": 0.7,
+     "t_on": 0.15,
+     "dur": 0.25,
      "opacity": 0.5,
-     "radius_m": 30000.0,
-     "height_rel": 0.5,
-     "half_m": 3000.0
+     "radius_m": 7500.0,
+     "height_rel": 0.18,
+     "half_m": 900.0
     },
     "overshoot": 0.08,
     "whiten_time": 0.4,
@@ -2372,6 +2407,8 @@
     "site_humidity": 0.85,
     "fireball_noise": 0.05,
     "fireball_noise_scale": 3.5,
+    "core_glow": 1.2,
+    "core_radius": 0.25,
     "fireball_r_m": 3500.0,
     "cloud_top_m": 40000.0,
     "cap_radius_m": 56500.0,
@@ -2475,11 +2512,11 @@
      ],
      [
       300.0,
-      50000.0
+      45000.0
      ],
      [
       600.0,
-      72000.0
+      55000.0
      ]
     ],
     "ice_cap": {
@@ -2491,9 +2528,9 @@
      "t_on": 0.15,
      "dur": 0.9,
      "opacity": 0.5,
-     "radius_m": 38000.0,
-     "height_rel": 0.62,
-     "half_m": 3500.0
+     "radius_m": 36000.0,
+     "height_rel": 0.9,
+     "half_m": 3000.0
     },
     "overshoot": 0.1,
     "whiten_time": 0.35,

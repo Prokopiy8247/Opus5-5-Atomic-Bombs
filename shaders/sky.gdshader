@@ -31,6 +31,7 @@ const float H_M = 1200.0;
 const float R_OZ = 6385e3;         // ozone layer (tent profile peaking at 25 km, 15 km half width)
 const float OZ_COL = 15000.0;      // its vertical column (m of peak density)
 const vec3 MS_TINT = vec3(0.6, 0.8, 1.0);
+const vec3 MS_TINT_LOW = vec3(0.35, 0.6, 1.0);
 
 vec2 ray_sphere(vec3 ro, vec3 rd, float r) {
 	float b = dot(ro, rd);
@@ -88,7 +89,9 @@ vec3 scatter(vec3 rd, vec3 L, float intensity) {
 	// multiple scattering: the air is also lit by the blue sky, itself lit by the sun above the
 	// dense layers (approximated by the sun's transmittance at 12 km)
 	vec3 t_hi = exp(-light_tau(vec3(0.0, R_E + 12000.0, 0.0), L, bm));
-	vec3 ms = ms_strength * t_hi * MS_TINT * clamp(L.y * 4.0 + 0.6, 0.0, 1.0);
+	// (at twilight the light reaching the low air is the blue upper sky, not the reddened sun)
+	vec3 tint = mix(MS_TINT_LOW, MS_TINT, smoothstep(0.05, 0.4, L.y));
+	vec3 ms = ms_strength * t_hi * tint * clamp(L.y * 4.0 + 0.6, 0.0, 1.0);
 	vec3 tau_v = vec3(0.0);
 	vec3 sum_r = vec3(0.0);
 	vec3 sum_m = vec3(0.0);

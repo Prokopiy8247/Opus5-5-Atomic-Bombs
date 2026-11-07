@@ -8,3 +8,4 @@ START 2026-11-07T05:33:02.3679849+01:00
 - 2026-11-07T07:44:28+01:00 FPS spot check 1440p: Little Boy bunker 265-293 fps; Tsar night bunker 217-275; Tsar zoom full-screen 46-181 fps
 - 2026-11-07T07:56:45+01:00 Review cycle 1 (art directors x5) received; systemic + per-bomb fixes applied; cycle 2 renders started
 - 2026-11-07T08:25:25.5026649+01:00 Range objects integrated (D013); QA driver error logger (D015); auto-quality fix (D014); wake chimney (D016); review cycle 2 workflow running; full QA matrix running
+- 2026-11-07T09:22:04.1195018+01:00 Cycle-2 fixes applied (systemic shader/profile/metering, per-bomb batches, framing, dome); run.bat/run_cinematic.bat path-quoting bug and movie resolution fixed; env + layers agents running

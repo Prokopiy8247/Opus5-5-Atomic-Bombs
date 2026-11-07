@@ -13,6 +13,6 @@ echo Godot 4.7.2 not found. Set the GODOT environment variable to Godot_v4.7.2-s
 pause
 exit /b 1
 :run
-if not exist ".godot\global_script_class_cache.cfg" "%GODOT%" --headless --path "%~dp0" --import
-start "" "%GODOT%" --path "%~dp0" %*
+if not exist ".godot\global_script_class_cache.cfg" "%GODOT%" --headless --path "%CD%" --import
+start "" "%GODOT%" --path "%CD%" %*
 endlocal

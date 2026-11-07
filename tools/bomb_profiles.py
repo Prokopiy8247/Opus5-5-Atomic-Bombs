@@ -251,7 +251,7 @@ CYCLE2 = {
     "grable": dict(tod_hist="noon", stem_flare=1.7, site_humidity=0.25),
     "little_boy": dict(head_color_early=[0.62, 0.55, 0.55], head_color_late=[0.88, 0.87, 0.86], whiten_time=0.12,
                        dark_base=0.7, core_radius=0.25, core_glow=0.8, core_cool_s=20.0, site_humidity=0.8,
-                       wilson_duration=0.7),
+                       wilson_duration=0.7, skirt_height=1.1, skirt_max_r=2200.0),
     "trinity": dict(core_glow=1.5, core_radius=0.6, core_cool_s=30.0, head_noise_amp=0.55, billow_sharp=1.4,
                     head_color_early=[0.42, 0.17, 0.07], roll=0.6, tint_time=1.0, site_humidity=0.45),
     "baker": dict(site_humidity=0.85, cap_appear=3.0, col_rise=5.5),
@@ -279,4 +279,30 @@ _bravo = PROFILES.get("castle_bravo", {})
 if "top_keys" in _bravo:
     CYCLE2["castle_bravo"]["top_keys"] = [[10.0, 3500.0], [20.0, 7000.0], [40.0, 11000.0]] + [k for k in _bravo["top_keys"] if k[0] > 40.0]
 for _k, _v in CYCLE2.items():
+    PROFILES.setdefault(_k, {}).update(_v)
+
+# cycle-2 review, severity-2 items (second batch)
+CYCLE2B = {
+    "moab": dict(stem_density=0.25, stem_radius_m=140.0, stem_flare=2.5, torus=0.3, head_noise_amp=0.7, billow_sharp=1.4),
+    "davy_crockett": dict(skirt_height=0.35, core_glow=0.6, core_cool_s=1.0),
+    "foab": dict(fireball_squash=0.6, fireball_noise_scale=4.0, head_color_late=[0.20, 0.18, 0.16], whiten_time=1.5,
+                 billow_sharp=1.4, dust_wall=0.15, skirt=0.15, skirt_max_r=200.0, stem_density=0.15),
+    "b61_12": dict(roll=0.8, stem_stretch=1.0, stem_color=[0.38, 0.32, 0.25], dust_wall=0.2, skirt=0.15,
+                   dust_color=[0.50, 0.43, 0.34]),
+    "grable": dict(ice_cap={"t_on": 0.25, "dur": 0.6, "opacity": 0.5, "r_rel": 1.05},
+                   tier2={"t_on": 0.45, "dur": 0.8, "opacity": 0.4, "radius_m": 1600.0, "height_rel": 0.55, "half_m": 250.0},
+                   roll=0.6, wind=[4.0, -4.0]),
+    "ivy_king": dict(rings=0, ice_cap={"t_on": 0.08, "dur": 0.07, "opacity": 0.45, "r_rel": 0.8, "lift": 0.0},
+                     stem_radius_m=800.0, stem_color=[0.42, 0.28, 0.20], stem_density=0.55, stem_flare=1.8,
+                     wilson_start=0.5, wilson_duration=5.0, wilson_flatten=0.5, head_noise_amp=0.5, whiten_time=0.8),
+    "rds37": dict(tier2={"t_on": 0.06, "dur": 0.2, "opacity": 0.3, "radius_m": 3000.0, "height_rel": 0.3, "half_m": 600.0},
+                  ring_list=[[2.0, 8.0, 2600.0, 2600.0, 120.0], [3.0, 8.0, 3600.0, 2800.0, 120.0], [40.0, 60.0, 6500.0, 1600.0, 80.0]],
+                  whiten_time=0.8, head_color_early=[0.32, 0.15, 0.09], head_color_late=[0.70, 0.72, 0.76], core_cool_s=60.0),
+    "castle_bravo": dict(tier2={"t_on": 0.15, "dur": 0.25, "opacity": 0.5, "radius_m": 7500.0, "height_rel": 0.18, "half_m": 900.0},
+                         ice_cap={"t_on": 0.05, "dur": 0.12, "opacity": 0.85}, stem_color=[0.20, 0.16, 0.13],
+                         stem_density=1.6, core_glow=1.2, core_radius=0.25),
+    "test219": dict(tier2={"t_on": 0.15, "dur": 0.9, "opacity": 0.5, "radius_m": 36000.0, "height_rel": 0.9, "half_m": 3000.0},
+                    cap_d_keys=[[40.0, 13000.0], [60.0, 16000.0], [300.0, 45000.0], [600.0, 55000.0]]),
+}
+for _k, _v in CYCLE2B.items():
     PROFILES.setdefault(_k, {}).update(_v)

@@ -26,6 +26,20 @@ exit /b 1
 :run
 if not exist movie mkdir movie
 set /a FRAMES=%SECS%*60
-"%GODOT%" --path "%~dp0" --resolution %RES% --fixed-fps 60 --write-movie "movie\b%BOMB%_frame.png" --quit-after %FRAMES% -- --bomb %BOMB% --tod %TOD% --view %VIEW% --autolaunch
-echo Done: movie\b%BOMB%_frame*.png
+rem Godot's Movie Maker records at the project's base viewport size and ignores --resolution, so the
+rem output size is set through a temporary override.cfg (stretch mode "viewport": the 3D view is
+rem rendered at full output resolution even if the window is smaller). It is removed afterwards.
+for /f "tokens=1,2 delims=x" %%a in ("%RES%") do (
+  set "MW=%%a"
+  set "MH=%%b"
+)
+(
+  echo [display]
+  echo window/size/viewport_width=%MW%
+  echo window/size/viewport_height=%MH%
+  echo window/stretch/mode="viewport"
+) > override.cfg
+"%GODOT%" --path "%CD%" --resolution 1280x720 --fixed-fps 60 --write-movie "movie\b%BOMB%_frame.png" --quit-after %FRAMES% -- --bomb %BOMB% --tod %TOD% --view %VIEW% --autolaunch
+del override.cfg
+echo Done: movie\b%BOMB%_frame*.png (%MW%x%MH%)
 endlocal

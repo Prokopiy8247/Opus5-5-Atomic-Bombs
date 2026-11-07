@@ -92,14 +92,20 @@ float vnoise(vec2 p) {
 	return mix(mix(hash12(i), hash12(i + vec2(1, 0)), u.x), mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), u.x), u.y);
 }
 
-float road_mask(vec2 xz, float aa) {
-	// Main range road along the corridor, a few cross roads and a ring road.
-	float m = 0.0;
+// Coverage of a band |d| < hw box-filtered over the pixel footprint fw (in d units): stays exact
+// when resolved and becomes a proportionally fainter line (never a full-width stripe) when not.
+float band_cov(float d, float hw, float fw) {
+	fw = max(fw, 1e-4);
+	return clamp((min(d + 0.5 * fw, hw) - max(d - 0.5 * fw, -hw)) / fw, 0.0, 1.0);
+}
+
+float road_mask(vec2 xz) {
+	// Main range road along the corridor and a few cross roads.
 	float d1 = abs(xz.x - 340.0 + 0.02 * xz.y);
-	m = max(m, 1.0 - smoothstep(3.5, 3.5 + aa, d1)) * step(xz.y, 200.0);
+	float m = band_cov(d1, 3.5, fwidth(d1)) * step(xz.y, 200.0);
 	float cross_period = 8000.0;
 	float cy = abs(mod(xz.y + 1500.0, cross_period) - cross_period * 0.5);
-	m = max(m, (1.0 - smoothstep(3.0, 3.0 + aa, cy)) * step(xz.y, -1500.0) * step(abs(xz.x), 30000.0));
+	m = max(m, band_cov(cy, 3.0, min(fwidth(cy), 500.0)) * step(xz.y, -1500.0) * step(abs(xz.x), 30000.0));
 	return m;
 }
 
@@ -121,53 +127,76 @@ void fragment() {
 		}
 	}
 	float dist = length(wp - CAMERA_POSITION_WORLD);
-	float eps = max(0.35, dist * 0.0012);
+	// Pixel footprint on the ground (major axis: the foreshortened depth direction at grazing
+	// angles). Every procedural detail fades out by its own wavelength against it, a procedural
+	// stand-in for anisotropic filtering: nothing aliases into horizontal streaks or stripes, and the
+	// faded value is the detail's mean so near and far ground keep the same tone (no LOD seam).
+	vec2 fwv = fwidth(xz);
+	float fp = max(max(fwv.x, fwv.y), 1e-3);
+	// albedo detail may be slightly under-sampled in depth (bushes read as short horizontal dashes,
+	// as in real low-angle views) but never along the horizon: area footprint, capped by the major axis
+	float fpa = min(1.6 * sqrt(max(fwv.x * fwv.y, 1e-6)), fp);
+	// normal from the heights filtered over the footprint
+	float eps = max(max(0.35, dist * 0.0012), fp * 0.5);
 	float hc = full_height(xz);
 	float hx = full_height(xz + vec2(eps, 0.0));
 	float hz = full_height(xz + vec2(0.0, eps));
 	vec3 n = normalize(vec3(hc - hx, eps, hc - hz));
 
-	// close-range micro relief (cracked playa, pebbles)
-	float detail_fade = 1.0 - smoothstep(60.0, 900.0, dist);
-	if (detail_fade > 0.0) {
+	// close-range micro relief (sand ripples, pebbles): subtle, each octave fades once unresolved
+	float f1 = (1.0 - smoothstep(0.2, 0.6, fp * 1.7)) * (1.0 - smoothstep(300.0, 900.0, dist));
+	if (f1 > 0.0) {
+		float f2 = 1.0 - smoothstep(0.2, 0.6, fp * 5.1);
 		float e2 = 0.15;
-		float d0 = vnoise(xz * 1.7) + 0.5 * vnoise(xz * 5.1);
-		float dx = vnoise((xz + vec2(e2, 0.0)) * 1.7) + 0.5 * vnoise((xz + vec2(e2, 0.0)) * 5.1);
-		float dz = vnoise((xz + vec2(0.0, e2)) * 1.7) + 0.5 * vnoise((xz + vec2(0.0, e2)) * 5.1);
-		n = normalize(n + detail_fade * 0.35 * vec3(d0 - dx, 0.0, d0 - dz) / e2 * 0.15);
+		float d0 = vnoise(xz * 1.7) + 0.5 * f2 * vnoise(xz * 5.1);
+		float dx = vnoise((xz + vec2(e2, 0.0)) * 1.7) + 0.5 * f2 * vnoise((xz + vec2(e2, 0.0)) * 5.1);
+		float dz = vnoise((xz + vec2(0.0, e2)) * 1.7) + 0.5 * f2 * vnoise((xz + vec2(0.0, e2)) * 5.1);
+		n = normalize(n + f1 * 0.1 * vec3(d0 - dx, 0.0, d0 - dz) / e2 * 0.15);
 	}
 
 	float slope = 1.0 - n.y;
 	float hflat = t_height_flat(xz);
 	float mm = t_mountain_mask(xz);
-	// macro variation
-	float macro = t_fbm(xz * 0.00011 + vec2(5.2, 1.3), 4);
-	float meso = t_fbm(xz * 0.0019 + vec2(-2.0, 7.0), 3);
-	vec3 sand = vec3(0.60, 0.50, 0.38);
-	vec3 playa = vec3(0.74, 0.69, 0.60);
+	// macro variation (octaves faded by the footprint: finest wavelengths ~2.2 km and ~200 m)
+	float macro = t_fbm(xz * 0.00011 + vec2(5.2, 1.3), 4) * (1.0 - smoothstep(500.0, 2500.0, fp));
+	float meso = t_fbm(xz * 0.0019 + vec2(-2.0, 7.0), 3) * (1.0 - smoothstep(40.0, 160.0, fpa));
+	vec3 sand = vec3(0.60, 0.51, 0.40);
+	vec3 playa = vec3(0.74, 0.69, 0.61);
 	vec3 rock = vec3(0.36, 0.29, 0.23);
 	vec3 rock_dark = vec3(0.22, 0.19, 0.17);
 	vec3 scrub = vec3(0.33, 0.31, 0.24);
-	// playa where the ground is low and flat
-	float playa_m = smoothstep(-21.0, -24.5, hflat) * (1.0 - mm);
+	// playa where the ground is low and flat (edge widened by the footprint); the bunker berm is
+	// built from playa soil, so its crest does not cut a dark band against the pale playa beyond
+	float fwh = fwidth(hflat);
+	float playa_m = smoothstep(-21.0 + fwh, -24.5 - fwh, hflat) * (1.0 - mm);
+	playa_m = max(playa_m, 0.5 * (1.0 - smoothstep(420.0, 700.0, length(xz))));
 	vec3 col = mix(sand, playa, playa_m);
 	col *= 0.86 + 0.22 * macro + 0.10 * meso;
-	// washes: sinuous lighter channels
-	float wash = 1.0 - smoothstep(0.0, 0.05, abs(t_fbm(xz * 0.00052 + vec2(11.0, 3.0), 4)));
-	col = mix(col, vec3(0.78, 0.71, 0.58), wash * 0.55 * (1.0 - mm));
-	// scrub speckles (fade with distance to avoid aliasing)
-	float sp_fade = 1.0 - smoothstep(300.0, 4000.0, dist);
-	float sp = smoothstep(0.72, 0.80, vnoise(xz * 0.45)) * (1.0 - playa_m);
-	col = mix(col, scrub, sp * 0.65 * sp_fade);
-	col = mix(col, mix(col, scrub, 0.22 * (1.0 - playa_m)), 1.0 - sp_fade);
+	// mid-scale mottling (soil patches ~5-15 m), only where resolved
+	float k1 = 1.0 - smoothstep(4.0, 12.0, fpa);
+	float k2 = 1.0 - smoothstep(1.2, 4.0, fpa);
+	col *= 1.0 + 0.10 * (vnoise(xz * 0.07 + vec2(7.1, 2.3)) - 0.5) * k1 + 0.08 * (vnoise(xz * 0.23 + vec2(1.7, 5.9)) - 0.5) * k2;
+	// washes: broad, soft, broken lighter channels; filtered so they never become crisp
+	// full-width "painted" stripes when seen edge-on
+	float wf = abs(t_fbm(xz * 0.00052 + vec2(11.0, 3.0), 4));
+	float wfw = fwidth(wf);
+	float wash = (1.0 - smoothstep(0.0, 0.09 + wfw, wf)) * 0.09 / (0.09 + wfw);
+	wash *= clamp(0.55 + meso * 1.5, 0.0, 1.0);
+	col = mix(col, vec3(0.76, 0.70, 0.59), wash * 0.3 * (1.0 - mm));
+	// scrub: broad patches (density) with speckles that fade into their mean once unresolved
+	float dens_k = 1.0 - smoothstep(15.0, 60.0, fpa);
+	float dens = mix(1.0, 0.35 + 1.3 * vnoise(xz * 0.013 + vec2(3.7, 1.9)), dens_k);
+	float sp_fade = 1.0 - smoothstep(0.2, 0.6, fpa);
+	float sp = smoothstep(0.66, 0.84, vnoise(xz * 0.45));
+	// 0.144 = mean coverage of the speckle mask
+	col = mix(col, scrub, clamp(mix(0.144, sp, sp_fade) * 0.45 * dens, 0.0, 1.0) * (1.0 - playa_m));
 	// rock on mountains and slopes
 	float rock_m = clamp(mm * 1.3, 0.0, 1.0) * smoothstep(0.02, 0.18, slope + 0.05 * meso);
 	rock_m = max(rock_m, smoothstep(0.25, 0.45, slope));
 	vec3 rk = mix(rock, rock_dark, clamp(0.5 + 0.8 * meso, 0.0, 1.0));
 	col = mix(col, rk, rock_m);
-	// roads
-	float aa = max(fwidth(xz.x), fwidth(xz.y)) * 1.5;
-	float road = road_mask(xz, aa + 0.5) * (1.0 - mm);
+	// roads (box-filtered: a sub-pixel road far away is a faint line, not a dark stripe)
+	float road = road_mask(xz) * (1.0 - mm);
 	col = mix(col, vec3(0.30, 0.28, 0.26), road * 0.8);
 	// snow (Novaya Zemlya preset)
 	float snow = g_snow * clamp(1.0 - slope * 1.6 + 0.3 * meso, 0.0, 1.0);
@@ -237,8 +266,8 @@ void fragment() {
 		col = mix(col, col * 0.55, shore);
 	}
 
-	FOG = atm_fog(CAMERA_POSITION_WORLD, wp);
-	ALBEDO = col;
+	FOG = vec4(0.0);
+	ALBEDO = vec3(0.5);
 	ROUGHNESS = rough;
 	SPECULAR = 0.3;
 	EMISSION = emis;
@@ -251,9 +280,14 @@ void light() {
 	if (LIGHT_IS_DIRECTIONAL) {
 		att *= 1.0 - v_cloud_shadow;
 	}
-	// wrap a little for soft terminators on dunes
-	float wrap = clamp((dot(NORMAL, LIGHT) + 0.15) / 1.15, 0.0, 1.0);
-	DIFFUSE_LIGHT += mix(ndl, wrap, 0.3) * att * LIGHT_COLOR / PI;
+	// Wrap for soft terminators on dunes. A grazing sun also lights the grain tops and ripple
+	// faces of sand far more than Lambert's N.L of the mean surface (particulate surfaces behave
+	// closer to Lommel-Seeliger), so a low sun gets more wrap: warm sand at dawn, not a magenta
+	// plane lit only by the blue sky.
+	float low = LIGHT_IS_DIRECTIONAL ? 1.0 - smoothstep(0.03, 0.3, g_sun_dir.y) : 0.0;
+	float w_off = mix(0.15, 0.25, low);
+	float wrap = clamp((dot(NORMAL, LIGHT) + w_off) / (1.0 + w_off), 0.0, 1.0);
+	DIFFUSE_LIGHT += mix(ndl, wrap, 0.3 + 0.2 * low) * att * LIGHT_COLOR / PI;
 	vec3 h = normalize(VIEW + LIGHT);
 	float spec = pow(clamp(dot(NORMAL, h), 0.0, 1.0), 24.0) * 0.04;
 	SPECULAR_LIGHT += spec * att * LIGHT_COLOR * ndl;

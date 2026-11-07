@@ -128,6 +128,8 @@ func _start_game() -> void:
 		ui.show_menu(true)
 	_update_mouse()
 	print("READY")
+	if Args.has("menu_drive"):
+		_menu_drive()
 	if Args.has("ui_shot"):
 		# QA: screenshot of the terminal menu (optionally in English / another bomb)
 		if Args.has("lang"):
@@ -140,6 +142,52 @@ func _start_game() -> void:
 		var p := out.path_join("ui_menu_%s.png" % Game.lang)
 		print("SHOT ", p, " err=", get_viewport().get_texture().get_image().save_png(p))
 		get_tree().quit()
+
+
+## QA (clean-launch test via run.bat): drives the REAL terminal menu like a player would: selects a
+## bomb, moves the logarithmic range slider, presses the Launch button, waits for the detonation and
+## takes screenshots of every step. Run: run.bat -- --menu_drive [--bomb N] [--out DIR]
+func _menu_drive() -> void:
+	var out := Args.get_str("out", OS.get_user_data_dir().path_join("menu_drive"))
+	DirAccess.make_dir_recursive_absolute(out)
+	for i in 60:
+		await get_tree().process_frame
+	var ok := ui != null and ui.get("menu") != null
+	print("MENU_DRIVE ui=", ok)
+	if not ok:
+		print("FAIL")
+		get_tree().quit()
+		return
+	var menu: Node = ui.get("menu")
+	await _menu_shot(out, "1_menu")
+	menu.call("select_bomb", Args.get_int("bomb", 10) - 1)
+	await get_tree().process_frame
+	var slider: HSlider = menu.get("_dist_slider")
+	slider.value = 0.57
+	for i in 10:
+		await get_tree().process_frame
+	print("MENU_DRIVE bomb=", Game.selected_bomb + 1, " dist_km=", snappedf(Game.distance_km, 0.01))
+	await _menu_shot(out, "2_slider")
+	var btn: Button = menu.get("_launch_btn")
+	btn.pressed.emit()
+	var t0 := Time.get_ticks_msec()
+	while state == State.FLIGHT and Time.get_ticks_msec() - t0 < 60000:
+		await get_tree().process_frame
+	await _menu_shot(out, "3_detonation")
+	var t1 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t1 < 8000:
+		await get_tree().process_frame
+	await _menu_shot(out, "4_explosion")
+	var good := explosion != null and explosion.age > 5.0
+	print("MENU_DRIVE launched=", explosion != null, " age=", snappedf(explosion.age if explosion else -1.0, 0.1))
+	print("READY" if good else "FAIL")
+	get_tree().quit()
+
+
+func _menu_shot(out: String, name: String) -> void:
+	await RenderingServer.frame_post_draw
+	var p := out.path_join("menu_drive_%s.png" % name)
+	print("SHOT ", p, " err=", get_viewport().get_texture().get_image().save_png(p))
 
 
 # ------------------------------------------------------------------ world / targets

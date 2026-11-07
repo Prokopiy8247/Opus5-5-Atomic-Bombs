@@ -12,9 +12,9 @@ global uniform vec4 g_fireball_color;  // rgb colour, w luminous intensity
 global uniform float g_exposure;
 
 const float ATM_GROUND_Y = -22.0;
-// Radiance of the fireball surface per unit of g_fireball_color.w (matches the volume's
-// emission ~1600 at 8000 K for the megaton shots at their viewing distance).
-const float ATM_FB_RADIANCE = 5.5;
+// Apparent (haze-attenuated) radiance of the fireball surface per unit of g_fireball_color.w,
+// calibrated on the explosion volume for the megaton shots at their viewing distance.
+const float ATM_FB_RADIANCE = 3.0;
 
 // Optical depth of an exponential layer between two points (straight segment).
 float atm_layer_od(vec3 a, vec3 b, float sigma0, float H) {
@@ -59,15 +59,17 @@ vec3 atm_fireball_glow(vec3 cam, vec3 v, float near_w) {
 	float ang = 2.0 * asin(clamp(0.5 * length(v - fd), 0.0, 1.0));
 	float x = max(ang - ang_r, 0.0) / ang_r;          // distance from the limb in ball radii
 	float hum = atm_humidity();
-	// near field: air around the ball lit by it (falls off over ~1-1.5 radii)
-	float near_f = exp(-x / (1.0 + 0.5 * hum));
+	// near field: air around the ball lit by it (falls off within ~1 radius)
+	float near_f = exp(-x / (0.55 + 0.35 * hum));
 	// aureole: forward (Mie) scattering of the ball's light by the haze along the line of sight
-	float aur = pow(1.0 + x, -1.5);
+	float aur = 1.0 / ((1.0 + x) * (1.0 + x));
 	// broad glow of the whole sky around the ball
 	float wide = exp(-ang / 0.45);
-	float rel = near_w * 0.05 * (0.7 + 0.9 * hum) * near_f
-			+ 0.025 * (0.6 + 1.2 * hum) * aur
-			+ 0.004 * (0.5 + 1.5 * hum) * wide;
+	// limb: ~4.5 % of the ball at 35 % humidity, ~9 % in humid air; ~1 % one radius out,
+	// ~0.2 % three radii out (Tsar 1961 frame)
+	float rel = near_w * 0.03 * (0.7 + 0.9 * hum) * near_f
+			+ 0.012 * (0.6 + 1.2 * hum) * aur
+			+ 0.001 * (0.5 + 1.5 * hum) * wide;
 	// incandescence (sRGB-like Kelvin colour -> linear), reddened by the Rayleigh path to the ball;
 	// g_fireball_color.w already carries the grey transmittance, so keep the luminance
 	vec3 c = pow(max(g_fireball_color.rgb, vec3(0.0)), vec3(2.2));

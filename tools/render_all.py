@@ -65,6 +65,12 @@ def main():
                            "--bomb", str(n), "--dist", f"{dist:.3f}", "--tod", tod, "--view", view,
                            "--shots", shots, "--out", a.out, "--sheet", "1",
                            "--prefix", f"b{n:02d}_{b['id']}_{view}_{tod}_{dmode}"] + (a.extra.split() if a.extra else [])
+                    if view == "near":
+                        # outside cinematic camera between the bunker and ground zero (same as tools/make_screens.py)
+                        from make_screens import BOMB_NEAR, LOOK_H
+                        near = max(min(rec * 0.12, 25.0), 0.8) * 1000.0
+                        cmd += ["--near", str(int(max(BOMB_NEAR.get(b["id"], 0), near))), "--fov", "55",
+                                "--look_h", str(int(LOOK_H.get(b["id"], 300))), "--cam_h", "30"]
                     t1 = time.time()
                     with open(log, "w", encoding="utf-8", errors="replace") as f:
                         try:
