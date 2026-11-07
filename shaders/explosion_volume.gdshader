@@ -274,14 +274,18 @@ float head_density(vec3 p, out float cauli, out vec2 rc_out) {
 	// noise cell follows the cap THICKNESS: flat megaton caps keep cauliflower-sized lobes
 	float cell = (0.6 * H + 0.12 * R) * head_heat.w;
 	vec3 np = qn / cell + vec3(seed * 1.3, seed * 0.37, seed * 0.71) + vec3(0.3, -1.0, 0.2) * (age * churn);
-	float warp = nlf(np * 0.13) - 0.5;
-	float b1 = nbl(np * 0.32 + warp * 0.35);
-	float b2 = nbl(np * 0.95 + 5.3);
-	float b3 = nbl(np * 2.6 + 11.0);
-	float b4 = nbl(np * 6.1 + 17.0);
+	// Feature sizes (the billow volume holds 6/12/24 Worley cells per tile, the fbm 4..64): with
+	// cell ~0.23 R the lookups below give big lobes ~0.35 R carrying their own sub-lobes (the
+	// cauliflower hierarchy), secondary lobes ~0.13 R and fine texture that only shades.
+	// (cycle 3: the old multipliers were 3x higher -> 0.04-0.12 R 'pom-pom' hair everywhere)
+	float warp = nlf(np * 0.07) - 0.5;
+	float b1 = nbl(np * 0.11 + warp * 0.22);
+	float b2 = nbl(np * 0.30 + 5.3);
+	float b3 = nbl(np * 0.85 + 11.0);
+	float b4 = nbl(np * 2.1 + 17.0);
 	float sharp = head_detail.y;
-	cauli = pow(b1, sharp) * 0.46 + pow(b2, sharp) * 0.33 + b3 * 0.14 + b4 * 0.07;
-	float shape_n = pow(b1, sharp) * 0.58 + pow(b2, sharp) * 0.36 + b3 * 0.06;
+	cauli = pow(b1, sharp) * 0.50 + pow(b2, sharp) * 0.30 + b3 * 0.14 + b4 * 0.06;
+	float shape_n = pow(b1, sharp) * 0.64 + pow(b2, sharp) * 0.30 + b3 * 0.06;
 	float disp = (shape_n - 0.42) * 1.35 + warp * 0.6;
 	float dn = base - disp * amp;
 	float edge = H * 0.07;

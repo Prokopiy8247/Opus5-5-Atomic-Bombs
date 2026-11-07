@@ -166,13 +166,21 @@ func _setup_view_dynamic(view: String, ex: Explosion) -> void:
 		var dn := maxf(d - w * 0.5, d * 0.35)
 		a_top = maxf(a_top, atan(top / dn))
 		a_w = maxf(a_w, 2.0 * atan(w * 0.5 / dn))
-	var vfov := maxf(a_top * 1.3, a_w / (16.0 / 9.0) * 1.15)
+	# ground zero sits 22% above the bottom edge, the top of the cloud ~8% below the top edge
+	var vfov := maxf(a_top / 0.70, a_w / (16.0 / 9.0) * 1.15)
 	var hfov := rad_to_deg(2.0 * atan(tan(vfov * 0.5) * 16.0 / 9.0))
-	cam.fov = clampf(hfov, 3.0, 58.0)
+	cam.fov = clampf(hfov, 3.0, 80.0)
 	cam.target_fov = cam.fov
-	var vf := deg_to_rad(cam.fov) / (16.0 / 9.0)
-	var pitch := clampf(a_top * 0.5, vf * 0.15, deg_to_rad(40.0))
+	var vf := 2.0 * atan(tan(deg_to_rad(cam.fov) * 0.5) * 9.0 / 16.0)
 	var dir := (ex.gz - cam.global_position)
+	# elevation of ground zero seen from the eye (negative: below the horizontal; includes the
+	# terrain drop from Earth curvature, which the terrain applies)
+	var el_gz := atan2(dir.y, Vector2(dir.x, dir.z).length())
+	var pitch := el_gz + vf * 0.28
+	if a_top > vf * 0.70:
+		# widest field of view reached: tilt up to keep the top in, ground zero stays >= 4% in
+		pitch = minf(el_gz + a_top - vf * 0.45, el_gz + vf * 0.46)
+	pitch = minf(pitch, deg_to_rad(40.0))
 	cam.set_look(atan2(-dir.x, -dir.z), pitch)
 
 

@@ -324,6 +324,15 @@ func head_state(t: float) -> Dictionary:
 	var rh := _head_rh(t)
 	var r := rh.x
 	var h := rh.y
+	if nuclear:
+		# while the ball is still opaque the cloud IS the ball: the head may not balloon into a
+		# translucent shell around it (cycle 3: a grey blotchy 'egg' around Little Boy / King at
+		# 5-20 s). It grows to its own size as the fireball fades.
+		var fsb := fireball_state(t)
+		var fo := clampf(float(fsb["opacity"]) * 1.4, 0.0, 1.0)
+		var rb := maxf(float(fsb["radius"]), rh.z) * 1.04
+		r = lerpf(r, minf(r, rb), fo)
+		h = lerpf(h, minf(h, rb * float(fsb["squash"])), fo)
 	st["center_y"] = head_center_eff(t)
 	st["radius"] = r
 	st["half"] = h

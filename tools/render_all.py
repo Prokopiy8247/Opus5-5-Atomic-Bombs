@@ -72,11 +72,15 @@ def main():
                         cmd += ["--near", str(int(max(BOMB_NEAR.get(b["id"], 0), near))), "--fov", "55",
                                 "--look_h", str(int(LOOK_H.get(b["id"], 300))), "--cam_h", "30"]
                     t1 = time.time()
-                    with open(log, "w", encoding="utf-8", errors="replace") as f:
-                        try:
-                            subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, timeout=600)
-                        except subprocess.TimeoutExpired:
-                            f.write("\nTIMEOUT\n")
+                    for attempt in range(2):
+                        # a windowed run normally takes ~10 s; a rare stall (the window stops
+                        # drawing) is killed and retried once
+                        with open(log, "w", encoding="utf-8", errors="replace") as f:
+                            try:
+                                subprocess.run(cmd, stdout=f, stderr=subprocess.STDOUT, timeout=150)
+                                break
+                            except subprocess.TimeoutExpired:
+                                f.write("\nTIMEOUT\n")
                     txt = open(log, encoding="utf-8", errors="replace").read()
                     bad = [l for l in txt.splitlines() if ("SCRIPT ERROR" in l or l.startswith("ERROR") or "SHADER ERROR" in l or "Parse Error" in l)
                            and "RID allocations" not in l and "PagedAllocator" not in l and "Unreferenced static" not in l]
