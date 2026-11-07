@@ -490,6 +490,11 @@ func _screenshot() -> void:
 
 func _exit_tree() -> void:
 	FxResources.release()
+	for path in ["res://scripts/ui/ui_theme.gd", "res://scripts/bombs/bomb_models.gd"]:
+		if ResourceLoader.exists(path):
+			var sc: Script = load(path)
+			if sc and sc.has_method("release"):
+				sc.call("release")
 
 
 func _process(delta: float) -> void:

@@ -20,6 +20,11 @@ const SEGS_SMALL := 8     # radial segments of tubes / rings
 static var _mat_cache: Dictionary = {}
 
 
+## Drops the static material cache at exit.
+static func release() -> void:
+	_mat_cache.clear()
+
+
 # =========================================================== mesh builder ===
 
 ## One surface (one material) of a mesh under construction.

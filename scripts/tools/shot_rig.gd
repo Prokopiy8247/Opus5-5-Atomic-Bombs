@@ -118,7 +118,13 @@ func _setup_view(view: String, ex: Explosion) -> void:
 			cam.position = p
 			var aim := ex.gz + Vector3(0, Args.get_float("look_h", 50.0), 0)
 			var d := (aim - p).normalized()
-			cam.set_look(atan2(-d.x, -d.z), asin(clampf(d.y, -1.0, 1.0)))
+			# keep the ground-zero horizon inside the frame (>= 10% above the bottom edge)
+			var hf := deg_to_rad(Args.get_float("fov", 55.0))
+			var vf := 2.0 * atan(tan(hf * 0.5) * 9.0 / 16.0)
+			var gzd := (ex.gz - p)
+			var el_gz := atan2(gzd.y, Vector2(gzd.x, gzd.z).length())
+			var pitch := minf(asin(clampf(d.y, -1.0, 1.0)), el_gz + vf * 0.4)
+			cam.set_look(atan2(-d.x, -d.z), pitch)
 	var fov := Args.get_float("fov", -1.0)
 	if fov > 0.0:
 		cam.fov = fov

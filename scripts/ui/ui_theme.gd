@@ -48,6 +48,14 @@ static var _font_bold: Font = null
 static var _scan_shader: Shader = null
 
 
+## Drops the static caches at exit so no GPU resources outlive the RenderingServer.
+static func release() -> void:
+	_theme = null
+	_font = null
+	_font_bold = null
+	_scan_shader = null
+
+
 # ---------------------------------------------------------------- fonts
 
 static func font(bold: bool = false) -> Font:

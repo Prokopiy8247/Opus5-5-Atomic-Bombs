@@ -38,8 +38,38 @@ at the given age and 240 frames timed; `--write-movie` is never used for FPS).
 
 ## 5. Launch scripts
 
-<!--LAUNCH-->
+Bugs found and fixed while testing the scripts themselves:
+- `run.bat` and `run_cinematic.bat` passed `--path "%~dp0"`; the trailing backslash of `%~dp0`
+  escapes the closing quote on the Windows command line, so Godot received a garbled project path
+  ("Invalid project path specified ... aborting"). Both now `cd` to the script folder and pass
+  `--path "%CD%"`.
+- Godot's Movie Maker records at the project's base viewport size and ignores `--resolution`, so
+  `run_cinematic.bat ... 3840x2160` produced 1920x1080 frames. The script now writes a temporary
+  `override.cfg` (viewport size = requested resolution, stretch mode `viewport`) and deletes it
+  afterwards. Verified: `run_cinematic.bat 1 1 1280x720 noon bunker` → 60 PNG frames of 1280x720 +
+  WAV, `override.cfg` removed; a 30 s 1080p run (B61-12, launch → flight → detonation) wrote 1800
+  frames + WAV with no errors (render 1.5 ms/frame, PNG encoding 280 ms/frame).
+
+<!--CLEANLAUNCH-->
 
 ## 6. Known limitations
 
-<!--LIMITS-->
+- **Art quality is not photographic.** Three independent art-director review cycles scored the
+  explosions harshly (see section 4); the remaining issues are listed per bomb in
+  `docs/reviews/cycle3_art_review.json`. The main systemic ones: cauliflower detail of very large caps
+  is still coarser than in the films; condensation rings/ice caps are simple soft discs and lenses;
+  HE debris is a modest particle set, not individual clods with dust trails.
+- **Ground events at long range** (Sedan's dome, craters, ejecta aprons) are partly drawn in the
+  explosion volume because the camera-centred terrain LOD cannot resolve 100 m features 10+ km away.
+- **Scale objects on the range** (houses, trees, vehicles, towers…) are only a few pixels from the
+  bunker at the recommended distance; they need the binocular zoom, and are invisible for megatons.
+- **Wilson clouds and Baker's lagoon** depend on the site humidity defaults (D020); a dry setting
+  (H key) removes the condensation features by design.
+- **Shutdown warning:** Godot prints `7 RIDs of type "Texture" were leaked` when the game quits. It
+  persists after all static caches are released and comes from engine-internal RenderingDevice
+  resources at exit; it is a warning at shutdown, not an error during play.
+- **Cinematic render speed:** Godot's PNG encoder needs ~0.3 s per 1080p frame (~1 s at 4K); a 90 s
+  4K clip takes over an hour to write (rendering itself is ~1.5 ms/frame).
+- **Physics simplifications** (documented in `docs/RESEARCH_NOTES.md` and `docs/DECISIONS.md`):
+  scaled-law fireball growth, a parametric cloud-rise model rather than a plume simulation,
+  measured per-bomb keyframes where the films give them; no fallout, EMP or ionisation modelling.
