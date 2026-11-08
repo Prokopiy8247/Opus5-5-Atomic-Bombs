@@ -20,3 +20,5 @@ START 2026-11-07T05:33:02.3679849+01:00
 - 2026-11-07T23:28:52+01:00 Audio code review (13 agents): 9 confirmed bugs fixed (echo gain window/caps, ridge geometry, causal front high-pass, BlastSyn bus, synthesis race, movie determinism, far-field bracket, FAE delay); sweep 140 events clean; test_audio 133/133, selftest 126/126; 60 screens in docs/screens
 - 2026-11-08T00:02:08+01:00 Clean launch (.godot deleted -> run.bat import -> menu-drive READY, synth audio at blast arrival); run_cinematic.bat 20 s tested; movie-exit playback leak fixed; final QA matrix 121/121, 0 errors
 END 2026-11-08T00:05:22+01:00 (active 8h 05m 00s, wall 18h 32m 20s, pause 10h 27m 20s; statistics in docs/PROJECT_STATS.md)
+- 2026-11-08T06:15:00+01:00 USER REQUEST after completion: build the game -> export preset + build.bat
+- 2026-11-08T06:31:24+01:00 Standalone build verified from a copy outside the project (menu-drive with synth audio READY, Tsar night and Baker autolaunch, screenshots checked); README, QA_REPORT section 5, D038

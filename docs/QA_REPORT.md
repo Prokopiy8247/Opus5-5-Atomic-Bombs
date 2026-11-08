@@ -314,6 +314,21 @@ Final clean-launch test (2026-11-07, after all changes):
    ends the render are never released); `run_cinematic.bat` now passes the frame count (`--movie_frames`) and the
    sound manager stops every voice 4 frames before the end: 0 leaked instances, last 50 ms silent.
 
+Standalone build (2026-11-08, `build.bat`, Godot 4.7.2 release template `windows_release_x86_64`):
+1. Export of the "Windows Desktop" preset in 6 s, no warnings or errors in the log; the pack holds the 4 runtime data
+   files (`bombs.json`, `locale.json`, `noise_fbm.bin`, `noise_billow.bin`), all scenes, scripts (binary tokens) and
+   shaders; `tools/`, the self-test scene and `research_values.json` are excluded. Output: `AtomicBombs.exe`
+   (111.6 MB, PCK embedded, version info "Atomic Bombs 1.0.0.0") + `AtomicBombs.console.exe` (91 KB).
+2. The two files were copied to a folder outside the project and run from there (so nothing could be read from the
+   project files): `-- --menu_drive --audio_log` gave the same result as the editor run above (Little Boy at
+   15.2 km, `blast_front` at t = 43.13 s at -4.2 dB, `mode=synth`, `READY`); the screenshots of the menu, the
+   detonation and the cloud match the editor ones.
+3. `--autolaunch` of Tsar Bomba at night (shots at 3/20/40 s, fps 540/540/299) and Baker at noon (fps 638/649/242,
+   water column and Wilson cloud rendered) in a 1920x1080 window: no errors; the only message at exit is the known
+   "7 RIDs of type Texture were leaked" warning (section 6).
+4. `AtomicBombs.exe res://scenes/selftest.tscn` is refused by the release template ("compiled without support for
+   path overrides"), so the self-test stays an editor-binary tool and was removed from the build.
+
 ## 6. Known limitations
 
 - **Art quality is not photographic.** Three independent art-director review cycles scored the

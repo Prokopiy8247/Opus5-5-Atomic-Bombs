@@ -7,3 +7,4 @@
 docs/research_parts/*.tmp
 override.cfg
 /movie/
+/build/

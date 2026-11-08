@@ -25,9 +25,19 @@ values from the research notes. Everything is procedural: no downloaded models, 
   takes ~1.5 ms per frame; Godot's PNG encoding dominates (~0.3 s per 1080p frame, ~1 s at 4K), so a
   90 s 4K clip takes over an hour to write.
 
+- **Standalone build (no Godot needed to play):** double-click `build.bat`. It exports the
+  "Windows Desktop" preset (`export_presets.cfg`, release template, data embedded in the executable)
+  to `build\AtomicBombs\`: `AtomicBombs.exe` (~110 MB, the whole game in one file) and
+  `AtomicBombs.console.exe` (optional; starts the same game and shows its log in a console window).
+  The folder can be copied anywhere. Test hooks work in the build too:
+  `AtomicBombs.console.exe -- --menu_drive --audio_log --out C:\some\dir`. The quantitative
+  self-test (`scenes/selftest.tscn`) and the `tools/` scripts are not part of the build (release
+  templates refuse to run a scene given on the command line); run them with the editor binary.
+  F12 screenshots go to `%APPDATA%\Godot\app_userdata\Atomic Bombs Opus 5.5\screenshots`.
+
 Requirements: Windows 10/11, a Vulkan/D3D12 GPU (developed on an RTX 5070), Godot 4.7.2-stable
-(no export templates needed). The project uses the D3D12 driver (measured slightly faster than
-Vulkan on the development machine; both work).
+(export templates are needed only for `build.bat`). The project uses the D3D12 driver (measured
+slightly faster than Vulkan on the development machine; both work).
 
 ## Controls
 
