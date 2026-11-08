@@ -12,7 +12,13 @@ extends Node
 ##                        seconds while a 4 kHz tinnitus tone fades in and out (Master direct)
 ## Bus layout:  Master [HardLimiter -0.3 dB]  <-  Ears [LowPass, muffling]  <-  Blast [LowPass by
 ## distance + Reverb], BlastSyn (synthesized front + tail: they carry their own absorption and
-## echoes, no effects), World (rocket, whistle), Bunker (ambience, tremor, debris);  UI -> Master.
+## echoes, no effects), BlastSmp (the bomb's recording: EQ6 for air absorption / shadow zone +
+## Panner for the bearing), World (rocket, whistle), Bunker (ambience, tremor, debris, rattle);
+## UI -> Master.
+## Every bomb has a recording (assets/audio/samples, see BlastSamples): when main.gd passes its plan
+## to prepare_blast(), the explosion plays in "sample" mode - the recording's front at the arrival,
+## its rumble tail, an inversion echo, the megaton rumble bed and the window rattle - instead of the
+## generic layers and the per-event synthesis (both remain for events without a recording).
 ## Blast layers use non-positional AudioStreamPlayer (the sound is the observer's), the rocket
 ## uses AudioStreamPlayer3D. One-shot events never retrigger on backward scrubbing or at
 ## time_scale 0; a forward jump starts a layer at the matching offset or skips it if it is over.
@@ -22,12 +28,32 @@ const BlastSynth = preload("res://scripts/audio/blast_synth.gd")
 
 const SOUND_SPEED := 343.0
 const LN10 := 2.302585092994046
-# bunker ambience sits at ~-34 LUFS (measured in a --write-movie mix), well under the faintest
-# blasts at their recommended distance (Mk 82 at 2 km peaks around -21 dBFS)
-const VENT_DB := -24.0
-const HUM_DB := -33.0
-const ROCKET_DB := 16.0          # +6 dB vs the old loop: the crackling roar has a crest factor of ~12 (was ~4)
-const WHISTLE_DB := -9.0
+# bunker ambience: OFF. The player asked for a silent bunker - first the ventilation fan noise (heard
+# as a constant hiss under the blasts), then the faint electrical hum too. The loops, their duck
+# under a strong blast and the fan spin-down of a destroyed bunker stay in the code (VENT_ON /
+# HUM_ON switch them back on: vent about -42 LUFS, hum about -46 LUFS momentary).
+const VENT_ON := false
+const HUM_ON := false
+const VENT_DB := -30.0
+const HUM_DB := -39.0
+const DUCK_MAX_DB := 6.0
+const ROCKET_DB := 16.0          # synthesized rocket: +6 dB vs the old loop (crest factor ~12)
+## Recorded rocket (assets/audio/samples): in-game momentary loudness at the pad (~420 m from the
+## bunker; AudioStreamPlayer3D inverse-distance attenuation there: ROCKET_PAD_ATT_DB).
+const ROCKET_IGN_LUFS := -19.0
+const ROCKET_LOOP_LUFS := -21.0
+const ROCKET_PAD_ATT_DB := -16.9
+## The recorded ignition fades out from 4.0 to 6.5 s; the flight loop fades in over this window.
+const ROCKET_HANDOFF := Vector2(3.6, 6.2)
+const ROCKET_IGN_PATH := "res://assets/audio/samples/rocket_ignite.ogg"
+const ROCKET_LOOP_PATH := "res://assets/audio/samples/rocket_loop.wav"
+const RATTLE_PATH := "res://assets/audio/samples/bunker_rattle.ogg"
+const RUMBLE_LOOP_PATH := "res://assets/audio/samples/rumble_loop.wav"
+## Loudness metadata of the recordings (tools/process_samples.py; read here directly so the sound
+## manager does not depend on the game's physics scripts, see BlastSamples).
+const SAMPLES_JSON := "res://assets/audio/samples/samples.json"
+const WHISTLE_DB := -18.0         # -9 dB (2026-11-08): at -9 the rush of a bomb falling 2 km away
+                                 # (~-21 LUFS) was as loud as its own explosion with the recordings
 ## The falling-bomb whistle keeps its full level up to this distance, then falls off as 1/r
 ## (floored at WHISTLE_MIN_DB so it stays a faint cue at long range).
 const WHISTLE_REF_M := 1500.0
@@ -43,7 +69,10 @@ const BLAST_IDS := ["crack", "crack2", "thump", "infra", "rumble", "thunder0", "
 ## Generic layers replaced by the per-event synthesis (BlastSynth) when it is ready in time.
 const GENERIC_IDS := ["crack", "crack2", "thump", "rumble", "thunder0", "thunder1", "thunder2",
 		"thunder3", "thunder4", "thunder5", "thunder6"]
-const BUNKER_IDS := ["tremor", "debris", "glass"]
+## The bomb's recording: front and tail on BlastSmp, the inversion echo on Blast (low-passed +
+## reverb), the megaton rumble bed (a loop) on BlastSmp; the window rattle is a Bunker layer.
+const SMP_IDS := ["smp_front", "smp_tail", "smp_echo", "smp_ext"]
+const BUNKER_IDS := ["tremor", "debris", "glass", "rattle"]
 const LOOP_STREAM := {"roar": "roar", "wind": "wind"}
 
 ## Generated streams {name: AudioStreamWAV} (see AudioSynth.NAMES).
@@ -66,6 +95,9 @@ var limiter: AudioEffectHardLimiter
 var lp_blast: AudioEffectLowPassFilter
 var reverb_blast: AudioEffectReverb
 var lp_ears: AudioEffectLowPassFilter
+var eq_smp: AudioEffectEQ6         # BlastSmp: absorption / shadow-zone spectrum of the recording
+var pan_smp: AudioEffectPanner     # BlastSmp: bearing of the burst
+var bus_smp := -1
 
 var _p: Dictionary = {}            # layer id -> AudioStreamPlayer
 var _base_pitch: Dictionary = {}   # layer id -> pitch before the slow-motion factor
@@ -108,8 +140,19 @@ var _movie_quit_frame := -1        # --quit-after of an offline render (see setu
 var _movie_silenced := false                # the newest request: an older task finishing late is discarded
 var _syn_mutex := Mutex.new()
 var _syn_pending: Array[int] = []  # finished-or-running task ids still to be waited for
-var _mode := ""                    # "", "synth" or "generic" (decided when the blast arrives)
+var _mode := ""                    # "", "synth" or "generic" (decided when the blast arrives), or
+                                   # "sample" (the bomb's recording, decided at the detonation)
 var _syn_stream: Dictionary = {}   # id -> AudioStreamWAV for the synthesized layers
+# the bomb's recording (BlastSamples.plan from main.gd at launch, for the event _syn_key)
+var _smp_plan: Dictionary = {}
+var _smp_stream: Dictionary = {}   # id -> AudioStream for smp_* and rattle
+var _smp_cache: Dictionary = {}    # res path -> loaded AudioStream
+var _rk_sample := false            # the rocket uses the recorded ignition + flight loop
+var _rk_t := 0.0                   # game time since the ignition was heard
+var _rk_ign_db := ROCKET_DB
+var _rk_loop_db := ROCKET_DB
+var _duck_db := 0.0                # current ambience duck (dB, <= 0)
+var _rk_fade := 1.0                # rocket fade-out after rocket_stop()
 var _mf_rec := 4.0
 var _mf_min := 1000.0
 var _mf_dip := -6.0
@@ -158,7 +201,8 @@ func setup() -> void:
 	is_setup = true
 
 
-## Bunker ventilation + electrical hum (fades in/out over ~1.5 s).
+## Bunker ventilation + electrical hum (fades in/out over ~1.5 s); both are switched off by
+## VENT_ON / HUM_ON (a silent bunker), so this only arms them.
 func set_ambience(on: bool) -> void:
 	_amb_on = on
 
@@ -230,6 +274,17 @@ func prepare_blast(params: Dictionary) -> void:
 	if not is_setup:
 		return
 	_syn_key = String(params.get("key", ""))
+	# the bomb's recording: nothing to synthesize, only its streams to load (OGG, a few ms)
+	_smp_plan = {}
+	var plan: Dictionary = params.get("sample", {})
+	if not plan.is_empty():
+		var fs := _smp_load(String(plan.get("front", "")))
+		var ts := _smp_load(String(plan.get("tail", "")))
+		if fs != null and ts != null:
+			_smp_plan = plan
+			_smp_stream = {"smp_front": fs, "smp_tail": ts, "smp_echo": fs,
+					"smp_ext": _smp_load(RUMBLE_LOOP_PATH), "rattle": _smp_load(RATTLE_PATH)}
+			return
 	_syn_mutex.lock()
 	_syn_want = _syn_key
 	var have := _syn_res_key == _syn_key and not _syn_res.is_empty()
@@ -241,6 +296,24 @@ func prepare_blast(params: Dictionary) -> void:
 		return
 	_syn_task = WorkerThreadPool.add_task(_synth_job.bind(params, _syn_key), false, "BlastSynth")
 	_syn_pending.append(_syn_task)
+
+
+## A sample asset (loaded once, then cached); null if it is missing.
+func _smp_load(path: String) -> AudioStream:
+	if path == "":
+		return null
+	if not _smp_cache.has(path):
+		var st: AudioStream = load(path) if ResourceLoader.exists(path) else null
+		if st is AudioStreamWAV and path in [ROCKET_LOOP_PATH, RUMBLE_LOOP_PATH]:
+			# the loops are imported with loop_mode Forward; keep them looping even if an import
+			# setting is lost
+			var w := st as AudioStreamWAV
+			if w.loop_mode == AudioStreamWAV.LOOP_DISABLED:
+				w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+				w.loop_begin = 0
+				w.loop_end = int(w.get_length() * w.mix_rate)
+		_smp_cache[path] = st
+	return _smp_cache[path]
 
 
 func _synth_job(params: Dictionary, key: String) -> void:
@@ -305,10 +378,16 @@ func on_detonation(p: Dictionary) -> void:
 	var pr := clampf(pow(_w / 15.0, -0.05) * pow(_d / 20000.0, -0.04), 0.6, 1.25)
 	_events.clear()
 	_loops.clear()
+	# the bomb's recording for this event (prepared at launch with the same key)
+	var skey := String(p.get("synth_key", ""))
+	var sample := skey != "" and skey == _syn_key and not _smp_plan.is_empty()
 
-	# ground tremor arrives first (P-wave), stronger for coupled bursts
+	# ground tremor arrives first (P-wave), stronger for coupled bursts; a surface charge of a few
+	# tonnes shakes nothing perceptibly kilometres away (Oldebroek, 1 t at 1.5 km: 'no ground
+	# shaking'), so with the recordings it needs -32 dB rather than -40 dB
 	var tdb := -14.0 + 6.0 * _log10(_w) - 10.0 * _log10(maxf(_d, 300.0) / 1000.0) + float(mods["couple"])
-	if tdb > -40.0:
+	var t_min := -32.0 if sample and not nuclear and not _kind.contains("BURIED") else -40.0
+	if tdb > t_min:
 		_add_ev(t_seis, "tremor", "tremor", minf(tdb, 0.0), clampf(pow(_w / 15.0, -0.04), 0.7, 1.3))
 	# the air blast
 	# (a layer pitched down by p lasts 1/p longer: 10*log10(p) keeps its energy comparable)
@@ -352,12 +431,14 @@ func on_detonation(p: Dictionary) -> void:
 	if float(mods["roar_dur"]) > 0.0:
 		roar_dur = float(mods["roar_dur"])
 	var g := pow(clampf(1.0 - _log10(maxf(_d, 1.0) / d_ref) / _log10(30.0), 0.0, 1.0), 1.5)
-	if g > 0.01:
+	# (with the recordings neither the roar nor the afterwind loop plays: both were broadband hiss
+	# far beyond the distances where a fireball or a cloud is heard)
+	if g > 0.01 and not sample:
 		_loops["roar"] = {"t0": _t_shock + 0.15, "dur": roar_dur, "att": 0.4, "shape": 1.6,
 				"db": _lvl - 3.0 + float(mods["roar"]) + linear_to_db(g),
 				"pitch": clampf(pow(_w / 15.0, -0.06), 0.6, 1.4)}
 	# afterwind of the rising cloud
-	if nuclear and _w >= 0.05:
+	if nuclear and _w >= 0.05 and not sample:
 		var wdb := clampf(-12.0 + 2.0 * lw - 8.0 * _log10(maxf(_d, 2000.0) / 5000.0), -34.0, -5.0)
 		_loops["wind"] = {"t0": _t_shock + 1.5,
 				"dur": clampf(BlastPhysics.cloud_stabilization_time(_w) * 0.5, 20.0, 180.0),
@@ -365,14 +446,16 @@ func on_detonation(p: Dictionary) -> void:
 	# per-event synthesis: front just before the arrival (zero-phase pre-roll), tail at the arrival
 	_mode = ""
 	_syn_stream.clear()
-	var skey := String(p.get("synth_key", ""))
-	if skey != "" and skey == _syn_key:
+	if sample:
+		_mode = "sample"
+		_start_sample(_smp_plan)
+	elif skey != "" and skey == _syn_key:
 		_add_ev(_t_shock - BlastSynth.FRONT_PRE, "blast_front", "", _lvl + 2.0, 1.0)
 		_add_ev(_t_shock, "blast_tail", "", _lvl + 2.0, 1.0)
 	else:
 		_mode = "generic"
 	for id: String in _loops:
-		var st: AudioStreamWAV = sounds[LOOP_STREAM[id]]
+		var st: AudioStream = _smp_stream.get(id) if id.begins_with("smp_") else sounds[LOOP_STREAM[id]]
 		(_p[id] as AudioStreamPlayer).stream = st
 		_base_pitch[id] = float(_loops[id]["pitch"])
 
@@ -406,13 +489,19 @@ func update_age(age: float, time_scale: float) -> void:
 		for ev: Dictionary in _events:
 			if not ev["fired"] and age >= float(ev["t"]):
 				var id: String = ev["id"]
-				var grp := "synth" if id.begins_with("blast_") else ("generic" if id in GENERIC_IDS else "")
+				var grp := "synth" if id.begins_with("blast_") else ("generic" if id in GENERIC_IDS else
+						("sample" if id.begins_with("smp_") else ""))
 				if grp != "" and _mode == "":
 					_resolve_mode()
 				ev["fired"] = true
 				if grp != "" and grp != _mode:
 					continue
 				_fire(ev, age - float(ev["t"]), age)
+	if _mode == "sample" and _loops.has("smp_ext"):
+		var pt := _p["smp_tail"] as AudioStreamPlayer
+		if pt.playing and not pt.stream_paused and time_scale > 0.0:
+			var lx: Dictionary = _loops["smp_ext"]
+			lx["t0"] = age + (float(lx["t0_s"]) - pt.get_playback_position()) * time_scale / maxf(_slow, 1.0e-3)
 	_update_loops(age, not backwards)
 	_update_ears(age)
 	_update_amb_mod(age)
@@ -479,7 +568,7 @@ func _exit_tree() -> void:
 ## Takes our effects off the AudioServer buses (they would otherwise outlive the scene tree
 ## and be reported as leaked ObjectDB instances at exit).
 func _release_effects() -> void:
-	for fx: AudioEffect in [limiter, lp_ears, lp_blast, reverb_blast]:
+	for fx: AudioEffect in [limiter, lp_ears, lp_blast, reverb_blast, eq_smp, pan_smp]:
 		if fx == null or (fx == limiter and not _own_limiter):
 			continue
 		for b in AudioServer.bus_count:
@@ -505,6 +594,7 @@ func _setup_buses() -> void:
 	_make_bus("Ears", "Master")
 	_make_bus("Blast", "Ears")
 	_make_bus("BlastSyn", "Ears")
+	_make_bus("BlastSmp", "Ears")
 	_make_bus("World", "Ears")
 	_make_bus("Bunker", "Ears")
 	_make_bus("UI", "Master")
@@ -513,6 +603,11 @@ func _setup_buses() -> void:
 	bus_world = AudioServer.get_bus_index("World")
 	bus_bunker = AudioServer.get_bus_index("Bunker")
 	bus_ui = AudioServer.get_bus_index("UI")
+	bus_smp = AudioServer.get_bus_index("BlastSmp")
+	eq_smp = AudioEffectEQ6.new()
+	AudioServer.add_bus_effect(bus_smp, eq_smp)
+	pan_smp = AudioEffectPanner.new()
+	AudioServer.add_bus_effect(bus_smp, pan_smp)
 	lp_ears = AudioEffectLowPassFilter.new()
 	lp_ears.cutoff_hz = 20000.0
 	lp_ears.resonance = 0.5
@@ -582,6 +677,8 @@ func _gen_job(i: int) -> void:
 func _make_players() -> void:
 	for id: String in BLAST_IDS:
 		_p[id] = _player("L_" + id, "BlastSyn" if id.begins_with("blast_") else "Blast", 1)
+	for id: String in SMP_IDS:
+		_p[id] = _player("L_" + id, "Blast" if id == "smp_echo" else "BlastSmp", 1)
 	for id: String in BUNKER_IDS:
 		_p[id] = _player("L_" + id, "Bunker", 1)
 	_tinnitus = _player("Tinnitus", "Master", 1)
@@ -597,8 +694,20 @@ func _make_players() -> void:
 		u.stream = sounds["ui_" + kind]
 		u.volume_db = UI_DB
 		_ui[kind] = u
-	_rocket_ign = _player3d("RocketIgnite", sounds["rocket_ignite"])
-	_rocket_loop = _player3d("RocketLoop", sounds["rocket_loop"])
+	# the recorded rocket (ignition + flight loop) when present, else the synthesized one
+	var ign := _smp_load(ROCKET_IGN_PATH)
+	var flt := _smp_load(ROCKET_LOOP_PATH)
+	_rk_sample = ign != null and flt != null
+	_rocket_ign = _player3d("RocketIgnite", ign if _rk_sample else sounds["rocket_ignite"])
+	_rocket_loop = _player3d("RocketLoop", flt if _rk_sample else sounds["rocket_loop"])
+	if _rk_sample:
+		var ex: Dictionary = {}
+		if FileAccess.file_exists(SAMPLES_JSON):
+			var v: Variant = JSON.parse_string(FileAccess.get_file_as_string(SAMPLES_JSON))
+			if v is Dictionary:
+				ex = (v as Dictionary).get("extra", {})
+		_rk_ign_db = ROCKET_IGN_LUFS - ROCKET_PAD_ATT_DB - float(ex.get("rocket_ignite", {}).get("m_max", -12.0))
+		_rk_loop_db = ROCKET_LOOP_LUFS - ROCKET_PAD_ATT_DB - float(ex.get("rocket_loop", {}).get("m_mean", -11.0))
 
 
 func _player(pname: String, bus: String, poly: int) -> AudioStreamPlayer:
@@ -683,6 +792,45 @@ func _refresh_pause() -> void:
 		_rocket_loop.stream_paused = want
 
 
+## Schedules the bomb's recording (plan from BlastSamples.plan): the front at the arrival, the
+## rumble tail at its crossfade offset, the inversion echo (Blast bus: low-passed + reverb), the
+## window rattle (Bunker) and the megaton rumble bed (a loop); sets the BlastSmp spectrum and pan.
+## The generic layers stay scheduled but never fire (their group is not the mode).
+func _start_sample(pl: Dictionary) -> void:
+	# front and tail start in the same frame (the tail file is silent up to its crossfade), so they
+	# stay sample-aligned at any time scale, through pause and forward jumps
+	_add_ev(_t_shock, "smp_front", "", float(pl["front_db"]), 1.0)
+	_add_ev(_t_shock + float(pl.get("tail_offset_s", 0.0)), "smp_tail", "", float(pl["tail_db"]), 1.0)
+	var echo: Dictionary = pl.get("echo", {})
+	if not echo.is_empty():
+		_add_ev(_t_shock + float(echo["delay_s"]), "smp_echo", "", float(echo["db"]), 1.0)
+		lp_blast.cutoff_hz = float(echo["lp_hz"])
+		reverb_blast.wet = 0.25
+	var rt: Dictionary = pl.get("rattle", {})
+	if not rt.is_empty() and _smp_stream.get("rattle") != null:
+		_add_ev(_t_shock + float(rt["delay_s"]), "rattle", "", float(rt["db"]), float(rt["pitch"]))
+	var ext: Dictionary = pl.get("ext", {})
+	if not ext.is_empty() and _smp_stream.get("smp_ext") != null:
+		# t0_s is a time in the recording: re-timed against the tail's stream clock while it plays
+		# (slow motion plays the recording at pitch ts^0.3, not at the game's time scale)
+		_loops["smp_ext"] = {"t0": _t_shock + float(ext["t0_s"]), "t0_s": float(ext["t0_s"]),
+				"dur": float(ext["dur_s"]), "att": float(ext["att_s"]), "shape": 1.4, "db": float(ext["db"]),
+				"pitch": float(ext["pitch"])}
+	for ev: Dictionary in _events:
+		if ev["id"] == "infra":
+			# megatons: the felt sub-bass thump stays, well under the recording
+			ev["db"] = float(ev["db"]) - 6.0
+	var eq: Array = pl.get("eq_db", [])
+	for i in mini(eq.size(), eq_smp.get_band_count()):
+		eq_smp.set_band_gain_db(i, float(eq[i]))
+	pan_smp.pan = float(pl.get("pan", 0.0))
+	if log_events:
+		print("AUDIO sample %s: %.1f km (ref %.1f km) spl %.1f dB eff %.1f (ref %.1f) shadow %.2f -> %.1f LUFS, front %.1f dB, tail %+.1f dB, eq %s, echo %s, rattle %s, ext %s" % [
+			pl["id"], float(pl["distance_m"]) / 1000.0, float(pl["ref_distance_m"]) / 1000.0, float(pl["spl_db"]),
+			float(pl["spl_eff_db"]), float(pl["ref_spl_eff_db"]), float(pl["shadow"]), float(pl["lufs"]),
+			float(pl["front_db"]), float(pl["tail_rel_db"]), str(eq), str(not echo.is_empty()), str(not rt.is_empty()), str(not ext.is_empty())])
+
+
 ## Decides once per explosion (when the blast arrives) between the synthesized event and the
 ## generic layers; the synthesized one is used only if it finished in time.
 func _resolve_mode() -> void:
@@ -722,7 +870,13 @@ func _add_ev(t: float, id: String, stream: String, db: float, pitch: float) -> v
 func _fire(ev: Dictionary, late: float, age: float) -> void:
 	var id: String = ev["id"]
 	var pl: AudioStreamPlayer = _p[id]
-	var st: AudioStreamWAV = _syn_stream.get(id) if id.begins_with("blast_") else sounds.get(String(ev["stream"]))
+	var st: AudioStream = null
+	if id.begins_with("blast_"):
+		st = _syn_stream.get(id)
+	elif id.begins_with("smp_") or id == "rattle":
+		st = _smp_stream.get(id)
+	else:
+		st = sounds.get(String(ev["stream"]))
 	if st == null:
 		return
 	var pitch: float = ev["pitch"]
@@ -807,24 +961,34 @@ func _update_amb_mod(age: float) -> void:
 	_amb_mod_vent = 1.0
 	_amb_mod_hum = 1.0
 	_vent_pitch = 1.0
+	_duck_db = 0.0
 	if x < 0.0:
 		return
+	# the room tone ducks under a strong blast (up to DUCK_MAX_DB from ~120 dB peak at the bunker):
+	# 10 ms down, held 0.3 s, back with a 1.2 s release
+	var spl := 20.0 * _log10(maxf(_psi, 1.0e-6) * 6894.76 / 2.0e-5)
+	var dmax := clampf(0.5 * (spl - 120.0), 0.0, DUCK_MAX_DB)
+	if dmax > 0.0:
+		_duck_db = -dmax * (clampf(x / 0.01, 0.0, 1.0) if x < 0.3 else exp(-(x - 0.3) / 1.2))
+		var dg := db_to_linear(_duck_db)
+		_amb_mod_vent = dg
+		_amb_mod_hum = dg
 	if _psi >= 25.0:
 		# bunker destroyed: power lost, the fan spins down
 		var k := clampf(x / 4.0, 0.0, 1.0)
-		_amb_mod_hum = 0.0 if x > 0.4 else (1.0 if sin(x * 61.0) > 0.0 else 0.1)
-		_amb_mod_vent = 1.0 - k
+		_amb_mod_hum *= 0.0 if x > 0.4 else (1.0 if sin(x * 61.0) > 0.0 else 0.1)
+		_amb_mod_vent *= 1.0 - k
 		_vent_pitch = lerpf(1.0, 0.45, k)
 	elif _psi >= 1.0 and x < 1.4:
 		# the shock jolts the power: hum drops out with the flickering lights
-		_amb_mod_hum = 0.15 if sin(x * 61.0) * sin(x * 23.0 + 1.3) > 0.25 else 1.0
-		_amb_mod_vent = 0.85
+		_amb_mod_hum *= 0.15 if sin(x * 61.0) * sin(x * 23.0 + 1.3) > 0.25 else 1.0
+		_amb_mod_vent *= 0.85
 
 
 func _update_ambience(delta: float) -> void:
 	_amb_gain = move_toward(_amb_gain, 1.0 if _amb_on else 0.0, delta / 1.5)
-	_set_loop(_vent, VENT_DB, _amb_gain * _amb_mod_vent)
-	_set_loop(_hum, HUM_DB, _amb_gain * _amb_mod_hum)
+	_set_loop(_vent, VENT_DB, _amb_gain * _amb_mod_vent if VENT_ON else 0.0)
+	_set_loop(_hum, HUM_DB, _amb_gain * _amb_mod_hum if HUM_ON else 0.0)
 	_vent.pitch_scale = _vent_pitch
 
 
@@ -843,23 +1007,34 @@ func _update_rocket(delta: float, dt_game: float, ts: float) -> void:
 		1:
 			_rk_delay -= dt_game
 			if _rk_delay <= 0.0:
-				_rocket_ign.volume_db = ROCKET_DB
+				_rocket_ign.volume_db = _rk_ign_db
 				_rocket_ign.stream_paused = false
 				_rocket_ign.play()
 				_rocket_loop.volume_db = -80.0
 				_rocket_loop.stream_paused = false
 				_rocket_loop.play()
 				_rk_state = 2
+				_rk_t = 0.0
+				_rk_fade = 1.0
 		2:
-			_rk_gain = move_toward(_rk_gain, 1.0, dt_game / 0.9)
+			if _rk_sample:
+				# the recorded ignition fades out (4.0-6.5 s, baked in) while the flight loop comes in:
+				# counted on the ignition's own stream clock (it plays at pitch ts^0.3, not at ts)
+				_rk_t += 0.0 if _paused else delta * _slow_factor(ts)
+				var u := clampf((_rk_t - ROCKET_HANDOFF.x) / (ROCKET_HANDOFF.y - ROCKET_HANDOFF.x), 0.0, 1.0)
+				_rk_gain = sin(0.5 * PI * u)
+			else:
+				_rk_t += dt_game
+				_rk_gain = move_toward(_rk_gain, 1.0, dt_game / 0.9)
 		3:
-			_rk_gain = move_toward(_rk_gain, 0.0, delta / 0.4)
-			if _rk_gain <= 0.0:
+			_rk_fade = move_toward(_rk_fade, 0.0, delta / 0.4)
+			if _rk_fade <= 0.0:
 				_rocket_loop.stop()
 				_rocket_ign.stop()
 				_rk_state = 0
 	if _rk_state >= 2:
-		_rocket_loop.volume_db = ROCKET_DB + linear_to_db(maxf(_rk_gain, 1.0e-4))
+		_rocket_loop.volume_db = _rk_loop_db + linear_to_db(maxf(_rk_gain * _rk_fade, 1.0e-4))
+		_rocket_ign.volume_db = _rk_ign_db + linear_to_db(maxf(_rk_fade, 1.0e-4))
 		var sf := _slow_factor(ts)
 		_rocket_loop.pitch_scale = sf
 		_rocket_ign.pitch_scale = sf

@@ -8,3 +8,6 @@ docs/research_parts/*.tmp
 override.cfg
 /movie/
 /build/
+# raw ElevenLabs recordings (sources of assets/audio/samples, tools/process_samples.py; ~95 MB)
+/Звуки взрывов/
+__pycache__/

@@ -40,6 +40,9 @@ func _ready() -> void:
 				i += 1
 		i += 1
 	DirAccess.make_dir_recursive_absolute(out)
+	# manifest.json: the in-game playback levels of every rendered event (tools/audio_metrics.py mixes
+	# front + tail with them, like sound_manager.gd does)
+	var manifest: Array = []
 	var data: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/bombs.json"))
 	var list: Array = data["bombs"]
 	if bombs.is_empty() and not args.has("--synth"):
@@ -63,5 +66,12 @@ func _ready() -> void:
 		(r["tail"] as AudioStreamWAV).save_to_wav(base + "_tail.wav")
 		print("PREVIEW b%02d %-14s d=%.1f km spl=%.0f dB front=%.1f dBFS shadow=%.2f p=%.4f psi t+=%.3f s rise=%.5f s front=%.1f s tail=%.1f s tail_gain=%.1f dB gen=%d ms" % [
 			n, b["id"], p["distance_m"] / 1000.0, r["spl_db"], r["front_db"], r["shadow"], p["p_psi"], p["t_plus"], r["rise_s"], r["front_dur"], r["tail_dur"], r["tail_gain_db"], ms])
+		manifest.append({"num": n, "id": b["id"], "km": km, "base": base.get_file(), "front_db": r["front_db"],
+			"tail_gain_db": r["tail_gain_db"], "front_pre_s": BlastSynth.FRONT_PRE, "spl_db": r["spl_db"],
+			"t_plus": p["t_plus"], "yield_kt": p["yield_kt"]})
+	var mf := FileAccess.open(out.path_join("manifest.json"), FileAccess.WRITE)
+	if mf:
+		mf.store_string(JSON.stringify(manifest, "  "))
+		mf.close()
 	print("READY")
 	get_tree().quit()

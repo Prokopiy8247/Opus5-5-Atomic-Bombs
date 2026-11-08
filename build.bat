@@ -19,7 +19,11 @@ rem The console variant of the editor prints the export log into this window.
 for %%F in ("%GODOT%") do set "GODOT_CON=%%~dpnF_console%%~xF"
 if exist "%GODOT_CON%" set "GODOT=%GODOT_CON%"
 if not exist "build\AtomicBombs" mkdir "build\AtomicBombs"
-if not exist ".godot\global_script_class_cache.cfg" "%GODOT%" --headless --path "%CD%" --import
+rem import on the first run, and when the sample recordings (assets\audio\samples) are not imported yet
+set "NEED_IMPORT="
+if not exist ".godot\global_script_class_cache.cfg" set "NEED_IMPORT=1"
+if not exist ".godot\imported\01_mk82_front.ogg-*" set "NEED_IMPORT=1"
+if defined NEED_IMPORT "%GODOT%" --headless --path "%CD%" --import
 "%GODOT%" --headless --path "%CD%" --export-release "Windows Desktop" "build/AtomicBombs/AtomicBombs.exe"
 if errorlevel 1 (
   echo BUILD FAILED

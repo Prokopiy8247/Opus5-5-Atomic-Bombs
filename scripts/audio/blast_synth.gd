@@ -59,15 +59,7 @@ static func make_event(p: Dictionary) -> Dictionary:
 	# Trinity and RDS-37); dusk = neutral.
 	var tod := String(p.get("tod", "noon"))
 	var inversion := tod in ["dawn", "predawn", "night"]
-	var shadow := 0.0
-	if tod == "noon":
-		# the shock is not a point source: until it decays to ~1 psi it runs as a nonlinear
-		# hemisphere hundreds of metres to kilometres tall, so the effective source height is a
-		# quarter of the 1-psi radius (megatons are heard loud at 50-100 km by day); over the sea
-		# the lapse is weak (marine layer) and the shadow shallower
-		var h_eff := maxf(hob, 0.25 * float(p.get("r1psi_m", 0.0)))
-		var xs := sqrt(2.0 * 86000.0 * maxf(h_eff, 2.0)) + 600.0
-		shadow = smoothstep(xs, 3.0 * xs, dg) * 0.6 * (0.5 if bool(p.get("over_water", false)) else 1.0)
+	var shadow := shadow_of(p)
 
 	# ------------------------------------------------------------------ the front (32 kHz)
 	var front_dur := clampf(1.2 + 1.2 * minf(tp, 1.0) + d / 60000.0, 1.4, 3.0)
@@ -388,6 +380,23 @@ static func make_event(p: Dictionary) -> Dictionary:
 		"front_db": front_db, "spl_db": spl, "shadow": shadow,
 		"front_peak": pk, "tail_peak": pt, "tail_gain_db": linear_to_db(maxf(pt, 1e-9) / maxf(pk, 1e-9)),
 		"rise_s": rise, "t_plus": tp}
+
+
+## Depth of the daytime acoustic shadow zone at the observer, 0 (none) .. 0.6 (deep): only the noon
+## preset has a lapse that bends sound upwards (shadow onset x_s = sqrt(2 * 86 km * H) + 0.6 km).
+## The shock is not a point source: until it decays to ~1 psi it runs as a nonlinear hemisphere
+## hundreds of metres to kilometres tall, so the effective source height is a quarter of the 1-psi
+## radius (megatons are heard loud at 50-100 km by day); over the sea the lapse is weak (marine
+## layer) and the shadow shallower. Also used by BlastSamples.
+static func shadow_of(p: Dictionary) -> float:
+	if String(p.get("tod", "noon")) != "noon":
+		return 0.0
+	var d := maxf(float(p.get("distance_m", 10000.0)), 50.0)
+	var hob := maxf(float(p.get("hob_m", 0.0)), 0.0)
+	var dg := maxf(sqrt(maxf(d * d - hob * hob, 1.0)), 50.0)
+	var h_eff := maxf(hob, 0.25 * float(p.get("r1psi_m", 0.0)))
+	var xs := sqrt(2.0 * 86000.0 * maxf(h_eff, 2.0)) + 600.0
+	return smoothstep(xs, 3.0 * xs, dg) * 0.6 * (0.5 if bool(p.get("over_water", false)) else 1.0)
 
 
 # ------------------------------------------------------------------ building blocks

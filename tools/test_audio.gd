@@ -280,12 +280,13 @@ func _test(spec: bool) -> void:
 			"whistle 30 km away attenuated (%.1f dB)" % sm._whistle.volume_db)
 	sm.stop_all()
 	_check(not sm._whistle.playing, "stop_all stops the whistle")
-	_check(sm._vent.playing and sm._hum.playing, "ambience playing")
+	_check(sm._hum.playing == SoundManager.HUM_ON and sm._vent.playing == SoundManager.VENT_ON,
+			"bunker ambience follows VENT_ON / HUM_ON (both off: a silent bunker)")
 	sm.set_ambience(false)
 	for f in 60:
 		sm._process(1.0 / 30.0)
 		await process_frame
-	_check(not sm._vent.playing, "ambience faded out")
+	_check(not sm._vent.playing and not sm._hum.playing, "ambience faded out")
 	sm.stop_all()
 	# 9) per-event blast synthesis: prepared at launch on a worker thread, used when the blast arrives
 	var ps := _params(15.0, 20000.0, "NUCLEAR_AIR", 580.0)
@@ -332,6 +333,68 @@ func _test(spec: bool) -> void:
 	_check(not sm._synth_ready("test_b").is_empty() and sm._syn_res_key == "test_b",
 			"relaunch: the newest synthesis wins even if an older task finishes later")
 	sm.stop_all()
+	# 10) the bomb's recording (BlastSamples.plan, computed in main.gd; a hand-made plan here because
+	# the plan needs the game's physics autoload): it replaces the generic layers and the synthesis,
+	# without the roar / afterwind loops; spectrum and pan on BlastSmp, rattle, megaton bed, duck
+	var smp_dir := "res://assets/audio/samples/blast/"
+	var plan := {"id": "b61_12", "num": 8, "front": smp_dir + "08_b61_12_front.ogg", "tail": smp_dir + "08_b61_12_tail.ogg",
+			"tail_offset_s": 0.0, "front_db": -7.6, "tail_db": -5.6, "tail_rel_db": 2.0,
+			"eq_db": [0.0, -1.0, -3.0, -8.0, -20.0, -40.0], "pan": 0.2, "lufs": -18.0, "spl_db": 148.0,
+			"spl_eff_db": 146.8, "ref_spl_eff_db": 146.8, "shadow": 0.1, "ref_shadow": 0.1, "distance_m": 12000.0,
+			"ref_distance_m": 12000.0, "tod": "dawn", "dur_s": 10.8,
+			"echo": {"delay_s": 2.5, "db": -12.0, "lp_hz": 900.0}, "ext": {"t0_s": 4.0, "att_s": 2.0, "dur_s": 20.0, "db": -6.0, "pitch": 0.95},
+			"rattle": {"db": -12.0, "delay_s": 0.012, "pitch": 1.02}}
+	var ps8 := _params(0.3, 12000.0, "NUCLEAR_AIR", 150.0)
+	var bp8 := bp.duplicate()
+	bp8["key"] = "test_smp"
+	bp8["sample"] = plan
+	sm.prepare_blast(bp8)
+	_check(sm._syn_pending.is_empty() or not sm._syn_want == "test_smp", "recording prepared without a synthesis task")
+	ps8["synth_key"] = "test_smp"
+	_start(ps8)
+	_check(sm._mode == "sample" and not sm._loops.has("roar") and not sm._loops.has("wind") and sm._loops.has("smp_ext"),
+			"recording: sample mode, no roar / afterwind loops, megaton bed scheduled (mode %s, loops %s)" % [sm._mode, str(sm._loops.keys())])
+	await _advance(0.0, float(ps8["t_shock"]) + 6.0, 0.05, 1.0)
+	var pfs := sm._p["smp_front"] as AudioStreamPlayer
+	_check(_fired("smp_front") and _fired("smp_tail") and _fired("smp_echo") and _fired("rattle") and not _fired("crack")
+			and not _fired("rumble") and not _fired("blast_front"), "recording front + tail + echo + rattle replace the generic layers")
+	_check(absf(_fired_at("smp_front") - float(ps8["t_shock"])) < 0.06 and _fired_at("smp_tail") == _fired_at("smp_front"),
+			"recording starts at the blast arrival, front and tail in the same frame (sample-aligned)")
+	_check(pfs.bus == "BlastSmp" and is_equal_approx(pfs.volume_db, -7.6) and (sm._p["smp_echo"] as AudioStreamPlayer).bus == "Blast"
+			and (sm._p["rattle"] as AudioStreamPlayer).bus == "Bunker", "recording players on BlastSmp / Blast (echo) / Bunker (rattle)")
+	_check(is_equal_approx(sm.eq_smp.get_band_gain_db(4), -20.0) and is_equal_approx(sm.pan_smp.pan, 0.2)
+			and is_equal_approx(sm.lp_blast.cutoff_hz, 900.0), "BlastSmp EQ / pan and the echo low-pass follow the plan")
+	# the bed is timed on the tail's stream clock while the tail plays (the headless dummy driver does
+	# not advance it with this accelerated age): once the tail has ended its start is fixed in age
+	var lx: Dictionary = sm._loops["smp_ext"]
+	_check(is_equal_approx(float(lx["t0_s"]), 4.0) and float(lx["t0"]) > float(ps8["t_shock"]),
+			"megaton bed start re-timed on the recording's stream clock (t0 %.1f s)" % float(lx["t0"]))
+	(sm._p["smp_tail"] as AudioStreamPlayer).stop()
+	await _advance(float(ps8["t_shock"]) + 6.0, float(lx["t0"]) + 3.0, 0.05, 1.0)
+	_check((sm._p["smp_ext"] as AudioStreamPlayer).playing, "megaton rumble bed playing after its start")
+	# slow motion: front and tail still start together and share their pitch (no gap in the splice)
+	_start(ps8)
+	await _advance(0.0, float(ps8["t_shock"]) + 0.5, 0.05, 0.25)
+	var pf8 := sm._p["smp_front"] as AudioStreamPlayer
+	var pt8 := sm._p["smp_tail"] as AudioStreamPlayer
+	_check(_fired_at("smp_front") == _fired_at("smp_tail") and is_equal_approx(pf8.pitch_scale, pt8.pitch_scale)
+			and pf8.pitch_scale < 1.0, "slow motion (0.25x): front and tail fired together at the same pitch (%.2f)" % pf8.pitch_scale)
+	# ambience duck right after a strong arrival (148 dB peak -> 6 dB), recovered after a few seconds
+	sm.set_ambience(true)
+	sm.update_age(float(ps8["t_shock"]) + 0.1, 1.0)
+	var duck0 := sm._duck_db
+	sm.update_age(float(ps8["t_shock"]) + 6.0, 1.0)
+	_check(duck0 <= -5.9 and sm._duck_db > -0.5, "ambience ducks under the blast (%.1f dB) and recovers (%.1f dB)" % [duck0, sm._duck_db])
+	sm.set_ambience(false)
+	sm.stop_all()
+	# the next event without a recording falls back to the synthesis / generic layers again
+	bp8.erase("sample")
+	bp8["key"] = "test_nosmp"
+	sm.prepare_blast(bp8)
+	_check(sm._smp_plan.is_empty(), "a launch without a recording clears the previous plan")
+	sm.stop_all()
+	_check(sm._rk_sample and sm._rocket_ign.stream is AudioStreamOggVorbis and (sm._rocket_loop.stream as AudioStreamWAV).loop_mode != AudioStreamWAV.LOOP_DISABLED,
+			"recorded rocket: ignition one-shot + looping flight roar")
 	# no node growth over repeated launches
 	var nodes0 := sm.get_child_count()
 	for r in 20:

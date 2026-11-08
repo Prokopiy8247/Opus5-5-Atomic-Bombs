@@ -13,6 +13,10 @@ echo Godot 4.7.2 not found. Set the GODOT environment variable to Godot_v4.7.2-s
 pause
 exit /b 1
 :run
-if not exist ".godot\global_script_class_cache.cfg" "%GODOT%" --headless --path "%CD%" --import
+rem import on the first run, and when the sample recordings (assets\audio\samples) are not imported yet
+set "NEED_IMPORT="
+if not exist ".godot\global_script_class_cache.cfg" set "NEED_IMPORT=1"
+if not exist ".godot\imported\01_mk82_front.ogg-*" set "NEED_IMPORT=1"
+if defined NEED_IMPORT "%GODOT%" --headless --path "%CD%" --import
 start "" "%GODOT%" --path "%CD%" %*
 endlocal

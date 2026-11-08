@@ -4,6 +4,7 @@ extends Node3D
 ## movie/cinematic mode and the deterministic test rig.
 
 const BlastParams = preload("res://scripts/audio/blast_params.gd")
+const BlastSamples = preload("res://scripts/audio/blast_samples.gd")
 
 enum State { MENU, FLIGHT, EXPLOSION, DESTROYED }
 
@@ -185,19 +186,33 @@ func _menu_drive() -> void:
 	var good := explosion != null and explosion.age > 5.0
 	print("MENU_DRIVE launched=", explosion != null, " age=", snappedf(explosion.age if explosion else -1.0, 0.1))
 	if sound:
-		# the blast usually arrives later than 8 s: report whether its synthesized event is ready
+		# the blast usually arrives later than 8 s: report whether its recording (or, for a bomb
+		# without one, its synthesized event) is ready
 		var syn: Dictionary = sound.call("_synth_ready", sound.get("_syn_key"))
-		print("MENU_DRIVE audio synth_ready=", not syn.is_empty(), " mode=", sound.get("_mode"))
+		var smp: Dictionary = sound.get("_smp_plan")
+		print("MENU_DRIVE audio sample=", not smp.is_empty(), " synth_ready=", not syn.is_empty(), " mode=", sound.get("_mode"))
 		if Args.has("audio_log"):
-			# wait for the blast to reach the bunker: the synthesized front + tail must be the ones played
+			# wait for the blast to reach the bunker: the recording (front + tail) must be what plays
 			var t2 := Time.get_ticks_msec()
-			while String(sound.get("_mode")) == "" and Time.get_ticks_msec() - t2 < 120000:
+			while not _blast_heard() and Time.get_ticks_msec() - t2 < 120000:
 				await get_tree().process_frame
 			await _menu_shot(out, "5_blast")
 			print("MENU_DRIVE audio at blast arrival: mode=", sound.get("_mode"), " age=", snappedf(explosion.age if explosion else -1.0, 0.1))
-			good = good and String(sound.get("_mode")) == "synth"
+			good = good and _blast_heard() and String(sound.get("_mode")) == ("sample" if not smp.is_empty() else "synth")
 	print("READY" if good else "FAIL")
 	get_tree().quit()
+
+
+## The blast has reached the bunker: a recording's front fired, or the synthesized/generic mode
+## was decided at the arrival.
+func _blast_heard() -> bool:
+	var m := String(sound.get("_mode"))
+	if m == "sample":
+		for ev: Array in sound.get("event_log"):
+			if String(ev[1]) == "smp_front":
+				return true
+		return false
+	return m != ""
 
 
 func _menu_shot(out: String, name: String) -> void:
@@ -361,11 +376,7 @@ func launch(bomb_index: int, dist_km: float, az_deg: float) -> void:
 	if sound:
 		sound.rocket_start(launcher.current_position())
 		sound.play_ui("launch")
-		# synthesize the blast this bomb will make at this distance while the booster flies
-		var gd := Vector2(target_gz.x, target_gz.z).length()
-		var sp := BlastParams.params_for(b, gd, Game.humidity, String(Game.TOD_NAMES[Game.tod]))
-		sp["key"] = _synth_key(bomb_index, gd)
-		sound.prepare_blast(sp)
+		_prepare_blast_sound(bomb_index)
 	if ui:
 		ui.show_menu(false)
 		if ui.has_method("show_destroyed"):
@@ -384,6 +395,10 @@ func _on_detonated(_burst: Vector3) -> void:
 	if sound:
 		sound.rocket_stop()
 		sound.whistle_stop()
+		if String(sound.get("_syn_key")) != _synth_key(_flight_bomb, Vector2(target_gz.x, target_gz.z).length()):
+			# time of day or humidity changed during the flight: adapt the recording to the new
+			# atmosphere now (cheap; a bomb without a recording starts its synthesis late)
+			_prepare_blast_sound(_flight_bomb)
 		sound.on_detonation({
 			"yield_kt": explosion.prof.w_kt, "distance_m": explosion.obs_dist,
 			"t_seismic": explosion.t_seismic_obs, "t_shock": explosion.t_shock_obs,
@@ -391,6 +406,19 @@ func _on_detonated(_burst: Vector3) -> void:
 			"kind": String(b.get("burst_type", "")), "megaton": explosion.prof.w_kt >= 1000.0,
 			"synth_key": _synth_key(_flight_bomb, Vector2(target_gz.x, target_gz.z).length()),
 		})
+
+
+## The blast this bomb makes at this distance: its recording adapted to the distance, time of day,
+## humidity and bearing (BlastSamples); a bomb without a recording is synthesized while the booster
+## flies (BlastSynth).
+func _prepare_blast_sound(bomb_index: int) -> void:
+	var b := Game.bomb(bomb_index)
+	var gd := Vector2(target_gz.x, target_gz.z).length()
+	var tod_s := String(Game.TOD_NAMES[Game.tod])
+	var sp := BlastParams.params_for(b, gd, Game.humidity, tod_s)
+	sp["key"] = _synth_key(bomb_index, gd)
+	sp["sample"] = BlastSamples.plan(b, gd, Game.humidity, tod_s, Game.azimuth_deg)
+	sound.prepare_blast(sp)
 
 
 func _synth_key(bomb_index: int, ground_m: float) -> String:
@@ -527,9 +555,9 @@ func _exit_tree() -> void:
 func _process(delta: float) -> void:
 	if Game.is_test_rig:
 		return
+	# (in Movie Maker mode --fixed-fps already makes delta exactly 1 / fps; assuming 60 fps here made
+	# game time run at half speed against the recorded audio in a 30 fps render)
 	var dt := 0.0 if Game.paused else delta * Game.time_scale
-	if Game.is_movie:
-		dt = (1.0 / float(Engine.max_fps if Engine.max_fps > 0 else 60)) * Game.time_scale
 	launcher.advance(dt)
 	if state == State.FLIGHT and sound:
 		sound.rocket_update(launcher.current_position())

@@ -350,3 +350,122 @@ Standalone build (2026-11-08, `build.bat`, Godot 4.7.2 release template `windows
 - **Physics simplifications** (documented in `docs/RESEARCH_NOTES.md` and `docs/DECISIONS.md`):
   scaled-law fireball growth, a parametric cloud-rise model rather than a plume simulation,
   measured per-bomb keyframes where the films give them; no fallout, EMP or ionisation modelling.
+
+## 7. Recorded blasts (ElevenLabs), 2026-11-08
+
+The explosion and rocket sounds are now recordings (D039-D042). Verification:
+
+- **Processing** (`tools/process_samples.py`): 24 recordings -> 20 front/tail pairs + 4 extras, 8.2 MB. Every blast
+  starts 2 ms before its main hit (pre-roll removed: 0.3-9.3 s), Mk 84 and Trinity lose a second explosion the
+  generator appended (Castle Bravo too, after the review), Ivy Mike is peak-limited by 6 dB (the cap: deeper limiting
+  flattens its crack) so it reaches its loudness target at the recommended distance.
+- **Plan invariants** (`tools/sample_plan_report.tscn`): READY. For all 20 bombs: a recording exists, the reference
+  event (recommended distance, historical time of day and humidity) plays the recording unchanged (flat EQ, rumble
+  balance 0, reachable without clipping), the played loudness never grows with distance (0.5-200 km), dry air
+  absorbs more high frequencies than humid air.
+- **Offline mix** (`tools/sample_metrics.py`, the game's chain: front/tail gains, EQ6, echo, rattle, megaton bed;
+  K-weighted momentary loudness, desktop = 2nd-order 80 Hz high-pass, laptop = 4th-order 180 Hz; hiss = energy
+  above 2 kHz relative to 60-500 Hz 1-8 s after the arrival). At the recommended distance every bomb lands on its
+  target within 0.4 dB, and no event is hiss-dominated:
+
+| # | bomb | km | tod | target LUFS | M flat | M desktop | M laptop | hiss dB | boom s |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | mk82 | 2.0 | noon | -21.7 | -21.7 | -22.3 | -24.4 | -20.6 | 2.15 |
+| 2 | mk84 | 3.0 | noon | -21.2 | -21.1 | -21.4 | -23.0 | -23.4 | 3.2 |
+| 3 | tallboy | 4.0 | noon | -23.8 | -23.7 | -24.6 | -28.4 | -26.1 | 1.65 |
+| 4 | grand_slam | 5.0 | noon | -24.2 | -24.1 | -25.9 | -30.0 | -35.4 | 3.75 |
+| 5 | moab | 8.0 | noon | -22.3 | -22.2 | -22.7 | -25.5 | -27.5 | 2.8 |
+| 6 | davy_crockett | 8.0 | noon | -23.8 | -23.8 | -24.8 | -27.5 | -29.6 | 2.1 |
+| 7 | foab | 10.0 | noon | -21.4 | -21.4 | -22.4 | -25.6 | -20.8 | 4.25 |
+| 8 | b61_12 | 12.0 | noon | -17.9 | -17.5 | -18.5 | -21.3 | -22.3 | 2.15 |
+| 9 | grable | 20.0 | noon | -14.3 | -14.3 | -15.5 | -17.5 | -35.5 | 4.1 |
+| 10 | little_boy | 20.0 | noon | -14.2 | -14.2 | -15.0 | -18.5 | -23.4 | 4.35 |
+| 11 | trinity | 25.0 | dawn | -17.0 | -16.9 | -19.0 | -22.8 | -35.8 | 3.1 |
+| 12 | baker | 8.0 | noon | -13.8 | -13.8 | -14.6 | -16.8 | -30.8 | 1.3 |
+| 13 | sedan | 12.0 | noon | -15.3 | -15.3 | -17.3 | -21.4 | -46.0 | 7.85 |
+| 14 | ivy_king | 50.0 | noon | -13.8 | -13.8 | -14.8 | -16.7 | -37.8 | 15.3 |
+| 15 | b83 | 55.0 | noon | -18.1 | -18.1 | -18.6 | -20.1 | -31.0 | 5.65 |
+| 16 | rds37 | 60.0 | dawn (inversion, `sound_atmos`) | -12.1 | -12.1 | -12.8 | -14.9 | -21.7 | 18.5 |
+| 17 | ivy_mike | 90.0 | dawn | -13.7 | -13.7 | -14.8 | -20.6 | -34.5 | 33.8 |
+| 18 | castle_bravo | 100.0 | dawn | -13.7 | -13.6 | -14.7 | -19.0 | -29.6 | 27.2 |
+| 19 | test219 | 120.1 | night | -11.2 | -11.2 | -11.8 | -13.4 | -22.9 | 31.05 |
+| 20 | tsar | 150.1 | dawn | -11.1 | -11.1 | -12.2 | -15.9 | -25.8 | 4.9 |
+
+  A recording whose loudest moment is a later blow inside its tail (RDS-37's focused second blow, Castle Bravo's
+  run of bangs, Sedan's venting) is levelled by that moment and its tail is not turned down closer in (found by the
+  RDS-37 sweep: 4 dB short at 15 km before the fix).
+
+  Distance sweep (recommended x0.25 .. x4, historical time of day): the level falls monotonically; a Mk 82 at 8 km
+  by day is a dull thud about 20 dB under its 2 km report, a strong far shock (Tsar Bomba) keeps its crack:
+
+| bomb | km | M flat | M laptop |
+|---|---|---|---|
+| mk82 | 0.5 | -16.0 | -18.2 |
+| mk82 | 1.0 | -18.9 | -21.4 |
+| mk82 | 2.0 | -21.7 | -24.4 |
+| mk82 | 4.0 | -29.5 | -35.9 |
+| mk82 | 8.0 | -41.1 | -56.6 |
+| moab | 2.0 | -15.8 | -17.9 |
+| moab | 4.0 | -18.7 | -20.7 |
+| moab | 8.0 | -22.2 | -25.5 |
+| moab | 16.0 | -37.3 | -51.3 |
+| moab | 32.0 | -45.5 | -61.4 |
+| grable | 5.0 | -9.9 | -13.8 |
+| grable | 10.0 | -11.1 | -14.2 |
+| grable | 20.0 | -14.3 | -17.5 |
+| grable | 40.0 | -27.6 | -31.7 |
+| grable | 80.0 | -37.4 | -40.5 |
+| tsar | 37.7 | -8.7 | -13.9 |
+| tsar | 75.1 | -10.0 | -15.0 |
+| tsar | 150.1 | -11.1 | -15.9 |
+| tsar | 300.0 | -14.3 | -18.9 |
+| tsar | 600.0 | -17.1 | -21.8 |
+
+- **In-game renders** (`--write-movie` AVI at 30 fps, `-- --bomb N --dist KM --tod noon --audio_log`, audio
+  extracted from the AVI): Mk 82 at 2 km -21 LUFS momentary (laptop model -23), Mk 82 at 8 km by day -37
+  (laptop -43), MOAB at 8 km -21 (-25), Little Boy at 20 km -12; the recording starts within one frame of the
+  shock arrival (`smp_front` late 0.000-0.026 s), its tail at the crossfade offset, the bunker is silent between
+  events, the rocket ignition reaches the bunker 1.2 s after the launch (420 m) at about -23 LUFS. These renders
+  found two problems, both fixed: the falling bomb's rush of a Mk 82 at 2 km was as loud as its explosion
+  (-21 LUFS; `WHISTLE_DB` -9 -> -18), and a 30 fps render ran the game at half speed against its audio
+  (`main.gd` assumed 1/60 s per frame in Movie Maker mode; it now uses `delta`).
+- **QA matrix through the real launch path**, now also requiring the recording in every launch (`audio` =
+  `sample`): 53 launches (bombs 1-18 at noon, recommended / near / far; the run ended when its window was closed)
+  plus 49 (bombs 1, 5, 8, 11, 16, 18, 19, 20 at noon and night + the feature test): 102 launches, 0 failures,
+  0 engine/script errors, every launch in sample mode, nodes 572 -> 572.
+- `tools/test_audio.gd` 143/143 at that point (10 new checks: sample mode replaces the generic layers and the synthesis, no
+  roar / afterwind loops, start at the arrival and tail offset, buses, EQ / pan / echo low-pass from the plan,
+  megaton bed, ambience duck, fallback after a launch without a recording, recorded rocket loops);
+  `scenes/selftest.tscn` 126/126; `--menu_drive --bomb 1 --audio_log`: READY, mode `sample`, front at the arrival.
+
+### Independent review of the recorded-blast integration
+
+Workflow: 4 reviewer agents (runtime, plan maths, processing tool, build/docs) and one adversarial verifier per
+finding (22 agents). 17 findings, 16 confirmed and fixed, 1 rejected (a docs wording nit):
+
+- **Slow motion broke the front/tail splice** (also fast forward): the tail was scheduled in game time while the
+  recording plays at pitch ts^0.3 - at 0.25x a 5 s silent gap between a report and its rumble, at 4x the rumble on
+  top of the report. Two players started on different frames also landed a few ms apart (comb-filter dips in the
+  crossfade). Now the tail file carries silence up to its crossfade and both start in the same frame: sample-aligned
+  at any time scale (test: 0.25x, same frame, same pitch; render: continuous decay from -21 to -59 LUFS). The megaton
+  bed is timed on the tail's stream clock.
+- **Recorded rocket went silent mid-flight in slow motion**: the ignition/loop handoff now runs on the ignition's
+  stream clock.
+- **Changing time of day or humidity during the flight dropped the recording** (generic hiss layers came back): the
+  plan is recomputed at detonation when the atmosphere changed.
+- **Far inversion echo louder than the direct report** (B61 at 48 km by night +10.8 dB): the echo follows the level
+  actually played; new plan check: no echo louder than the report.
+- **Absorption saturated at 180 dB** (Tallboy / Grand Slam beyond the reference got brighter at 10 kHz): capped in
+  dB; new plan check: beyond the reference the spectrum only gets duller with frequency.
+- **Megaton bed ignored the rumble balance**; **Castle Bravo kept an appended explosion 18 s after the shock** (cut at
+  26.5 s; the tool now warns about appended hits); **click at the rocket loop seam** (resampled after looping;
+  now resampled first, seam 2nd difference 0.0013 vs 0.019 at the 99.9th percentile); **Ivy Mike's limiter stopped
+  at a 13.4 dB crest** (now iterated towards 11 dB, capped at 6 dB of limiting, smooth look-ahead attack); **run.bat / build.bat /
+  run_cinematic.bat did not import new recordings** (now also when the samples are not imported); **the raw
+  downloads could be exported** if their `.gdignore` is missing (excluded in `export_presets.cfg`; the tool creates
+  the `.gdignore`); outdated folder names and rumble-bed numbers in `docs/ELEVENLABS_PROMPTS.md`.
+
+After the fixes: plan report READY (with the two new invariants), `tools/test_audio.gd` 144 of 145 (the one
+failure is the pre-existing CPU-time check "single-thread generation < 2500 ms", 2557 ms with the machine at ~80 %
+CPU from other applications; it passed in the earlier runs and the generation code is unchanged).
+

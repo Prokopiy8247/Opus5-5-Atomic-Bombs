@@ -8,7 +8,9 @@ the sound arriving seconds or minutes later.
 
 Every size and time comes from published physics (Glasstone & Dolan, Fletcher, the DNA 1-kt
 standard, Miller's cloud model, Kingery-Bulmash for conventional explosives) plus per-bomb measured
-values from the research notes. Everything is procedural: no downloaded models, textures or sounds.
+values from the research notes. Everything visual is procedural (no downloaded models or textures);
+the explosion and rocket sounds are recordings generated for this project with ElevenLabs and adapted
+in real time to the distance and the atmosphere, every other sound is synthesized in code.
 
 ## Running
 
@@ -88,24 +90,26 @@ impact). At detonation:
 - **Test range objects** in distance rings scaled to each bomb's pressure radii (houses, trees,
   vehicles, towers, a bridge, bunkers, a hangar, aircraft) are destroyed in the physically correct
   order and ignite above their thermal thresholds.
-- **Sound:** every launch synthesizes the blast this bomb makes at this distance, in this
-  atmosphere, on a worker thread while the booster flies (`scripts/audio/blast_synth.gd`, 1.5-6 s
-  of CPU): a Friedlander pulse that becomes a rounded N-wave with range, with the positive-phase
-  duration and peak overpressure of the explosion physics, a shock rise time that grows as the wave
-  weakens, ISO 9613-1 air absorption computed by FFT, turbulent scattering, a dense local rumble,
-  diffuse mountain echoes 8-70 km away (absorbed over their own path), a continuous rolling coda,
-  blast wind behind strong fronts, and burst-type signatures (thermobaric double report, eruption /
-  water-column roar of buried and underwater shots, the second report of high bursts, 'avalanche'
-  multipath for megatons over water). The atmosphere follows the time of day: at noon the sound bends
-  up (beyond the shadow-zone onset only a dull diffracted boom arrives), at dawn/night a ground
-  inversion brings extra reflected arrivals (as at Trinity and RDS-37). Levels come from the physical
-  peak SPL through a compressive map. If synthesis is not finished in time the procedural generic
-  layers (crack, thump, rumble, thunder) play instead. Also: seismic tremor ahead of the air wave,
-  infrasonic thump for megatons, ear-ringing after close blasts, a solid-rocket ignition overpressure
-  'whump' and a crackling roar (skewed shocklet train, waveform skewness ~0.3, derivative skewness
-  ~4-5 as measured on real rockets), and the falling bomb's aerodynamic rush (no cartoon whistle;
-  silent beyond ~5 km and under a parachute). `tools/audio_preview.tscn` exports any event as WAV and
-  `tools/audio_plot.py` draws waveform/envelope/spectrogram sheets.
+- **Sound:** every bomb has its own recording of the blast as heard from the bunker at the
+  recommended distance (ElevenLabs Sound Effects, prompts written from eyewitness accounts and
+  blast acoustics in `docs/ELEVENLABS_PROMPTS.md`; cut, levelled and split into the report and its
+  rolling rumble by `tools/process_samples.py`). At launch `scripts/audio/blast_samples.gd` adapts it
+  to the shot: the level follows the peak overpressure at the bunker from the game's blast physics
+  (a compressive loudness map: a 500-lb bomb at 2 km is about -22 LUFS, the Tsar Bomba at 150 km
+  about -11 LUFS, a 100 kg bomb 15 km away by day a faint thud, 50 km away silence); ISO 9613-1 air
+  absorption of the longer or shorter path at the site humidity and the daytime acoustic shadow zone
+  shape a six-band EQ (farther = duller, closer = brighter; strong shocks keep their crack); far
+  away the rumble grows against the report; a dawn/night ground inversion adds a later, duller
+  arrival; megatons get a rolling rumble bed for minutes after the 30-second recording; a blast
+  that rattles windows but stays under the debris threshold rattles the bunker window; the burst's
+  bearing pans it slightly. The sound arrives exactly with the shock wave, and slow motion, pause
+  and offline renders stay in sync. The rocket is recorded too (ignition with a synthesized
+  ignition-overpressure thump, then the crackling flight roar). The bunker itself is silent between
+  events (no fan or hum); seismic tremor ahead of the air wave, debris and glass in the bunker,
+  infrasonic thump for megatons, ear-ringing after close blasts and the falling bomb's aerodynamic
+  rush (silent beyond ~5 km and under a parachute) are synthesized. The per-event blast synthesis
+  (`scripts/audio/blast_synth.gd`: Friedlander/N-wave pulse, absorption, echoes, shadow zone,
+  inversions) and the generic layers remain as the fallback for an event without a recording.
 
 ## Architecture
 
@@ -124,8 +128,11 @@ scripts/world/              terrain.gd + terrain_math.gd (clipmap + ground-zero 
                             CPU/GPU height function with Earth curvature), environment_ctl.gd
                             (sky, sun/moon, aerial perspective, time of day, eye adaptation),
                             bunker.gd, water_pond.gd, range_objects.gd
-scripts/audio/              audio_synth.gd (procedural synthesis), sound_manager.gd (buses, scheduling),
-                            blast_synth.gd + blast_dsp.gd + blast_params.gd (per-event blast synthesis)
+scripts/audio/              sound_manager.gd (buses, scheduling), blast_samples.gd (the recordings
+                            adapted to each shot), audio_synth.gd (procedural synthesis), blast_synth.gd +
+                            blast_dsp.gd + blast_params.gd (per-event blast synthesis, fallback)
+assets/audio/samples/       the processed recordings (blast/NN_id_front|tail.ogg, rumble_loop.wav,
+                            bunker_rattle.ogg, rocket_ignite.ogg, rocket_loop.wav) + samples.json
 scripts/ui/                 ui_root.gd, terminal_menu.gd, hud.gd, ui_theme.gd
 scripts/bombs/              bomb_models.gd (20 procedural bomb models, booster, parachute)
 scripts/tools/              shot_rig.gd (deterministic screenshots), qa_driver.gd (QA matrix)
@@ -169,11 +176,18 @@ Key design points (details in `docs/DECISIONS.md`):
   exercises slow motion, pause, cinematographer, director angles, HUD, RU/EN and time of day.
 - `run.bat -- --menu_drive [--bomb N] [--out DIR] [--audio_log]`: drives the real menu (select a bomb,
   move the distance slider, press LAUNCH), takes a screenshot of every step and, with `--audio_log`,
-  waits for the blast at the bunker and checks that the synthesized sound event was the one played
-  (`--audio_log` also prints every scheduled sound layer).
-- `tools/test_audio.gd` (`--headless -s res://tools/test_audio.gd -- --nospec`): 133 audio checks
+  waits for the blast at the bunker and checks that the bomb's recording was the one played
+  (`--audio_log` also prints the adapted plan and every sound layer fired).
+- `tools/test_audio.gd` (`--headless -s res://tools/test_audio.gd -- --nospec`): 145 audio checks
   (generation, levels, loop seams, buses, timelines, pause/scrub/slow motion, robustness, the
-  per-event synthesis path); `tools/audio_preview.tscn` + `tools/audio_plot.py` export and plot events.
+  per-event synthesis path, the recordings: sample mode, EQ/pan, echo, rattle, megaton bed, duck,
+  recorded rocket); `tools/audio_preview.tscn` + `tools/audio_plot.py` export and plot synthesized events.
+- Recordings: `python tools/process_samples.py` rebuilds `assets/audio/samples` from the raw downloads
+  in `Звуки взрывов\` (not in git; then re-import: open the editor or run `--headless --path . --import`;
+  `run.bat` imports automatically only on the first run); `tools/sample_plan_report.tscn` (`--headless --path .
+  res://tools/sample_plan_report.tscn [-- --json plans.json]`) prints and checks the adapted plan of
+  every bomb over distance, time of day and humidity; `python tools/sample_metrics.py plans.json
+  AMB_DIR` mixes the plans like the game and measures loudness, hiss and boom length.
 - `tools/fps_report.py`: real-time FPS per scenario (every bomb, bunker and binocular views, the
   Tsar Bomba night worst case at all four quality presets) → `docs/fps_report.json`.
 - `tools/render_all.py` and three cycles of independent art-director reviews (`docs/reviews/cycle1..3_art_review.json`),

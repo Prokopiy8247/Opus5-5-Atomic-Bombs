@@ -146,7 +146,11 @@ func _one(n: int, d: float, dm: String, tod_s: String, hold: float, idx: int, ou
 	r["destroyed"] = main.state == main.State.DESTROYED
 	r["errors"] = _log.errors - err0
 	r["nodes"] = _nodes()
-	r["ok"] = bool(r["detonated"]) and float(r["age"]) > 0.0 and int(r["errors"]) == 0
+	# every bomb has a recording: the explosion must play it (sample mode, decided at detonation)
+	var snd: Node = main.get("sound")
+	r["audio"] = String(snd.get("_mode")) if snd else "none"
+	r["ok"] = bool(r["detonated"]) and float(r["age"]) > 0.0 and int(r["errors"]) == 0 \
+			and (snd == null or r["audio"] == "sample")
 	if idx % 6 == 0:
 		await RenderingServer.frame_post_draw
 		get_viewport().get_texture().get_image().save_png(out.path_join("qa_%02d_%s_%s.png" % [n, dm, tod_s]))
