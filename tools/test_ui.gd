@@ -412,6 +412,49 @@ func _run() -> void:
 	var ev2 := ev.duplicate() as InputEventKey
 	root.push_input(ev2)
 	check(ui.is_menu_visible(), "Tab shows menu")
+
+	# ---- Esc opens the quit dialog (pauses), Esc closes it (restores), Enter quits; QUIT buttons
+	# open the dialog instead of quitting; keys behind the modal dialog are swallowed
+	var q0 := quits
+	G.paused = false
+	var esc := InputEventKey.new()
+	esc.keycode = KEY_ESCAPE
+	esc.physical_keycode = KEY_ESCAPE
+	esc.pressed = true
+	root.push_input(esc)
+	check(ui.is_quit_dialog_open() and G.paused and quits == q0, "Esc opens the quit dialog and pauses (no quit)")
+	await wait_frames(2)
+	await shot("quit_dialog_ru.png")
+	var sel0: int = menu.sel
+	var down := InputEventKey.new()
+	down.keycode = KEY_DOWN
+	down.physical_keycode = KEY_DOWN
+	down.pressed = true
+	root.push_input(down)
+	check(menu.sel == sel0, "keys behind the quit dialog are swallowed (selection %d -> %d)" % [sel0, menu.sel])
+	root.push_input(esc.duplicate())
+	check(not ui.is_quit_dialog_open() and not G.paused and quits == q0, "Esc again closes the dialog and restores the pause state")
+	G.paused = true
+	root.push_input(esc.duplicate())
+	root.push_input(esc.duplicate())
+	check(not ui.is_quit_dialog_open() and G.paused, "a game paused before the dialog stays paused after it")
+	G.paused = false
+	menu.quit_pressed.emit()
+	check(ui.is_quit_dialog_open() and quits == q0, "menu QUIT opens the quit dialog")
+	var alt_enter := InputEventKey.new()
+	alt_enter.keycode = KEY_ENTER
+	alt_enter.physical_keycode = KEY_ENTER
+	alt_enter.alt_pressed = true
+	alt_enter.pressed = true
+	root.push_input(alt_enter)
+	check(ui.is_quit_dialog_open() and quits == q0, "Alt+Enter (full screen) does not quit from the dialog")
+	var enter := InputEventKey.new()
+	enter.keycode = KEY_ENTER
+	enter.physical_keycode = KEY_ENTER
+	enter.pressed = true
+	root.push_input(enter)
+	check(quits == q0 + 1, "Enter in the quit dialog quits")
+	ui.show_quit_dialog(false)
 	ui.show_menu(false)
 
 	# ---- HUD

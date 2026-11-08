@@ -1,8 +1,10 @@
 extends CanvasLayer
 ## Root of the 2D interface over the 3D view: white-out/glare overlay, HUD, toasts, the
-## bunker terminal menu and the "BUNKER DESTROYED" screen. Handles Tab (menu toggle) itself
-## in _input, before GUI focus navigation could swallow it, and keeps the mouse visible
-## while the menu or the destroyed screen is open (captured otherwise).
+## bunker terminal menu, the "BUNKER DESTROYED" screen and the quit dialog. Handles Tab (menu
+## toggle) and Esc (quit dialog) itself in _input, before GUI focus navigation could swallow
+## them, and keeps the mouse visible while the menu, the destroyed screen or the quit dialog is
+## open (captured otherwise). Every quit path (Esc, the menu's QUIT, the destroyed screen's QUIT)
+## opens the quit dialog; only its QUIT button (or Enter) emits quit_requested.
 ##
 ## Integration (main.gd):
 ##   const UiRoot = preload("res://scripts/ui/ui_root.gd")
@@ -14,6 +16,7 @@ signal reset_requested
 signal quit_requested
 signal setting_changed(key: String, value)   # "tod","humidity","quality","lang","grain","hud","clouds"
 signal menu_visibility_changed(v: bool)
+signal quit_dialog_changed(open: bool)
 
 const UiTheme = preload("res://scripts/ui/ui_theme.gd")
 const TerminalMenu = preload("res://scripts/ui/terminal_menu.gd")
@@ -34,6 +37,8 @@ var hud: Hud
 var _flash: ColorRect
 var _toasts: VBoxContainer
 var _destroyed: Control
+var _quit: Control
+var _paused_before_quit := false
 var _dest_title: Label
 var _dest_peak: Label
 var _tr: Array = []
@@ -79,10 +84,13 @@ func _init() -> void:
 	_destroyed = _build_destroyed()
 	add_child(_destroyed)
 
+	_quit = _build_quit()
+	add_child(_quit)   # last: above the menu and the destroyed screen
+
 	menu.launch_pressed.connect(_on_launch)
 	menu.setting_changed.connect(_on_setting)
 	menu.reset_pressed.connect(func() -> void: reset_requested.emit())
-	menu.quit_pressed.connect(func() -> void: quit_requested.emit())
+	menu.quit_pressed.connect(func() -> void: show_quit_dialog(true))
 	menu.close_pressed.connect(func() -> void: show_menu(false))
 	Game.language_changed.connect(_retranslate)
 
@@ -153,6 +161,25 @@ func is_destroyed_visible() -> bool:
 	return _destroyed.visible
 
 
+## The quit dialog ("QUIT THE GAME?"): opening it pauses the simulation (Game.paused), closing
+## it restores the previous pause state. Its QUIT button / Enter emits quit_requested.
+func show_quit_dialog(v: bool) -> void:
+	if _quit.visible == v:
+		return
+	if v:
+		_paused_before_quit = Game.paused
+		Game.paused = true
+	else:
+		Game.paused = _paused_before_quit
+	_quit.visible = v
+	_apply_mouse()
+	quit_dialog_changed.emit(v)
+
+
+func is_quit_dialog_open() -> bool:
+	return _quit.visible
+
+
 ## Full-screen white-out / glare, 0..1.
 func flash_white(amount: float) -> void:
 	var a := clampf(amount, 0.0, 1.0)
@@ -190,7 +217,7 @@ func get_estimate() -> Dictionary:
 func _apply_mouse() -> void:
 	if not manage_mouse or not is_inside_tree():
 		return
-	var need := menu.visible or _destroyed.visible
+	var need := menu.visible or _destroyed.visible or _quit.visible
 	var mode := Input.MOUSE_MODE_VISIBLE if need else Input.MOUSE_MODE_CAPTURED
 	if Input.mouse_mode != mode:
 		Input.mouse_mode = mode
@@ -294,6 +321,71 @@ func _build_destroyed() -> Control:
 	quit_b.focus_mode = Control.FOCUS_NONE
 	quit_b.custom_minimum_size = Vector2(240, 64)
 	quit_b.add_theme_font_size_override("font_size", 24)
+	quit_b.pressed.connect(func() -> void: show_quit_dialog(true))
+	hb.add_child(quit_b)
+	return root
+
+
+func _build_quit() -> Control:
+	var root := Control.new()
+	root.name = "QuitDialog"
+	root.theme = UiTheme.get_theme()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.visible = false
+	var dim := ColorRect.new()
+	dim.color = Color(0.0, 0.0, 0.0, 0.66)
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(dim)
+	root.add_child(UiTheme.make_scanlines(0.08, 0.5))
+	var cc := CenterContainer.new()
+	cc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.add_child(cc)
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UiTheme.box(Color(0.01, 0.04, 0.02, 0.96), UiTheme.AMBER, 2, 48, 28))
+	cc.add_child(p)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 18)
+	p.add_child(v)
+	var title := Label.new()
+	_reg(title, "quit.title")
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_override("font", UiTheme.font(true))
+	title.add_theme_font_size_override("font_size", 44)
+	title.add_theme_color_override("font_color", UiTheme.AMBER)
+	v.add_child(title)
+	var line := ColorRect.new()
+	line.color = Color(UiTheme.AMBER, 0.5)
+	line.custom_minimum_size = Vector2(0, 2)
+	v.add_child(line)
+	var txt := Label.new()
+	_reg(txt, "quit.text")
+	txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	txt.add_theme_font_size_override("font_size", UiTheme.FONT_LARGE)
+	txt.add_theme_color_override("font_color", UiTheme.GREEN)
+	v.add_child(txt)
+	var hb := HBoxContainer.new()
+	hb.alignment = BoxContainer.ALIGNMENT_CENTER
+	hb.add_theme_constant_override("separation", 28)
+	v.add_child(hb)
+	var cont := Button.new()
+	_reg(cont, "quit.no")
+	cont.name = "Continue"
+	cont.theme_type_variation = &"AmberButton"
+	cont.focus_mode = Control.FOCUS_NONE
+	cont.custom_minimum_size = Vector2(320, 64)
+	cont.add_theme_font_override("font", UiTheme.font(true))
+	cont.add_theme_font_size_override("font_size", 26)
+	cont.pressed.connect(func() -> void: show_quit_dialog(false))
+	hb.add_child(cont)
+	var quit_b := Button.new()
+	_reg(quit_b, "quit.yes")
+	quit_b.name = "Quit"
+	quit_b.focus_mode = Control.FOCUS_NONE
+	quit_b.custom_minimum_size = Vector2(260, 64)
+	quit_b.add_theme_font_size_override("font_size", 24)
 	quit_b.pressed.connect(func() -> void: quit_requested.emit())
 	hb.add_child(quit_b)
 	return root
@@ -310,15 +402,32 @@ func _input(event: InputEvent) -> void:
 	var ke := event as InputEventKey
 	if not ke.pressed or ke.echo:
 		return
+	if _quit.visible:
+		# the quit dialog is modal: Esc goes back to the game, Enter quits, every other key is
+		# swallowed (no bomb selection or hotkeys behind it) except full screen (F11 / Alt+Enter,
+		# handled by main.gd after this)
+		var enter := ke.keycode == KEY_ENTER or ke.keycode == KEY_KP_ENTER
+		if ke.keycode == KEY_ESCAPE:
+			show_quit_dialog(false)
+		elif enter and not ke.alt_pressed:
+			quit_requested.emit()
+		elif ke.keycode == KEY_F11 or (enter and ke.alt_pressed):
+			return
+		get_viewport().set_input_as_handled()
+		return
 	if menu.visible and menu.is_confirm_open():
 		if ke.keycode == KEY_ESCAPE:
 			menu.close_confirm()
 			get_viewport().set_input_as_handled()
 			return
-		if ke.keycode == KEY_ENTER or ke.keycode == KEY_KP_ENTER:
+		if (ke.keycode == KEY_ENTER or ke.keycode == KEY_KP_ENTER) and not ke.alt_pressed:
 			menu.confirm_launch()
 			get_viewport().set_input_as_handled()
 			return
+	if ke.keycode == KEY_ESCAPE:
+		show_quit_dialog(true)
+		get_viewport().set_input_as_handled()
+		return
 	if handle_tab_key and ke.keycode == KEY_TAB:
 		toggle_menu()
 		get_viewport().set_input_as_handled()

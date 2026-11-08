@@ -56,8 +56,9 @@ slightly faster than Vulkan on the development machine; both work).
 | T | time of day (dawn, noon, dusk, night; the review renders also use a historical pre-dawn twilight for Trinity) |
 | H | humidity (dry → humid; affects haze and Wilson condensation clouds). Until you change it, each bomb uses its historical site humidity (Pacific atolls and Hiroshima humid, Nevada dry). |
 | F1 | hide/show HUD |
+| F11 / Alt+Enter | full screen ↔ window |
 | F12 | screenshot (saved to `%APPDATA%\Godot\app_userdata\Atomic Bombs Opus 5.5\screenshots`) |
-| Esc | quit |
+| Esc | quit menu: "Quit the game?" pauses the simulation; Esc again (or CONTINUE) returns, Enter (or QUIT) quits. The QUIT buttons of the terminal and of the destroyed-bunker screen open the same dialog |
 
 The terminal menu (Russian by default, RU/EN toggle) lists the 20 bombs with name (Russian +
 original), year and country, yield (kt/Mt and TNT tonnes), burst type and height, a fact-checked
@@ -188,6 +189,8 @@ Key design points (details in `docs/DECISIONS.md`):
   res://tools/sample_plan_report.tscn [-- --json plans.json]`) prints and checks the adapted plan of
   every bomb over distance, time of day and humidity; `python tools/sample_metrics.py plans.json
   AMB_DIR` mixes the plans like the game and measures loudness, hiss and boom length.
+- `tools/test_window.tscn` (windowed: `--path . res://tools/test_window.tscn`): the window keys in the real
+  game - F11 / Alt+Enter full screen and back, Esc opens the quit dialog (paused, cursor visible) and closes it.
 - `tools/fps_report.py`: real-time FPS per scenario (every bomb, bunker and binocular views, the
   Tsar Bomba night worst case at all four quality presets) → `docs/fps_report.json`.
 - `tools/render_all.py` and three cycles of independent art-director reviews (`docs/reviews/cycle1..3_art_review.json`),

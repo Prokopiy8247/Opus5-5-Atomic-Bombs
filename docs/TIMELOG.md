@@ -33,3 +33,4 @@ END 2026-11-08T00:05:22+01:00 (active 8h 05m 00s, wall 18h 32m 20s, pause 10h 27
 - 2026-11-08T15:30:40+01:00 USER REQUEST: rebuild if needed (the 15:18 build is current) and total time / tokens / API cost -> docs/PROJECT_STATS.md
 END (follow-up requests) 2026-11-08T15:33:15+01:00 (project total: active 12h 29m 06s, 8,698,069 output tokens, $644.92 API-equivalent; docs/PROJECT_STATS.md section 0)
 - 2026-11-08T15:40:00+01:00 USER REQUEST: remove the beep at the rocket launch -> the UI "launch" chirp is no longer played by main.gd (render: silence until the ignition arrives); rebuild
+- 2026-11-08T15:55:00+01:00 USER REQUEST: Esc should open a quit menu; F11 full screen did not work -> modal quit dialog (pause, Esc/Enter, all QUIT buttons), F11 / Alt+Enter full screen (was not bound); test_ui 93/93, test_window (real game) 8/8, selftest 126/126; rebuild

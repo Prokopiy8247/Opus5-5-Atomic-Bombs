@@ -22,6 +22,7 @@ var explosion: Explosion
 var water: Node3D
 var ui: Node
 var sound: Node
+var _windowed_mode := DisplayServer.WINDOW_MODE_WINDOWED   # restored when leaving full screen
 var range_objs: Node3D
 
 var state: int = State.MENU
@@ -117,6 +118,8 @@ func _load_optional_modules() -> void:
 			ui.launch_requested.connect(_on_launch_requested)
 			ui.reset_requested.connect(reset_scene)
 			ui.quit_requested.connect(func() -> void: get_tree().quit())
+			# the quit dialog pauses the game and needs the mouse cursor
+			ui.quit_dialog_changed.connect(func(_open: bool) -> void: _update_mouse())
 			ui.setting_changed.connect(_on_setting_changed)
 
 
@@ -470,7 +473,7 @@ func _on_setting_changed(key: String, value: Variant) -> void:
 
 
 func _update_mouse() -> void:
-	var menu_open: bool = ui != null and ui.is_menu_visible()
+	var menu_open: bool = ui != null and (ui.is_menu_visible() or ui.is_quit_dialog_open())
 	if menu_open or state == State.DESTROYED:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		cam.look_enabled = false
@@ -479,9 +482,35 @@ func _update_mouse() -> void:
 		cam.look_enabled = true
 
 
+## F11 / Alt+Enter: full screen <-> window (in _input, so a focused menu control cannot eat it).
+func _input(event: InputEvent) -> void:
+	if Game.is_test_rig or Game.is_movie or not (event is InputEventKey):
+		return
+	var ke := event as InputEventKey
+	if not ke.pressed or ke.echo:
+		return
+	if ke.keycode == KEY_F11 or (ke.alt_pressed and (ke.keycode == KEY_ENTER or ke.keycode == KEY_KP_ENTER)):
+		toggle_fullscreen()
+		get_viewport().set_input_as_handled()
+
+
+func toggle_fullscreen() -> void:
+	var m := DisplayServer.window_get_mode()
+	var full := m == DisplayServer.WINDOW_MODE_FULLSCREEN or m == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+	if full:
+		DisplayServer.window_set_mode(_windowed_mode)
+	else:
+		_windowed_mode = m if m == DisplayServer.WINDOW_MODE_MAXIMIZED else DisplayServer.WINDOW_MODE_WINDOWED
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	if ui and ui.has_method("show_toast"):
+		ui.show_toast(Game.tr_key("fs.off" if full else "fs.on"))
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if Game.is_test_rig:
 		return
+	if ui and ui.is_quit_dialog_open():
+		return   # the quit dialog is modal: no hotkeys behind it
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
 		if ui and not ui.is_menu_visible():
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
@@ -489,7 +518,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	match event.keycode:
 		KEY_ESCAPE:
-			get_tree().quit()
+			# (the UI opens its quit dialog in _input; without a UI Esc quits directly)
+			if ui:
+				ui.show_quit_dialog(true)
+			else:
+				get_tree().quit()
 		KEY_TAB:
 			if ui:
 				ui.toggle_menu()

@@ -660,7 +660,7 @@ func _build_keys() -> Control:
 		["C", "key.c", false], ["1–4", "key.num", false],
 		["T", "key.t", false], ["H", "key.h", false],
 		["F1", "key.f1", false], ["F12", "key.f12", false],
-		["Esc", "key.esc", false],
+		["F11", "key.f11", false], ["Esc", "key.esc", false],
 	]
 	for it in items:
 		var cap: Label
@@ -1526,7 +1526,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			select_bomb(bombs.size() - 1)
 			get_viewport().set_input_as_handled()
 		KEY_ENTER, KEY_KP_ENTER:
-			if not ke.echo:
+			if not ke.echo and not ke.alt_pressed:   # Alt+Enter is full screen (main.gd)
 				request_launch()
 				get_viewport().set_input_as_handled()
 
