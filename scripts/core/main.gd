@@ -374,8 +374,9 @@ func launch(bomb_index: int, dist_km: float, az_deg: float) -> void:
 	_whistling = false
 	state = State.FLIGHT
 	if sound:
+		# (no UI "launch" chirp here: the player asked for the beep at the rocket launch to go;
+		# the launch is heard as the recorded rocket ignition)
 		sound.rocket_start(launcher.current_position())
-		sound.play_ui("launch")
 		_prepare_blast_sound(bomb_index)
 	if ui:
 		ui.show_menu(false)
